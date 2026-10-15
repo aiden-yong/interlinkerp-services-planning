@@ -59,6 +59,14 @@ export const catalog = {
         'GET /api/holidays', 'POST /api/holidays', 'PATCH /api/holidays/{id}', 'DELETE /api/holidays/{id}', 'POST /api/holiday-syncs',
       ],
     },
+    {
+      name: 'Plan Shifts',
+      icon: '🗓️',
+      description: 'Create and change shifts, with warnings when a shift breaks a planning rule.',
+      does: ['Create a shift', 'Move or reassign a shift', 'Duplicate or delete a shift', 'Undo a deletion'],
+      best_for: 'Managers building and adjusting the team schedule.',
+      endpoints: ['POST /api/shifts', 'GET /api/shifts/{id}', 'PATCH /api/shifts/{id}'],
+    },
   ] as Capability[],
   workflows: [
     { name: 'Plan and publish a week', steps: ['GET /api/schedule', 'POST /api/shifts', 'PATCH /api/shifts/{id}', 'POST /api/publications'] },

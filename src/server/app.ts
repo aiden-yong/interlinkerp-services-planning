@@ -15,11 +15,15 @@ import { HolidayProvider, nullHolidayProvider } from './holidays/provider';
 import { HolidayRepository } from './repo/holidays';
 import { DirectoryRepository } from './repo/directory';
 import { ManagerRepository } from './repo/managers';
+import { Outbox } from './repo/outbox';
 import { ProfileRepository } from './repo/profiles';
 import { RoleRepository } from './repo/roles';
 import { SettingsRepository } from './repo/settings';
+import { ShiftRepository } from './repo/shifts';
 import { TimeOffRepository } from './repo/timeOff';
 import { buildRouter } from './routes';
+import { ConflictContext } from './scheduling/conflictContext';
+import { ShiftService } from './scheduling/shiftService';
 import { ClientCredentials } from './roster/clientCredentials';
 import { DepartmentApi } from './roster/departments';
 import { InternDatabaseRoster } from './roster/internDatabase';
@@ -151,6 +155,24 @@ export class App {
 
   holidays(): HolidayRepository {
     return this.once('holidays', () => new HolidayRepository(this.database().db, this.organisationId()));
+  }
+
+  shifts(): ShiftRepository {
+    return this.once('shifts', () => new ShiftRepository(this.database().db, this.organisationId()));
+  }
+
+  outbox(): Outbox {
+    return this.once('outbox', () => new Outbox(this.database().db, this.organisationId()));
+  }
+
+  conflictContext(): ConflictContext {
+    return this.once('conflictContext', () => new ConflictContext(this.shifts(), this.profiles(), this.timeOff(), this.holidays(), this.settings()));
+  }
+
+  shiftService(): ShiftService {
+    return this.once('shiftService', () => new ShiftService(
+      this.shifts(), this.profiles(), this.roles(), this.directory(), this.conflictContext(), this.outbox(), this.clock(),
+    ));
   }
 
   holidayProvider(): HolidayProvider {
