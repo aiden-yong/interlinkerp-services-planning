@@ -7,8 +7,9 @@ import { HttpError } from './errors';
  * internal: not in OpenAPI; the handler checks its own secret (cron).
  * person: any signed-in person; programs are refused.
  * manager: Planning Managers (BR-12), or programs holding the route's scope.
+ * person-manager: Planning Managers only, as signed-in people; programs are refused (who manages planning is a person's decision).
  */
-export type Access = 'public' | 'internal' | 'person' | 'manager';
+export type Access = 'public' | 'internal' | 'person' | 'manager' | 'person-manager';
 
 export interface HandlerContext {
   request: Request;

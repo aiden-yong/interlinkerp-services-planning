@@ -16,7 +16,7 @@ export function register(r: Router, app: App): void {
     [], ['managers[].email', 'managers[].granted_by', 'managers[].granted_at'], ['Planning Manager'], ['POST /api/managers', 'DELETE /api/managers/{email}'],
     ['managers', 'permissions', 'access', 'admins']));
 
-  r.add('POST', '/api/managers', 'manager', 'Grant Planning Manager access to someone on the roster.', async ({ body, principal }) => {
+  r.add('POST', '/api/managers', 'person-manager', 'Grant Planning Manager access to someone on the roster.', async ({ body, principal }) => {
     const input = new Input(await body());
     const raw = input.string('email', 254, true);
     if (raw && !EMAIL.test(raw)) input.error('email', 'Not a valid email address.');
@@ -38,7 +38,7 @@ export function register(r: Router, app: App): void {
   }, op('Grant Manager Access', 'Let someone plan and publish shifts', ['A new supervisor needs to plan shifts'], ['Giving someone a planning role'],
     ['email'], ['manager'], ['Planning Manager', 'Person is on the employee roster'], ['GET /api/managers'], ['grant', 'permission', 'manager', 'access']));
 
-  r.add('DELETE', '/api/managers/{email}', 'manager', 'Revoke Planning Manager access.', async ({ params, query, principal }) => {
+  r.add('DELETE', '/api/managers/{email}', 'person-manager', 'Revoke Planning Manager access.', async ({ params, query, principal }) => {
     const email = params.email.trim().toLowerCase();
     if (!(await app.managers().isManager(email))) throw HttpError.notFound('That person is not on the Planning Manager list.');
     const removingSelf = principal?.email === email && principal.gatewayRole !== 'admin';

@@ -37,7 +37,7 @@ export function useApiHarness(): Harness {
     async check(route) {
       if (route.access === 'public' || route.access === 'internal') return { principal: null, cookies: [] };
       if (!principal) throw HttpError.unauthorized('Not signed in.');
-      if (route.access === 'manager' && !principal.isManager) throw HttpError.forbidden('Only Planning Managers can do this.');
+      if ((route.access === 'manager' || route.access === 'person-manager') && !principal.isManager) throw HttpError.forbidden('Only Planning Managers can do this.');
       return { principal, cookies: [] };
     },
   };

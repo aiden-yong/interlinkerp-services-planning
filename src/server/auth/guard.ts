@@ -31,7 +31,7 @@ export class GatewayAccessGuard implements AccessGuard {
     if (bearer) return { principal: await this.client(route, bearer), cookies: [] };
 
     const { principal, cookies } = await this.person(request);
-    if (route.access === 'manager' && !principal.isManager) throw HttpError.forbidden('Only Planning Managers can do this.');
+    if ((route.access === 'manager' || route.access === 'person-manager') && !principal.isManager) throw HttpError.forbidden('Only Planning Managers can do this.');
     return { principal, cookies };
   }
 
@@ -44,7 +44,7 @@ export class GatewayAccessGuard implements AccessGuard {
       throw error;
     }
     const scopes = String(claims.scope ?? '').split(' ').filter(Boolean);
-    if (route.access === 'person') throw HttpError.forbidden('This endpoint is only for signed-in people.', 'PERSON_REQUIRED');
+    if (route.access === 'person' || route.access === 'person-manager') throw HttpError.forbidden('This endpoint is only for signed-in people.', 'PERSON_REQUIRED');
     const required = scopeOf(route)!;
     if (!scopes.includes(required)) throw HttpError.forbidden(`This endpoint needs ${required}.`, 'FORBIDDEN', { required: [required], granted: scopes });
     return { kind: 'client', subject: String(claims.sub ?? 'unknown'), email: null, name: null, gatewayRole: null, employeeRef: null, isManager: false, scopes };

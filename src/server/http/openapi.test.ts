@@ -70,7 +70,7 @@ describe('openapi.json', () => {
     const inCapabilities = catalog.capabilities.flatMap((c) => c.endpoints);
     for (const endpoint of inCapabilities) expect(documented).toContain(endpoint);
     for (const route of routes) {
-      if (route.access === 'person' || route.access === 'manager') expect(inCapabilities).toContain(`${route.method} ${route.path}`);
+      if (route.access !== 'public' && route.access !== 'internal') expect(inCapabilities).toContain(`${route.method} ${route.path}`);
     }
   });
 });

@@ -95,6 +95,18 @@ describe('GatewayAccessGuard', () => {
     expect((await rejection(guard().check(route('manager'), identityAsBearer))).status).toBe(401);
   });
 
+  it('keeps programs out of person-manager routes (the Planning Manager list), even with planning:write', async () => {
+    const request = new Request('http://localhost/api/managers', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${await tokens.sign({ token_use: 'access', sub: 'client-9', scope: 'planning:read planning:write' })}` },
+    });
+    const e = await rejection(guard().check(route('person-manager', 'POST'), request));
+    expect([e.status, e.code]).toEqual([403, 'PERSON_REQUIRED']);
+
+    expect((await rejection(guard().check(route('person-manager', 'POST'), withSession()))).status).toBe(403);
+    expect((await guard({ managers: ['ana@example.com'] }).check(route('person-manager', 'POST'), withSession())).principal?.isManager).toBe(true);
+  });
+
   it('uses the dev identity only for direct loopback requests', async () => {
     const dev = new DevIdentity({ sid: 'dev', sub: 'dev:dev@example.com', email: 'dev@example.com', name: 'Dev', gatewayRole: 'admin', employeeRef: null, expiresAt: Number.MAX_SAFE_INTEGER });
     const local = new Request('http://127.0.0.1:3000/api/x', { headers: { 'x-forwarded-for': '127.0.0.1' } });
