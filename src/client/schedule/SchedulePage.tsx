@@ -9,7 +9,7 @@ import { newShiftTimes, publishSummary } from './drag';
 import { periodFor, periodLabel, type Scale, step } from './period';
 import { buildRows, type Filters, type GroupBy, NO_FILTERS } from './rows';
 import { ShiftDialog } from './ShiftDialog';
-import { saveShift, type ShiftForm, shiftToForm } from './shiftForm';
+import { saveShift, type ShiftForm, shiftToForm, STALE_MESSAGE } from './shiftForm';
 import { todayIn } from './tz';
 
 export function SchedulePage({ me }: { me: Me }) {
@@ -19,6 +19,7 @@ export function SchedulePage({ me }: { me: Me }) {
   const [groupBy, setGroupBy] = useState<GroupBy>('employee');
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [data, setData] = useState<SchedulePayload | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ shift: Shift | null; initial: ShiftForm } | null>(null);
   const period = useMemo(() => periodFor(scale, anchor), [scale, anchor]);
@@ -43,7 +44,7 @@ export function SchedulePage({ me }: { me: Me }) {
   const set = (patch: Partial<Filters>) => setFilters((f) => ({ ...f, ...patch }));
 
   const report = (e: unknown) => toast(e instanceof ApiError && e.code === 'STALE_SHIFT'
-    ? 'Someone else changed that shift. The schedule has been reloaded.'
+    ? STALE_MESSAGE
     : (e as Error).message, undefined, 6000);
 
   function openNew(rowRef: string | null, atIso: string | null) {
@@ -55,7 +56,7 @@ export function SchedulePage({ me }: { me: Me }) {
 
   async function applyChange(shift: Shift, change: ShiftChange) {
     try {
-      const saved = await saveShift('PATCH', `/api/shifts/${shift.id}`, { version: shift.version, ...change, ...(shift.conflict_acknowledged ? { acknowledge_conflicts: true } : {}) }, confirm);
+      const saved = await saveShift('PATCH', `/api/shifts/${shift.id}`, { version: shift.version, ...change }, confirm, shift.conflicts.map((c) => c.message));
       if (saved) toast(shift.state === 'published' ? 'Shift moved. The employee will be told.' : 'Shift moved.', undefined, 4000);
     } catch (e) {
       report(e);
@@ -64,6 +65,16 @@ export function SchedulePage({ me }: { me: Me }) {
   }
 
   async function publish() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await publishDrafts();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function publishDrafts() {
     const summary = publishSummary(rows.flatMap((r) => r.shifts));
     if (summary.ids.length === 0) {
       toast('There are no draft shifts in this view.', undefined, 4000);
@@ -111,7 +122,7 @@ export function SchedulePage({ me }: { me: Me }) {
         <input type="search" aria-label="Find employee" placeholder="Find employee" value={filters.name} onChange={(e) => set({ name: e.target.value })} />
         <span className="spacer" />
         <button type="button" onClick={() => openNew(null, null)}>Add shift</button>
-        <button type="button" className="primary" onClick={publish}>Publish</button>
+        <button type="button" className="primary" disabled={busy} onClick={publish}>Publish</button>
       </div>
       {data?.directory_stale && <p className="notice">Employee names may be out of date because the roster could not be refreshed. Planning still works.</p>}
       {error && <p className="form-error">{error}</p>}

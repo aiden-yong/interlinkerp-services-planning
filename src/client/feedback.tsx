@@ -46,7 +46,10 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
     window.setTimeout(() => setToasts((all) => all.filter((t) => t.id !== id)), ms);
   }, []);
   const confirm = useCallback((title: string, lines: string[], confirmLabel: string) =>
-    new Promise<boolean>((resolve) => setQuestion({ title, lines, confirmLabel, resolve })), []);
+    new Promise<boolean>((resolve) => setQuestion((open) => {
+      open?.resolve(false);
+      return { title, lines, confirmLabel, resolve };
+    })), []);
   const answer = (ok: boolean) => {
     question?.resolve(ok);
     setQuestion(null);

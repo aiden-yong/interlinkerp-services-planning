@@ -44,16 +44,20 @@ export function formToBody(f: ShiftForm, zone: string): Record<string, unknown> 
   };
 }
 
+export const STALE_MESSAGE = 'Someone else changed that shift. The schedule has been reloaded.';
+
 type Confirm = (title: string, lines: string[], label: string) => Promise<boolean>;
 
 /** Saves; on SHIFT_CONFLICT asks and resends with acknowledge_conflicts (FR-SHF-09). null = the manager cancelled. */
-export async function saveShift(method: 'POST' | 'PATCH', path: string, body: Record<string, unknown>, confirm: Confirm): Promise<Shift | null> {
+export async function saveShift(method: 'POST' | 'PATCH', path: string, body: Record<string, unknown>, confirm: Confirm, known: string[] = []): Promise<Shift | null> {
   try {
     return (await api<{ shift: Shift }>(method, path, body)).shift;
   } catch (error) {
     if (!(error instanceof ApiError) || error.code !== 'SHIFT_CONFLICT') throw error;
     const lines = ((error.details as { conflicts?: Conflict[] } | null)?.conflicts ?? []).map((c) => c.message);
-    if (!(await confirm('This shift breaks a planning rule', lines, 'Save anyway'))) return null;
+    // Conflicts the manager already accepted on this shift do not need a second prompt.
+    const allKnown = lines.length > 0 && lines.every((m) => known.includes(m));
+    if (!allKnown && !(await confirm('This shift breaks a planning rule', lines, 'Save anyway'))) return null;
     return (await api<{ shift: Shift }>(method, path, { ...body, acknowledge_conflicts: true })).shift;
   }
 }

@@ -4,7 +4,7 @@ import { type FormEvent, useState } from 'react';
 import { api, ApiError } from '../api';
 import { Modal, useFeedback } from '../feedback';
 import type { SchedulePayload, Shift } from '../types';
-import { FIELD_FOR, formToBody, saveShift, type ShiftForm } from './shiftForm';
+import { FIELD_FOR, formToBody, saveShift, STALE_MESSAGE, type ShiftForm } from './shiftForm';
 
 interface Props {
   data: SchedulePayload;
@@ -18,6 +18,7 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
   const { confirm, toast } = useFeedback();
   const [form, setForm] = useState<ShiftForm>(initial);
   const [errors, setErrors] = useState<Partial<Record<keyof ShiftForm, string>>>({});
+  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const zone = data.period.timezone;
   const roles = data.roles.filter((r) => !r.archived || r.id === initial.role_id);
@@ -28,42 +29,69 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
     set(shift ? { employee_ref: ref } : { employee_ref: ref, role_id: data.employees.find((e) => e.employee_ref === ref)?.default_role_id ?? '' });
   }
 
-  async function done(text?: string) {
+  async function done(text?: string, action?: { label: string; run: () => Promise<void> }) {
     onClose();
+    if (text) toast(text, action, action ? undefined : 4000);
     await onSaved();
-    if (text) toast(text, undefined, 4000);
+  }
+
+  async function guarded(work: () => Promise<void>) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await work();
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'STALE_SHIFT') {
+        onClose();
+        await onSaved();
+        toast(STALE_MESSAGE, undefined, 6000);
+      } else {
+        setMessage((error as Error).message);
+      }
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setErrors({});
     setMessage(null);
-    const body = { ...formToBody(form, zone), ...(shift ? { version: shift.version, ...(shift.conflict_acknowledged ? { acknowledge_conflicts: true } : {}) } : {}) };
-    try {
-      const saved = await saveShift(shift ? 'PATCH' : 'POST', shift ? `/api/shifts/${shift.id}` : '/api/shifts', body, confirm);
-      if (saved) await done(shift ? 'Shift saved.' : 'Shift created as a draft.');
-    } catch (error) {
-      if (error instanceof ApiError && error.code === 'VALIDATION_ERROR' && error.details && typeof error.details === 'object') {
-        const next: Partial<Record<keyof ShiftForm, string>> = {};
-        for (const [field, text] of Object.entries(error.details as Record<string, string>)) {
-          if (FIELD_FOR[field]) next[FIELD_FOR[field]] = text;
-          else setMessage(text);
-        }
-        setErrors(next);
-      } else {
-        setMessage((error as Error).message);
-      }
+    const missing: Partial<Record<keyof ShiftForm, string>> = {};
+    for (const name of ['start_date', 'start_time', 'end_date', 'end_time'] as const) if (!form[name]) missing[name] = 'Required.';
+    if (Object.keys(missing).length > 0) {
+      setErrors(missing);
+      return;
     }
+    await guarded(async () => {
+      try {
+        const body = { ...formToBody(form, zone), ...(shift ? { version: shift.version } : {}) };
+        const saved = await saveShift(shift ? 'PATCH' : 'POST', shift ? `/api/shifts/${shift.id}` : '/api/shifts', body, confirm, shift?.conflicts.map((c) => c.message));
+        if (saved) await done(shift ? 'Shift saved.' : 'Shift created as a draft.');
+      } catch (error) {
+        if (error instanceof RangeError) {
+          setErrors({ start_date: 'Enter a valid date and time.', end_date: 'Enter a valid date and time.' });
+        } else if (error instanceof ApiError && error.code === 'VALIDATION_ERROR' && error.details && typeof error.details === 'object') {
+          const next: Partial<Record<keyof ShiftForm, string>> = {};
+          for (const [field, text] of Object.entries(error.details as Record<string, string>)) {
+            if (FIELD_FOR[field]) next[FIELD_FOR[field]] = text;
+            else setMessage(text);
+          }
+          setErrors(next);
+        } else {
+          throw error;
+        }
+      }
+    });
   }
 
   async function remove() {
     if (!shift) return;
-    const lines = shift.state === 'published' ? ['The employee will be told unless you undo within 10 seconds.'] : [];
-    if (!(await confirm('Delete this shift?', lines, 'Delete'))) return;
-    try {
+    await guarded(async () => {
+      const lines = shift.state === 'published' ? ['The employee will be told unless you undo within 10 seconds.'] : [];
+      if (!(await confirm('Delete this shift?', lines, 'Delete'))) return;
       await api('DELETE', `/api/shifts/${shift.id}`);
-      await done();
-      toast('Shift deleted.', {
+      await done('Shift deleted.', {
         label: 'Undo',
         run: async () => {
           try {
@@ -74,19 +102,15 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
           }
         },
       });
-    } catch (error) {
-      setMessage((error as Error).message);
-    }
+    });
   }
 
   async function duplicate() {
     if (!shift) return;
-    try {
+    await guarded(async () => {
       const copy = await saveShift('POST', '/api/shifts', { duplicate_of: shift.id }, confirm);
       if (copy) await done('Shift duplicated to the next day as a draft.');
-    } catch (error) {
-      setMessage((error as Error).message);
-    }
+    });
   }
 
   const field = (name: keyof ShiftForm) => errors[name] && <span className="field-error">{errors[name]}</span>;
@@ -118,9 +142,9 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
         </div>
         {message && <p className="form-error">{message}</p>}
         <div className="actions">
-          {shift && <><button type="button" className="danger" onClick={remove}>Delete</button><button type="button" onClick={duplicate}>Duplicate</button><span className="spacer" /></>}
+          {shift && <><button type="button" className="danger" disabled={busy} onClick={remove}>Delete</button><button type="button" disabled={busy} onClick={duplicate}>Duplicate</button><span className="spacer" /></>}
           <button type="button" onClick={onClose}>Cancel</button>
-          <button type="submit" className="primary">Save</button>
+          <button type="submit" className="primary" disabled={busy}>Save</button>
         </div>
       </form>
     </Modal>

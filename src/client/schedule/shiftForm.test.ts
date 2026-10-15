@@ -41,4 +41,20 @@ describe('shift form', () => {
     vi.mocked(api).mockRejectedValueOnce(conflict);
     expect(await saveShift('POST', '/api/shifts', { a: 1 }, async () => false)).toBeNull();
   });
+
+  it('resends without asking when every conflict is already known, and asks when one is new', async () => {
+    const conflict = (...messages: string[]) => new ApiError(409, 'SHIFT_CONFLICT', 'x', { conflicts: messages.map((message) => ({ rule: 'r', message })) }, 'c');
+    const confirm = vi.fn(async () => false);
+    vi.mocked(api).mockReset();
+    vi.mocked(api).mockRejectedValueOnce(conflict('Overlaps.')).mockResolvedValueOnce({ shift: shift() });
+    expect(await saveShift('PATCH', '/api/shifts/s1', { a: 1 }, confirm, ['Overlaps.'])).toMatchObject({ id: 's1' });
+    expect(confirm).not.toHaveBeenCalled();
+    expect(vi.mocked(api).mock.calls[1][2]).toEqual({ a: 1, acknowledge_conflicts: true });
+
+    vi.mocked(api).mockReset();
+    vi.mocked(api).mockRejectedValueOnce(conflict('Overlaps.', 'Too long.'));
+    expect(await saveShift('PATCH', '/api/shifts/s1', { a: 1 }, confirm, ['Overlaps.'])).toBeNull();
+    expect(confirm).toHaveBeenCalledWith('This shift breaks a planning rule', ['Overlaps.', 'Too long.'], 'Save anyway');
+    expect(vi.mocked(api)).toHaveBeenCalledTimes(1);
+  });
 });
