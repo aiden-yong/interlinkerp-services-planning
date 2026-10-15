@@ -67,6 +67,14 @@ export const catalog = {
       best_for: 'Managers building and adjusting the team schedule.',
       endpoints: ['GET /api/schedule', 'POST /api/shifts', 'GET /api/shifts/{id}', 'PATCH /api/shifts/{id}', 'DELETE /api/shifts/{id}', 'POST /api/shift-restorations'],
     },
+    {
+      name: 'Share Schedules',
+      icon: '📣',
+      description: 'Publish planned shifts and let employees see their own.',
+      does: ['Publish a week of shifts', 'See my own shifts'],
+      best_for: 'Getting the plan from the manager to the team.',
+      endpoints: ['POST /api/publications', 'GET /api/my/shifts'],
+    },
   ] as Capability[],
   workflows: [
     { name: 'Plan and publish a week', steps: ['GET /api/schedule', 'POST /api/shifts', 'PATCH /api/shifts/{id}', 'POST /api/publications'] },

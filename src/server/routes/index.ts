@@ -6,6 +6,8 @@ import * as health from './health';
 import * as holidays from './holidays';
 import * as managers from './managers';
 import * as me from './me';
+import * as myShifts from './myShifts';
+import * as publications from './publications';
 import * as roles from './roles';
 import * as schedule from './schedule';
 import * as settings from './settings';
@@ -13,7 +15,7 @@ import * as shifts from './shifts';
 import * as timeOff from './timeOff';
 
 /** Every route module. Later tasks add theirs to this list. */
-const MODULES: { register(r: Router, app: App): void }[] = [health, me, cron, settings, roles, employees, timeOff, holidays, managers, shifts, schedule];
+const MODULES: { register(r: Router, app: App): void }[] = [health, me, cron, settings, roles, employees, timeOff, holidays, managers, shifts, schedule, publications, myShifts];
 
 export function buildRouter(app: App): Router {
   const router = new Router();
