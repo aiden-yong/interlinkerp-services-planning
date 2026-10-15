@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 import { api, setUnauthorizedHandler } from './api';
 import { FeedbackProvider } from './feedback';
-import { access, type Screen } from './router';
+import { access, notOnRosterMessage, type Screen } from './router';
 import type { Me } from './types';
 
 function NavLink({ href, active, children }: { href: string; active: boolean; children: ReactNode }) {
@@ -32,9 +32,8 @@ export function AppShell({ screen, children }: { screen: Screen; children?: (me:
   if (failure) content = <p className="empty">Planning could not start: {failure}</p>;
   else if (!me || redirect) content = <p className="empty">Loading…</p>;
   else if (verdict === 'forbidden') content = <p className="empty">Only Planning Managers can open this page.</p>;
-  else if (verdict === 'not-on-roster' || screen === 'not-on-roster') {
-    content = <p className="empty">You are signed in as {me.email}, but you are not on the planning roster. Ask a Planning Manager if you expected to see shifts here.</p>;
-  } else content = children?.(me);
+  else if (verdict === 'not-on-roster' || screen === 'not-on-roster') content = <p className="empty">{notOnRosterMessage(me)}</p>;
+  else content = children?.(me);
 
   return (
     <FeedbackProvider>

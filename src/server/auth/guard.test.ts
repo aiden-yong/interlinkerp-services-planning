@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { HttpError } from '../http/errors';
 import { noContent } from '../http/responses';
 import type { Access, Route } from '../http/router';
-import { cookieValue, FixedClock } from '../test/fakes';
+import { cookieValue, FakeRoster, FixedClock } from '../test/fakes';
 import { AUDIENCE, ISSUER, makeTestTokens, type TestTokens } from '../test/tokens';
 import { DevIdentity } from './devIdentity';
 import type { Liveness } from './gateway';
@@ -15,10 +15,12 @@ beforeAll(async () => {
   tokens = await makeTestTokens();
 });
 
-const codec = new SessionCodec('s'.repeat(32), FixedClock.at('2026-10-13T00:00:00Z'));
+const clock = FixedClock.at('2026-10-13T00:00:00Z');
+const NOW_MS = clock.now().getTime();
+const codec = new SessionCodec('s'.repeat(32), clock);
 const route = (access: Access, method = 'GET'): Route => ({ method, path: '/api/x', access, summary: 'X', handler: () => noContent(), doc: null });
 
-function guard(options: { liveness?: Liveness; managers?: string[]; dev?: DevIdentity | null } = {}) {
+function guard(options: { liveness?: Liveness; managers?: string[]; dev?: DevIdentity | null; roster?: FakeRoster } = {}) {
   return new GatewayAccessGuard(
     codec,
     { liveness: async () => options.liveness ?? 'live' },
@@ -26,11 +28,18 @@ function guard(options: { liveness?: Liveness; managers?: string[]; dev?: DevIde
     { isManager: async (email) => (options.managers ?? []).includes(email) },
     options.dev ?? null,
     true,
+    options.roster ?? new FakeRoster(),
+    clock,
   );
 }
 
 function withSession(role = 'user', email = 'ana@example.com'): Request {
   const session: SessionData = { sid: 'sid-1', sub: 'sub-1', email, name: 'Ana', gatewayRole: role, employeeRef: 'EMP-1', expiresAt: 0 };
+  return new Request('http://localhost/api/x', { headers: { cookie: `planning_session=${cookieValue(codec.issue(session, true))}` } });
+}
+
+function unrostered(extra: Partial<SessionData> = {}): Request {
+  const session: SessionData = { sid: 'sid-1', sub: 'sub-1', email: 'ana@example.com', name: 'Ana', gatewayRole: 'user', employeeRef: null, expiresAt: 0, ...extra };
   return new Request('http://localhost/api/x', { headers: { cookie: `planning_session=${cookieValue(codec.issue(session, true))}` } });
 }
 
@@ -105,6 +114,60 @@ describe('GatewayAccessGuard', () => {
 
     expect((await rejection(guard().check(route('person-manager', 'POST'), withSession()))).status).toBe(403);
     expect((await guard({ managers: ['ana@example.com'] }).check(route('person-manager', 'POST'), withSession())).principal?.isManager).toBe(true);
+  });
+
+  describe('roster re-check for people signed in without an employee reference', () => {
+    it('retries after 60 seconds and picks up a newly found reference', async () => {
+      const roster = new FakeRoster();
+      roster.add('EMP-7', 'Ana Lim', 'ana@example.com');
+      const result = await guard({ roster }).check(route('person'), unrostered({ rosterLookup: 'not_found', rosterCheckedAt: NOW_MS - 60_000 }));
+      expect(result.principal).toMatchObject({ employeeRef: 'EMP-7', rosterStatus: 'found' });
+      expect(codec.decode(cookieValue(result.cookies[0]))).toMatchObject({ employeeRef: 'EMP-7', rosterLookup: 'found', rosterCheckedAt: NOW_MS });
+    });
+
+    it('does not retry within 60 seconds', async () => {
+      const roster = new FakeRoster();
+      roster.add('EMP-7', 'Ana Lim', 'ana@example.com');
+      const result = await guard({ roster }).check(route('person'), unrostered({ rosterLookup: 'not_found', rosterCheckedAt: NOW_MS - 59_999 }));
+      expect(result.principal).toMatchObject({ employeeRef: null, rosterStatus: 'not_found' });
+      expect(codec.decode(cookieValue(result.cookies[0]))).toMatchObject({ employeeRef: null, rosterLookup: 'not_found', rosterCheckedAt: NOW_MS - 59_999 });
+    });
+
+    it('records a still-missing person as not_found', async () => {
+      const result = await guard().check(route('person'), unrostered({ rosterLookup: 'failed', rosterCheckedAt: NOW_MS - 120_000 }));
+      expect(result.principal).toMatchObject({ employeeRef: null, rosterStatus: 'not_found' });
+      expect(codec.decode(cookieValue(result.cookies[0]))).toMatchObject({ rosterLookup: 'not_found', rosterCheckedAt: NOW_MS });
+    });
+
+    it('records an unreachable roster as failed, without throwing', async () => {
+      const roster = new FakeRoster();
+      roster.down = true;
+      const result = await guard({ roster }).check(route('person'), unrostered({ rosterLookup: 'not_found', rosterCheckedAt: NOW_MS - 60_000 }));
+      expect(result.principal).toMatchObject({ employeeRef: null, rosterStatus: 'failed' });
+      expect(codec.decode(cookieValue(result.cookies[0]))).toMatchObject({ employeeRef: null, rosterLookup: 'failed', rosterCheckedAt: NOW_MS });
+    });
+
+    it('re-checks a cookie from before the roster status was recorded', async () => {
+      const roster = new FakeRoster();
+      roster.add('EMP-7', 'Ana Lim', 'ana@example.com');
+      const result = await guard({ roster }).check(route('person'), unrostered());
+      expect(result.principal).toMatchObject({ employeeRef: 'EMP-7', rosterStatus: 'found' });
+    });
+
+    it('uses a found reference without extending the session when the gateway answer is unknown', async () => {
+      const roster = new FakeRoster();
+      roster.add('EMP-7', 'Ana Lim', 'ana@example.com');
+      const result = await guard({ roster, liveness: 'unknown' }).check(route('person'), unrostered({ rosterLookup: 'failed', rosterCheckedAt: NOW_MS - 60_000 }));
+      expect(result.principal).toMatchObject({ employeeRef: 'EMP-7', rosterStatus: 'found' });
+      expect(result.cookies).toEqual([]);
+    });
+
+    it('does not look a rostered person up again', async () => {
+      const roster = new FakeRoster();
+      roster.down = true;
+      const result = await guard({ roster }).check(route('person'), withSession());
+      expect(result.principal).toMatchObject({ employeeRef: 'EMP-1', rosterStatus: 'found' });
+    });
   });
 
   it('uses the dev identity only for direct loopback requests', async () => {

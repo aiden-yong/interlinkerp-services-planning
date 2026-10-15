@@ -98,4 +98,11 @@ describe('employees API (FR-CFG-02)', () => {
     h.asEmployee(null, 'visitor@example.com');
     expect((await h.call('GET', '/api/me')).body.timezone).toBe('Asia/Kuala_Lumpur');
   });
+
+  it('reports whether the roster knows the signed-in person in /api/me', async () => {
+    h.asEmployee('E1');
+    expect((await h.call('GET', '/api/me')).body.roster_status).toBe('found');
+    h.asEmployee(null, 'visitor@example.com');
+    expect((await h.call('GET', '/api/me')).body.roster_status).toBe('not_found');
+  });
 });

@@ -1,9 +1,10 @@
 import type { DevIdentity } from '../auth/devIdentity';
 import type { Gateway } from '../auth/gateway';
-import { readCookies, SESSION_COOKIE, type SessionCodec, type SessionData } from '../auth/session';
+import { readCookies, type RosterLookup, SESSION_COOKIE, type SessionCodec, type SessionData } from '../auth/session';
 import type { TokenVerifier } from '../auth/tokens';
 import type { Logger } from '../http/kernel';
 import type { Roster } from '../roster/roster';
+import type { Clock } from '../support/clock';
 
 export const RETURN_COOKIE = 'planning_return_to';
 export const PAGE_PATHS = ['/', '/schedule', '/my', '/settings', '/not-on-roster'];
@@ -37,6 +38,7 @@ export class PageGate {
     private readonly dev: DevIdentity | null,
     private readonly publicUrl: string,
     private readonly log: Logger,
+    private readonly clock: Clock,
   ) {}
 
   private get secure(): boolean {
@@ -80,18 +82,21 @@ export class PageGate {
 
     const email = String(claims.email ?? '').trim().toLowerCase();
     let employeeRef: string | null = null;
+    let rosterLookup: RosterLookup = 'not_found';
     if (email) {
       try {
         employeeRef = (await this.roster.findByEmail(email))?.ref ?? null;
+        if (employeeRef) rosterLookup = 'found';
       } catch (error) {
-        // Fail soft (auth guide §11): no roster match only means no My Planning yet.
+        // Fail soft (auth guide §11): no roster match only means no My Planning yet. The API guard asks again later.
+        rosterLookup = 'failed';
         this.log(`[planning-web] roster lookup failed at sign-in: ${(error as Error).message}`);
       }
     }
 
     const session: SessionData = {
       sid: claims.sid as string, sub: claims.sub as string, email, name: String(claims.name ?? email),
-      gatewayRole: typeof claims.role === 'string' ? claims.role : '', employeeRef, expiresAt: 0,
+      gatewayRole: typeof claims.role === 'string' ? claims.role : '', employeeRef, rosterLookup, rosterCheckedAt: this.clock.now().getTime(), expiresAt: 0,
     };
     const returnPath = safeReturnPath(url.searchParams.get('state') ?? cookies[RETURN_COOKIE]);
     return {

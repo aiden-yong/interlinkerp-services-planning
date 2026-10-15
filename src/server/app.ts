@@ -91,7 +91,7 @@ export class App {
 
   guard(): AccessGuard {
     return this.deps.guard ?? this.once('guard', () => new GatewayAccessGuard(
-      this.sessions(), this.gateway(), this.tokenVerifier(), this.managers(), this.devIdentity(), this.secureCookies(),
+      this.sessions(), this.gateway(), this.tokenVerifier(), this.managers(), this.devIdentity(), this.secureCookies(), this.roster(), this.clock(),
     ));
   }
 
@@ -234,7 +234,7 @@ export class App {
 
   pageGate(): PageGate {
     return this.once('pageGate', () => new PageGate(
-      this.gateway(), this.tokenVerifier(), this.sessions(), this.roster(), this.devIdentity(), this.publicUrl(), this.log,
+      this.gateway(), this.tokenVerifier(), this.sessions(), this.roster(), this.devIdentity(), this.publicUrl(), this.log, this.clock(),
     ));
   }
 

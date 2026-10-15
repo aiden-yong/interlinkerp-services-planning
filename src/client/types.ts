@@ -3,6 +3,8 @@ export interface Me {
   email: string | null;
   gateway_role: string | null;
   employee_ref: string | null;
+  /** 'failed' means the employee roster could not be reached when Planning last asked. */
+  roster_status: 'found' | 'not_found' | 'failed';
   is_manager: boolean;
   timezone: string;
   organisation_timezone: string;

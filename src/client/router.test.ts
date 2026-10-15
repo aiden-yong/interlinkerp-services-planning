@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { access, landingPath } from './router';
+import { access, landingPath, notOnRosterMessage } from './router';
 import type { Me } from './types';
 
 const me = (over: Partial<Me>): Me => ({
-  name: 'Ana', email: 'ana@example.com', gateway_role: 'user', employee_ref: null, is_manager: false,
+  name: 'Ana', email: 'ana@example.com', gateway_role: 'user', employee_ref: null, roster_status: 'not_found', is_manager: false,
   timezone: 'Asia/Kuala_Lumpur', organisation_timezone: 'Asia/Kuala_Lumpur', ...over,
 });
 
@@ -24,5 +24,16 @@ describe('screen access (FR-ACC-02)', () => {
   it('needs a roster reference for My Planning', () => {
     expect(access('my', me({ is_manager: true }))).toBe('not-on-roster');
     expect(access('my', me({ employee_ref: 'E1' }))).toBe('ok');
+  });
+
+  it('sends a rostered person away from the not-on-roster page', () => {
+    expect(access('not-on-roster', me({ employee_ref: 'E1', roster_status: 'found' }))).toEqual({ redirect: '/my' });
+    expect(access('not-on-roster', me({ employee_ref: 'E1', roster_status: 'found', is_manager: true }))).toEqual({ redirect: '/schedule' });
+    expect(access('not-on-roster', me({}))).toBe('ok');
+  });
+
+  it('says when the roster could not be reached rather than that the person is not on it', () => {
+    expect(notOnRosterMessage(me({ roster_status: 'failed' }))).toBe("The employee roster can't be reached right now. Try again in a minute.");
+    expect(notOnRosterMessage(me({}))).toBe('You are signed in as ana@example.com, but you are not on the planning roster. Ask a Planning Manager if you expected to see shifts here.');
   });
 });

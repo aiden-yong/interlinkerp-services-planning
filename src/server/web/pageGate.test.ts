@@ -15,9 +15,10 @@ beforeAll(async () => {
 function setup() {
   const http = new FakeHttpClient();
   const roster = new FakeRoster();
-  const codec = new SessionCodec('k'.repeat(32), FixedClock.at('2026-10-13T00:00:00Z'));
+  const clock = FixedClock.at('2026-10-13T00:00:00Z');
+  const codec = new SessionCodec('k'.repeat(32), clock);
   const logged: string[] = [];
-  const gate = new PageGate(new Gateway(http, ISSUER, PUBLIC), new TokenVerifier(tokens.keys, ISSUER, AUDIENCE), codec, roster, null, PUBLIC, (l) => logged.push(l));
+  const gate = new PageGate(new Gateway(http, ISSUER, PUBLIC), new TokenVerifier(tokens.keys, ISSUER, AUDIENCE), codec, roster, null, PUBLIC, (l) => logged.push(l), clock);
   return { http, roster, codec, logged, gate };
 }
 
@@ -39,7 +40,9 @@ describe('PageGate', () => {
     const result = await gate.handle(new Request(`${PUBLIC}/?code=c-1&state=%2Fschedule`));
 
     expect(result).toMatchObject({ kind: 'redirect', location: `${PUBLIC}/schedule` });
-    expect(codec.decode(cookieValue(named(result, 'planning_session')!))).toMatchObject({ employeeRef: 'u1', email: 'ana@example.com' });
+    expect(codec.decode(cookieValue(named(result, 'planning_session')!))).toMatchObject({
+      employeeRef: 'u1', email: 'ana@example.com', rosterLookup: 'found', rosterCheckedAt: Date.parse('2026-10-13T00:00:00Z'),
+    });
   });
 
   it('falls back to the return cookie when the gateway drops state', async () => {
@@ -54,8 +57,15 @@ describe('PageGate', () => {
     http.on('POST', `${ISSUER}/oauth/token`, reply(200, { token: await tokens.sign() }));
     roster.down = true;
     const result = await gate.handle(new Request(`${PUBLIC}/?code=c-1`));
-    expect(codec.decode(cookieValue(named(result, 'planning_session')!))?.employeeRef).toBeNull();
+    expect(codec.decode(cookieValue(named(result, 'planning_session')!))).toMatchObject({ employeeRef: null, rosterLookup: 'failed' });
     expect(logged.length).toBeGreaterThan(0);
+  });
+
+  it('records someone the roster does not know as not_found', async () => {
+    const { gate, http, codec } = setup();
+    http.on('POST', `${ISSUER}/oauth/token`, reply(200, { token: await tokens.sign({ email: 'stranger@example.com' }) }));
+    const result = await gate.handle(new Request(`${PUBLIC}/?code=c-1`));
+    expect(codec.decode(cookieValue(named(result, 'planning_session')!))).toMatchObject({ employeeRef: null, rosterLookup: 'not_found' });
   });
 
   it('shows an error page instead of looping when the exchange fails', async () => {

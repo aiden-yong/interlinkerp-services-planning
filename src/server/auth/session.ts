@@ -5,6 +5,10 @@ import type { Clock } from '../support/clock';
 export const SESSION_COOKIE = 'planning_session';
 export const SESSION_TTL_SECONDS = 900;
 
+/** What the last roster lookup said about the signed-in person. */
+export type RosterLookup = 'found' | 'not_found' | 'failed';
+export const ROSTER_LOOKUPS: readonly RosterLookup[] = ['found', 'not_found', 'failed'];
+
 /** What Planning keeps about a signed-in person. Never the identity token itself. */
 export interface SessionData {
   sid: string;
@@ -13,6 +17,10 @@ export interface SessionData {
   name: string;
   gatewayRole: string;
   employeeRef: string | null;
+  /** Why employeeRef is set or missing. Absent on cookies issued before it was recorded: treat as needing a re-check. */
+  rosterLookup?: RosterLookup;
+  /** Epoch ms of the last roster lookup. Absent means never recorded. */
+  rosterCheckedAt?: number;
   /** Unix seconds. */
   expiresAt: number;
 }
@@ -36,6 +44,8 @@ function isSession(value: unknown): value is SessionData {
   return typeof v === 'object' && v !== null
     && ['sid', 'sub', 'email', 'name', 'gatewayRole'].every((k) => typeof v[k] === 'string')
     && (v.employeeRef === null || typeof v.employeeRef === 'string')
+    && (v.rosterLookup === undefined || ROSTER_LOOKUPS.includes(v.rosterLookup as RosterLookup))
+    && (v.rosterCheckedAt === undefined || typeof v.rosterCheckedAt === 'number')
     && typeof v.expiresAt === 'number';
 }
 

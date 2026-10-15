@@ -1,3 +1,5 @@
+import type { RosterLookup } from './session';
+
 /** Who is calling: a signed-in person, or a program with a gateway access token. */
 export interface Principal {
   kind: 'person' | 'client';
@@ -6,6 +8,8 @@ export interface Principal {
   name: string | null;
   gatewayRole: string | null;
   employeeRef: string | null;
+  /** People only: what the last roster lookup said. Absent means unknown; read employeeRef first. */
+  rosterStatus?: RosterLookup;
   isManager: boolean;
   scopes: string[];
 }
