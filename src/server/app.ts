@@ -14,6 +14,7 @@ import type { Router } from './http/router';
 import { HolidayProvider, nullHolidayProvider } from './holidays/provider';
 import { DirectoryRepository } from './repo/directory';
 import { ManagerRepository } from './repo/managers';
+import { ProfileRepository } from './repo/profiles';
 import { RoleRepository } from './repo/roles';
 import { SettingsRepository } from './repo/settings';
 import { buildRouter } from './routes';
@@ -136,6 +137,10 @@ export class App {
 
   roles(): RoleRepository {
     return this.once('roles', () => new RoleRepository(this.database().db, this.organisationId()));
+  }
+
+  profiles(): ProfileRepository {
+    return this.once('profiles', () => new ProfileRepository(this.database().db, this.organisationId()));
   }
 
   holidayProvider(): HolidayProvider {

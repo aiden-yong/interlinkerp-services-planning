@@ -40,6 +40,14 @@ export const catalog = {
       best_for: 'Planning Managers setting Planning up for their team.',
       endpoints: ['GET /api/roles', 'POST /api/roles', 'PATCH /api/roles/{id}', 'GET /api/settings', 'PATCH /api/settings'],
     },
+    {
+      name: 'Manage Team Profiles',
+      icon: '👥',
+      description: 'See plannable employees and set their roles and working hours.',
+      does: ['List the team', 'Give an employee roles', 'Set working hours or flexible hours'],
+      best_for: 'Managers preparing who can be scheduled for what.',
+      endpoints: ['GET /api/employees', 'PATCH /api/employees/{ref}'],
+    },
   ] as Capability[],
   workflows: [
     { name: 'Plan and publish a week', steps: ['GET /api/schedule', 'POST /api/shifts', 'PATCH /api/shifts/{id}', 'POST /api/publications'] },
