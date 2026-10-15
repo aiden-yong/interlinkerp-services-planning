@@ -99,10 +99,9 @@ export class ShiftService {
   }
 
   async delete(id: string, by: Principal): Promise<void> {
-    const shift = (await this.shifts.find(id)) ?? (() => { throw HttpError.notFound('No shift with that id.'); })();
     const now = this.clock.now();
     await this.unit.run(async ({ shifts, outbox }) => {
-      await shifts.softDelete(id, actorId(by), now);
+      const shift = (await shifts.softDelete(id, actorId(by), now)) ?? (() => { throw HttpError.notFound('No shift with that id.'); })();
       if (shift.state === 'published' && shift.employeeRef) {
         // Sent only after the undo window, so an undone deletion never reaches the employee (FR-NTF-02).
         await outbox.add('shift_deleted', shift.employeeRef, shift.id, { shift_id: shift.id, start_at: iso(shift.start), end_at: iso(shift.end) },
@@ -115,11 +114,12 @@ export class ShiftService {
     const shift = await this.shifts.find(id, true);
     if (!shift || !shift.deletedAt) throw HttpError.notFound('No deleted shift with that id.');
     const now = this.clock.now();
-    if (now.getTime() - shift.deletedAt.getTime() > UNDO_MS) throw HttpError.conflict('UNDO_EXPIRED', 'This deletion can no longer be undone.');
+    if (now.getTime() - shift.deletedAt.getTime() >= UNDO_MS) throw HttpError.conflict('UNDO_EXPIRED', 'This deletion can no longer be undone.');
+    const deletedAt = shift.deletedAt;
     return this.unit.run(async ({ shifts, outbox }) => {
-      await shifts.restore(id, now);
+      const restored = (await shifts.restore(id, deletedAt, now)) ?? (() => { throw HttpError.notFound('No deleted shift with that id.'); })();
       await outbox.cancelPending('shift_deleted', id, now);
-      return (await shifts.find(id))!;
+      return restored;
     });
   }
 

@@ -44,6 +44,30 @@ describe('delete, undo and duplicate', () => {
     expect((await h.call('POST', '/api/shift-restorations', { shift_id: s.id })).body.error.code).toBe('UNDO_EXPIRED');
   });
 
+  it('treats exactly 30 seconds as expired', async () => {
+    const s = await shift();
+    await h.call('DELETE', `/api/shifts/${s.id}`);
+    h.clock.advance(30);
+    const res = await h.call('POST', '/api/shift-restorations', { shift_id: s.id });
+    expect([res.status, res.body.error.code]).toEqual([409, 'UNDO_EXPIRED']);
+  });
+
+  it('leaves the deletion notice pending when an undo is too late', async () => {
+    const s = await shift(true);
+    await h.call('DELETE', `/api/shifts/${s.id}`);
+    h.clock.advance(31);
+    expect((await h.call('POST', '/api/shift-restorations', { shift_id: s.id })).status).toBe(409);
+    expect(await outbox()).toHaveLength(1);
+    expect((await outbox())[0].cancelled).toBe(false);
+  });
+
+  it('a second delete of a published shift is a 404 and queues one notice', async () => {
+    const s = await shift(true);
+    expect((await h.call('DELETE', `/api/shifts/${s.id}`)).status).toBe(204);
+    expect((await h.call('DELETE', `/api/shifts/${s.id}`)).status).toBe(404);
+    expect(await outbox()).toHaveLength(1);
+  });
+
   it('duplicates to the next day as a draft', async () => {
     const s = await shift(true);
     const { status, body } = await h.call('POST', '/api/shifts', { duplicate_of: s.id });

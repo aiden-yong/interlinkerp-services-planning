@@ -92,12 +92,17 @@ export class ShiftRepository {
     return updated.length === 1 ? toRecord(updated[0]!) : null;
   }
 
-  async softDelete(id: string, by: string, now: Date): Promise<void> {
-    await this.db.update(shifts).set({ deletedAt: now, deletedBy: by, updatedAt: now }).where(and(this.live(), eq(shifts.id, id)));
+  /** Deletes a live shift; returns it as it was, or null when it was already deleted (or unknown). */
+  async softDelete(id: string, by: string, now: Date): Promise<ShiftRecord | null> {
+    const rows = await this.db.update(shifts).set({ deletedAt: now, deletedBy: by, updatedAt: now }).where(and(this.live(), eq(shifts.id, id))).returning();
+    return rows.length === 1 ? toRecord(rows[0]!) : null;
   }
 
-  async restore(id: string, now: Date): Promise<void> {
-    await this.db.update(shifts).set({ deletedAt: null, deletedBy: null, updatedAt: now }).where(and(eq(shifts.organisationId, this.org), eq(shifts.id, id)));
+  /** Restores a shift only if it is still deleted at `deletedAt`; returns the live row, or null when that deletion is gone. */
+  async restore(id: string, deletedAt: Date, now: Date): Promise<ShiftRecord | null> {
+    const rows = await this.db.update(shifts).set({ deletedAt: null, deletedBy: null, updatedAt: now })
+      .where(and(eq(shifts.organisationId, this.org), eq(shifts.id, id), eq(shifts.deletedAt, deletedAt))).returning();
+    return rows.length === 1 ? toRecord(rows[0]!) : null;
   }
 
   /** Publishes the listed drafts; deleted, already-published and unknown ids are skipped. Rows are locked so two publishes cannot overlap. */
