@@ -1,3 +1,7 @@
+'use client';
+
+import { AppShell } from '@/client/AppShell';
+
 export default function Home() {
-  return <main>Planning</main>;
+  return <AppShell screen="home" />;
 }
