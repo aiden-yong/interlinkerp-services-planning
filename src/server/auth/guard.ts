@@ -12,6 +12,10 @@ import { TokenInvalid, type TokenVerifier } from './tokens';
 
 /** How long to wait before asking the roster again about someone it did not return. */
 export const ROSTER_RECHECK_MS = 60_000;
+/** Longest a request waits on a roster re-check before treating it as failed (NFR-06). */
+export const ROSTER_RECHECK_BUDGET_MS = 2_000;
+
+const TIMED_OUT = Symbol('timed out');
 
 /**
  * Who is calling, and may they use this route?
@@ -29,7 +33,11 @@ export class GatewayAccessGuard implements AccessGuard {
     private readonly secureCookies: boolean,
     private readonly roster: Roster,
     private readonly clock: Clock,
+    private readonly rosterBudgetMs: number = ROSTER_RECHECK_BUDGET_MS,
   ) {}
+
+  /** Normalised email → epoch ms of the last re-check this process started, so parallel or cookie-less requests do not repeat it. */
+  private readonly rosterAsked = new Map<string, number>();
 
   async check(route: Route, request: Request): Promise<AccessResult> {
     if (route.access === 'public' || route.access === 'internal') return { principal: null, cookies: [] };
@@ -80,13 +88,35 @@ export class GatewayAccessGuard implements AccessGuard {
   private async recheckRoster(session: SessionData): Promise<SessionData> {
     const now = this.clock.now().getTime();
     const email = session.email.trim().toLowerCase();
-    if (!email || (session.rosterCheckedAt !== undefined && now - session.rosterCheckedAt < ROSTER_RECHECK_MS)) return session;
+    if (!email) return session;
+    const recent = (at: number | undefined) => at !== undefined && now - at < ROSTER_RECHECK_MS;
+    if (recent(session.rosterCheckedAt) || recent(this.rosterAsked.get(email))) return session;
+    this.rememberAsked(email, now);
     try {
-      const ref = (await this.roster.findByEmail(email))?.ref ?? null;
+      const found = await this.withinBudget(this.roster.findByEmail(email));
+      if (found === TIMED_OUT) return { ...session, rosterLookup: 'failed', rosterCheckedAt: now };
+      const ref = found?.ref ?? null;
       return { ...session, employeeRef: ref, rosterLookup: ref ? 'found' : 'not_found', rosterCheckedAt: now };
     } catch {
       return { ...session, rosterLookup: 'failed', rosterCheckedAt: now };
     }
+  }
+
+  private rememberAsked(email: string, now: number): void {
+    if (this.rosterAsked.size >= 10_000) {
+      for (const [key, at] of this.rosterAsked) if (now - at >= ROSTER_RECHECK_MS) this.rosterAsked.delete(key);
+    }
+    this.rosterAsked.set(email, now);
+  }
+
+  /** Resolves with the work's result, or TIMED_OUT after the budget. The loser is not awaited. */
+  private withinBudget<T>(work: Promise<T>): Promise<T | typeof TIMED_OUT> {
+    work.catch(() => {}); // a late failure must not become an unhandled rejection
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
+      timer = setTimeout(() => resolve(TIMED_OUT), this.rosterBudgetMs);
+    });
+    return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
   }
 
   /** BR-12: gateway admin, or listed email. Anything else, including no role, is not a manager. */

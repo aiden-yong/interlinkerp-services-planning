@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { HttpError } from '../http/errors';
 import { noContent } from '../http/responses';
 import type { Access, Route } from '../http/router';
+import type { Roster, RosterPerson } from '../roster/roster';
 import { cookieValue, FakeRoster, FixedClock } from '../test/fakes';
 import { AUDIENCE, ISSUER, makeTestTokens, type TestTokens } from '../test/tokens';
 import { DevIdentity } from './devIdentity';
@@ -9,6 +10,19 @@ import type { Liveness } from './gateway';
 import { GatewayAccessGuard } from './guard';
 import { SessionCodec, type SessionData } from './session';
 import { TokenVerifier } from './tokens';
+
+/** A roster that never answers, counting how often it is asked. */
+function hangingRoster(): Roster & { calls: number } {
+  const roster = {
+    calls: 0,
+    findByEmail: () => {
+      roster.calls++;
+      return new Promise<RosterPerson | null>(() => {});
+    },
+    listPlannable: async () => [],
+  };
+  return roster;
+}
 
 let tokens: TestTokens;
 beforeAll(async () => {
@@ -20,7 +34,7 @@ const NOW_MS = clock.now().getTime();
 const codec = new SessionCodec('s'.repeat(32), clock);
 const route = (access: Access, method = 'GET'): Route => ({ method, path: '/api/x', access, summary: 'X', handler: () => noContent(), doc: null });
 
-function guard(options: { liveness?: Liveness; managers?: string[]; dev?: DevIdentity | null; roster?: FakeRoster } = {}) {
+function guard(options: { liveness?: Liveness; managers?: string[]; dev?: DevIdentity | null; roster?: Roster; rosterBudgetMs?: number } = {}) {
   return new GatewayAccessGuard(
     codec,
     { liveness: async () => options.liveness ?? 'live' },
@@ -30,6 +44,7 @@ function guard(options: { liveness?: Liveness; managers?: string[]; dev?: DevIde
     true,
     options.roster ?? new FakeRoster(),
     clock,
+    options.rosterBudgetMs,
   );
 }
 
@@ -160,6 +175,32 @@ describe('GatewayAccessGuard', () => {
       const result = await guard({ roster, liveness: 'unknown' }).check(route('person'), unrostered({ rosterLookup: 'failed', rosterCheckedAt: NOW_MS - 60_000 }));
       expect(result.principal).toMatchObject({ employeeRef: 'EMP-7', rosterStatus: 'found' });
       expect(result.cookies).toEqual([]);
+    });
+
+    it('asks a hanging roster once per minute per person, and never waits past the budget', async () => {
+      const roster = hangingRoster();
+      const g = guard({ roster, liveness: 'unknown', rosterBudgetMs: 20 });
+      const request = () => unrostered({ rosterLookup: 'not_found', rosterCheckedAt: NOW_MS - 60_000 });
+      for (let i = 0; i < 2; i++) {
+        const started = Date.now();
+        const result = await g.check(route('person'), request());
+        expect(Date.now() - started).toBeLessThan(1_000);
+        expect(result.principal).toMatchObject({ employeeRef: null });
+      }
+      expect(roster.calls).toBe(1);
+    });
+
+    it('records a roster that misses the budget as failed', async () => {
+      const result = await guard({ roster: hangingRoster(), rosterBudgetMs: 20 }).check(route('person'), unrostered());
+      expect(result.principal).toMatchObject({ rosterStatus: 'failed' });
+      expect(codec.decode(cookieValue(result.cookies[0]))).toMatchObject({ rosterLookup: 'failed', rosterCheckedAt: NOW_MS });
+    });
+
+    it('lets only one of several parallel requests ask the roster', async () => {
+      const roster = hangingRoster();
+      const g = guard({ roster, rosterBudgetMs: 20 });
+      await Promise.all([1, 2, 3].map(() => g.check(route('person'), unrostered())));
+      expect(roster.calls).toBe(1);
     });
 
     it('does not look a rostered person up again', async () => {
