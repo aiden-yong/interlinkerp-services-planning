@@ -29,4 +29,16 @@ describe('Gateway', () => {
     expect(await gateway(new FakeHttpClient().on('POST', url, reply(503, {}))).liveness('s', 'u')).toBe('unknown');
     expect(await gateway(new FakeHttpClient()).liveness('s', 'u')).toBe('unknown');
   });
+
+  it('treats client refusals as dead and server errors as unknown', async () => {
+    const url = `${GW}/oauth/introspect`;
+    expect(await gateway(new FakeHttpClient().on('POST', url, reply(401, {}))).liveness('s', 'u')).toBe('dead');
+    expect(await gateway(new FakeHttpClient().on('POST', url, reply(404, {}))).liveness('s', 'u')).toBe('dead');
+    expect(await gateway(new FakeHttpClient().on('POST', url, reply(500, {}))).liveness('s', 'u')).toBe('unknown');
+  });
+
+  it('reports live only for a strict boolean true', async () => {
+    const url = `${GW}/oauth/introspect`;
+    expect(await gateway(new FakeHttpClient().on('POST', url, reply(200, { active: 'true' }))).liveness('s', 'u')).toBe('dead');
+  });
 });

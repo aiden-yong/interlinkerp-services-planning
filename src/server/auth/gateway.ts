@@ -39,7 +39,10 @@ export class Gateway implements SessionLiveness {
       body: JSON.stringify({ sid, sub }),
       timeoutMs: 4_000,
     });
-    if (result.networkError || result.status !== 200 || result.json === null || typeof result.json !== 'object') return 'unknown';
-    return (result.json as { active?: unknown }).active ? 'live' : 'dead';
+    // Only network failures and server errors are 'unknown' (fail open). Any other refusal means the session is not live.
+    if (result.networkError || result.status >= 500) return 'unknown';
+    if (result.status !== 200) return 'dead';
+    if (result.json === null || typeof result.json !== 'object') return 'unknown';
+    return (result.json as { active?: unknown }).active === true ? 'live' : 'dead';
   }
 }

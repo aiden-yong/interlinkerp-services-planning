@@ -53,8 +53,9 @@ export class SessionCodec {
   }
 
   decode(value: string | undefined): SessionData | null {
-    if (!value || !value.includes('.')) return null;
-    const [body, mac] = value.split('.', 2);
+    const parts = value?.split('.');
+    if (!parts || parts.length !== 2) return null;
+    const [body, mac] = parts;
     const expected = Buffer.from(this.sign(body));
     const given = Buffer.from(mac);
     if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;

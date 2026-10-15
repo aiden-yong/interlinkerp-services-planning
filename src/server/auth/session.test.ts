@@ -18,6 +18,11 @@ describe('SessionCodec', () => {
     expect(codec.decode(cookieValue(cookie))).toMatchObject({ employeeRef: 'EMP-1', gatewayRole: 'user' });
   });
 
+  it('rejects a valid cookie with trailing segments', () => {
+    const { codec } = setup();
+    expect(codec.decode(`${cookieValue(codec.issue(session, false))}.junk`)).toBeNull();
+  });
+
   it('rejects a tampered cookie', () => {
     const { codec } = setup();
     const [, mac] = cookieValue(codec.issue(session, false)).split('.');

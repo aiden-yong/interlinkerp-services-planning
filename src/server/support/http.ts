@@ -20,6 +20,8 @@ export class FetchHttpClient implements HttpClient {
         method,
         headers: { Accept: 'application/json', ...(cid ? { 'X-Correlation-ID': cid } : {}), ...options.headers },
         body: options.body,
+        // Never follow redirects: a POST body must not be re-sent to a redirect target.
+        redirect: 'manual',
         signal: AbortSignal.timeout(options.timeoutMs ?? 5_000),
         cache: 'no-store',
       });
