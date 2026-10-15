@@ -12,11 +12,13 @@ import { type AccessGuard, Kernel, type Logger } from './http/kernel';
 import { buildOpenApi } from './http/openapi';
 import type { Router } from './http/router';
 import { HolidayProvider, nullHolidayProvider } from './holidays/provider';
+import { HolidayRepository } from './repo/holidays';
 import { DirectoryRepository } from './repo/directory';
 import { ManagerRepository } from './repo/managers';
 import { ProfileRepository } from './repo/profiles';
 import { RoleRepository } from './repo/roles';
 import { SettingsRepository } from './repo/settings';
+import { TimeOffRepository } from './repo/timeOff';
 import { buildRouter } from './routes';
 import { ClientCredentials } from './roster/clientCredentials';
 import { DepartmentApi } from './roster/departments';
@@ -141,6 +143,14 @@ export class App {
 
   profiles(): ProfileRepository {
     return this.once('profiles', () => new ProfileRepository(this.database().db, this.organisationId()));
+  }
+
+  timeOff(): TimeOffRepository {
+    return this.once('timeOff', () => new TimeOffRepository(this.database().db, this.organisationId()));
+  }
+
+  holidays(): HolidayRepository {
+    return this.once('holidays', () => new HolidayRepository(this.database().db, this.organisationId()));
   }
 
   holidayProvider(): HolidayProvider {

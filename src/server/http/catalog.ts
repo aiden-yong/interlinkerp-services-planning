@@ -48,6 +48,17 @@ export const catalog = {
       best_for: 'Managers preparing who can be scheduled for what.',
       endpoints: ['GET /api/employees', 'PATCH /api/employees/{ref}'],
     },
+    {
+      name: 'Track Time Off',
+      icon: '🏖️',
+      description: 'Record when people are away and which public holidays apply.',
+      does: ['Record leave for an employee', 'Add, hide or sync public holidays'],
+      best_for: 'Keeping the schedule from planning people who are away.',
+      endpoints: [
+        'GET /api/unavailabilities', 'POST /api/unavailabilities', 'PATCH /api/unavailabilities/{id}', 'DELETE /api/unavailabilities/{id}',
+        'GET /api/holidays', 'POST /api/holidays', 'PATCH /api/holidays/{id}', 'DELETE /api/holidays/{id}', 'POST /api/holiday-syncs',
+      ],
+    },
   ] as Capability[],
   workflows: [
     { name: 'Plan and publish a week', steps: ['GET /api/schedule', 'POST /api/shifts', 'PATCH /api/shifts/{id}', 'POST /api/publications'] },
