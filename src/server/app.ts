@@ -23,6 +23,7 @@ import { ShiftRepository } from './repo/shifts';
 import { TimeOffRepository } from './repo/timeOff';
 import { buildRouter } from './routes';
 import { ConflictContext } from './scheduling/conflictContext';
+import { ScheduleService } from './scheduling/scheduleService';
 import { ShiftService } from './scheduling/shiftService';
 import { UnitOfWork } from './scheduling/unitOfWork';
 import { ClientCredentials } from './roster/clientCredentials';
@@ -177,6 +178,12 @@ export class App {
   shiftService(): ShiftService {
     return this.once('shiftService', () => new ShiftService(
       this.shifts(), this.profiles(), this.roles(), this.directory(), this.conflictContext(), this.outbox(), this.clock(), this.unitOfWork(),
+    ));
+  }
+
+  scheduleService(): ScheduleService {
+    return this.once('scheduleService', () => new ScheduleService(
+      this.shifts(), this.profiles(), this.roles(), this.directory(), this.directoryRefresher(), this.timeOff(), this.holidays(), this.settings(), this.clock(),
     ));
   }
 
