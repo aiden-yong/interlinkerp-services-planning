@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Version | 0.2 (draft, reviewed) |
+| Version | 0.3 (draft, reviewed) |
 | Date | 2026-10-13 |
 | Department | Services |
 | Status | For review |
@@ -107,7 +107,7 @@ The system shall open on the user's own schedule (My Planning) for employees, an
 - AC1: Given an employee without the manager role, when they open the app, then they land on My Planning and see no navigation to Schedule, Reports or Settings.
 
 **FR-ACC-03** · Must · INTERLINK, OWN
-The system shall let a Planning Manager grant and revoke Planning Manager access for a person, chosen from the roster (IF-02) and stored by their gateway identity.
+The system shall let a Planning Manager grant and revoke Planning Manager access for a person, chosen from the roster (IF-02) and stored by the email address the gateway verifies at sign-in (the roster does not know gateway sub ids).
 - AC1: Given a fresh install with an empty manager list, when a gateway `admin` signs in, then they are a Planning Manager and can grant access to others.
 - AC2: Given a manager revokes someone's access, when that person makes their next request, then they are treated as an employee.
 - AC3: Given only one non-admin manager remains, when they try to revoke themselves, then the system warns them before allowing it (gateway admins can always restore access).
@@ -373,7 +373,7 @@ Source: ODOO-DOC. How ties are broken is OI-04.
 
 **BR-11 Editing published shifts.** Editing a published shift keeps it published; affected employees are notified (FR-NTF-02). There is no "unpublish". Source: OWN.
 
-**BR-12 Who is a Planning Manager.** A signed-in person is a Planning Manager if, and only if, their gateway `role` is `admin` or their gateway identity (`sub`) is in Planning's manager list. Every other signed-in person is at most an Employee. A missing or unrecognised gateway role never grants manager access. Source: INTERLINK (gateway owns authentication, apps own app-specific authorisation), OWN.
+**BR-12 Who is a Planning Manager.** A signed-in person is a Planning Manager if, and only if, their gateway `role` is `admin` or the email address in their gateway-verified identity token is in Planning's manager list. Every other signed-in person is at most an Employee. A missing or unrecognised gateway role never grants manager access. Source: INTERLINK (gateway owns authentication, apps own app-specific authorisation), OWN.
 
 ---
 
@@ -389,7 +389,7 @@ Planning owns these entities in its own private database:
 - Unavailability
 - Public holiday (with provider id and hidden flag)
 - Settings
-- Manager grant (gateway `sub`, email at time of grant, granted by, granted at)
+- Manager grant (email, granted by, granted at)
 - Audit entry
 
 **DR-02** · Must

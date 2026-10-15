@@ -23,7 +23,16 @@ export const catalog = {
     'Checking who is working when',
     'Spotting double bookings and people scheduled on leave',
   ],
-  capabilities: [] as Capability[],
+  capabilities: [
+    {
+      name: 'Check Access',
+      icon: '🔑',
+      description: 'See who is signed in and whether they can manage planning.',
+      does: ['See who is signed in', 'Check if someone is a Planning Manager'],
+      best_for: 'Screens that change depending on who is looking.',
+      endpoints: ['GET /api/me'],
+    },
+  ] as Capability[],
   workflows: [
     { name: 'Plan and publish a week', steps: ['GET /api/schedule', 'POST /api/shifts', 'PATCH /api/shifts/{id}', 'POST /api/publications'] },
   ],

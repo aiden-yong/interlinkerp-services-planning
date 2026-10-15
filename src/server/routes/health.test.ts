@@ -6,6 +6,9 @@ import type { Database } from '../db/client';
 beforeAll(() => {
   process.env.SERVICE_ID = 'planning-api';
   process.env.OPENAPI_EXTENSION_KEY = 'x-test';
+  process.env.GATEWAY_URL = 'https://gateway.test';
+  process.env.PUBLIC_URL = 'https://planning.test';
+  process.env.SESSION_SECRET = 's'.repeat(32);
 });
 
 function appWithDatabase(up: boolean): App {
