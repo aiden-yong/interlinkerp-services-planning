@@ -95,3 +95,18 @@ th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); v
 .hours { font-size: 12px; font-variant-numeric: tabular-nums; }
 .over { display: block; color: var(--warn); font-weight: 600; }
 .avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 6px; }
+
+.my .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.my .period { font-weight: 600; }
+.week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.day { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px; min-height: 96px; }
+.day h3 { margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+.day.today h3 { color: var(--accent); }
+.card { border-left: 4px solid var(--role-color, var(--accent)); background: var(--off); border-radius: 4px; padding: 6px 8px; margin-bottom: 6px; }
+.card .time { font-weight: 600; }
+.card .meta, .card .note { font-size: 12px; color: var(--muted); }
+@media (max-width: 720px) {
+  .week { grid-template-columns: 1fr; }
+  .day { min-height: 0; }
+  .day.empty-day { display: none; }
+}
