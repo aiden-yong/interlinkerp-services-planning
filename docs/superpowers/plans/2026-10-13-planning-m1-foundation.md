@@ -4215,7 +4215,7 @@ describe('conflicts (BR-01)', () => {
 
   it('describes time off and holidays', () => {
     const leave: UnavailableSpan = { interval: Interval.of(at('12:00'), at('18:00')), kind: 'time_off', label: 'Medical appointment' };
-    const result = conflictsForEmployee([shift('a', '09:00', '13:00'), shift('b', '08:00', '12:00')], [leave], []);
+    const result = conflictsForEmployee([shift('a', '09:00', '13:00'), shift('b', '07:00', '09:00')], [leave], []);
     expect(result.get('a')![0].message).toBe('The employee is on time off: Medical appointment.');
     expect(result.get('b')).toEqual([]);
 
