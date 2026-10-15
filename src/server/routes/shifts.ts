@@ -2,7 +2,8 @@ import type { App } from '../app';
 import type { Principal } from '../auth/principal';
 import { op } from '../http/doc';
 import { HttpError } from '../http/errors';
-import { json } from '../http/responses';
+import { Input } from '../http/input';
+import { json, noContent } from '../http/responses';
 import type { Router } from '../http/router';
 import { shiftToApi } from '../repo/shifts';
 
@@ -29,4 +30,19 @@ export function register(r: Router, app: App): void {
   }, op('Update Shift', "Change a shift's time, employee, role or details", ['Dragging a shift to another day or person', 'Changing the note'], ['Creating a shift'],
     ['version', 'employee_ref', 'role_id', 'start_at', 'end_at', 'break_minutes', 'allocated_percent', 'note', 'acknowledge_conflicts'],
     ['shift'], ['Planning Manager', 'Latest version of the shift'], ['GET /api/shifts/{id}'], ['move', 'reassign', 'edit shift', 'resize']));
+
+  r.add('DELETE', '/api/shifts/{id}', 'manager', 'Delete a shift (can be undone for 30 seconds).', async ({ params, principal }) => {
+    await app.shiftService().delete(params.id, actor(principal));
+    return noContent();
+  }, op('Delete Shift', 'Remove a shift from the schedule', ['A shift is no longer needed'], ['Giving a shift to someone else (reassign it instead)'],
+    ['id'], [], ['Planning Manager'], ['POST /api/shift-restorations'], ['delete', 'remove shift', 'cancel shift']));
+
+  r.add('POST', '/api/shift-restorations', 'manager', 'Undo a shift deletion made in the last 30 seconds.', async ({ body, principal }) => {
+    const input = new Input(await body());
+    const id = input.string('shift_id', 36, true);
+    input.check();
+    const shift = await app.shiftService().restore(id!, actor(principal));
+    return json(201, { shift: shiftToApi(shift, await app.conflictContext().conflictsFor(shift)) });
+  }, op('Undo Shift Deletion', 'Bring back a shift that was just deleted', ['A shift was deleted by mistake'], ['Restoring a shift deleted long ago'],
+    ['shift_id'], ['shift'], ['Planning Manager', 'Deleted less than 30 seconds ago'], ['DELETE /api/shifts/{id}'], ['undo', 'restore', 'undelete']));
 }

@@ -9,6 +9,7 @@ import type { ProfileRepository } from '../repo/profiles';
 import type { RoleRepository } from '../repo/roles';
 import type { ShiftRecord, ShiftRepository } from '../repo/shifts';
 import type { Clock } from '../support/clock';
+import { iso } from '../support/time';
 import type { ConflictContext } from './conflictContext';
 import type { UnitOfWork, WriteScope } from './unitOfWork';
 
@@ -36,6 +37,7 @@ export class ShiftService {
 
   async create(body: Record<string, unknown>, by: Principal): Promise<{ shift: ShiftRecord; conflicts: Conflict[] }> {
     const input = new Input(body);
+    if (input.has('duplicate_of')) return this.duplicate(input, by);
     const employeeRef = input.string('employee_ref', 64);
     await this.validateEmployee(input, employeeRef);
     let roleId = input.has('role_id') ? input.string('role_id', 36) : null;
@@ -94,6 +96,48 @@ export class ShiftService {
       return row;
     });
     return { shift: saved, conflicts };
+  }
+
+  async delete(id: string, by: Principal): Promise<void> {
+    const shift = (await this.shifts.find(id)) ?? (() => { throw HttpError.notFound('No shift with that id.'); })();
+    const now = this.clock.now();
+    await this.unit.run(async ({ shifts, outbox }) => {
+      await shifts.softDelete(id, actorId(by), now);
+      if (shift.state === 'published' && shift.employeeRef) {
+        // Sent only after the undo window, so an undone deletion never reaches the employee (FR-NTF-02).
+        await outbox.add('shift_deleted', shift.employeeRef, shift.id, { shift_id: shift.id, start_at: iso(shift.start), end_at: iso(shift.end) },
+          new Date(now.getTime() + UNDO_MS), now);
+      }
+    });
+  }
+
+  async restore(id: string, _by: Principal): Promise<ShiftRecord> {
+    const shift = await this.shifts.find(id, true);
+    if (!shift || !shift.deletedAt) throw HttpError.notFound('No deleted shift with that id.');
+    const now = this.clock.now();
+    if (now.getTime() - shift.deletedAt.getTime() > UNDO_MS) throw HttpError.conflict('UNDO_EXPIRED', 'This deletion can no longer be undone.');
+    return this.unit.run(async ({ shifts, outbox }) => {
+      await shifts.restore(id, now);
+      await outbox.cancelPending('shift_deleted', id, now);
+      return (await shifts.find(id))!;
+    });
+  }
+
+  private async duplicate(input: Input, by: Principal): Promise<{ shift: ShiftRecord; conflicts: Conflict[] }> {
+    const sourceId = input.string('duplicate_of', 36, true);
+    const start = input.instant('start_at');
+    const acknowledged = input.bool('acknowledge_conflicts');
+    input.check();
+    const source = (await this.shifts.find(sourceId!)) ?? (() => { throw HttpError.notFound('No shift with that id.'); })();
+    const offset = start ? start.getTime() - source.start.getTime() : 86_400_000;
+    const now = this.clock.now();
+    const copy: ShiftRecord = {
+      ...source, id: randomUUID(), start: new Date(source.start.getTime() + offset), end: new Date(source.end.getTime() + offset),
+      state: 'draft', publishedAt: null, version: 1, createdBy: actorId(by), deletedAt: null,
+    };
+    const result = await this.guardConflicts(copy, acknowledged, by, now);
+    await this.unit.run(({ shifts }) => shifts.insert(result.shift, now));
+    return result;
   }
 
   private async guardConflicts(shift: ShiftRecord, acknowledged: boolean, by: Principal, now: Date): Promise<{ shift: ShiftRecord; conflicts: Conflict[] }> {

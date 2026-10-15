@@ -1,0 +1,66 @@
+import { eq } from 'drizzle-orm';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { shifts } from '../db/schema';
+import { Outbox } from '../repo/outbox';
+import { ORG } from '../test/db';
+import { useApiHarness } from '../test/harness';
+
+const h = useApiHarness();
+beforeEach(() => h.addEmployee('E1', 'Ana Lim'));
+const outbox = () => new Outbox(h.database.db, ORG).all();
+
+async function shift(published = false) {
+  const { body } = await h.call('POST', '/api/shifts', { employee_ref: 'E1', start_at: '2026-10-14T09:00:00+08:00', end_at: '2026-10-14T17:00:00+08:00' });
+  if (published) await h.database.db.update(shifts).set({ state: 'published' }).where(eq(shifts.id, body.shift.id));
+  return body.shift;
+}
+
+describe('delete, undo and duplicate', () => {
+  it('deletes a draft without telling anyone', async () => {
+    const s = await shift();
+    expect((await h.call('DELETE', `/api/shifts/${s.id}`)).status).toBe(204);
+    expect((await h.call('GET', `/api/shifts/${s.id}`)).status).toBe(404);
+    expect(await outbox()).toEqual([]);
+    expect((await h.call('DELETE', `/api/shifts/${s.id}`)).status).toBe(404);
+  });
+
+  it('undo within the window restores the shift and cancels the notice (FR-SHF-07 AC1)', async () => {
+    const s = await shift(true);
+    await h.call('DELETE', `/api/shifts/${s.id}`);
+    expect((await outbox())[0]).toMatchObject({ kind: 'shift_deleted', deliver_after: '2026-10-13T02:00:30Z', cancelled: false });
+
+    h.clock.advance(10);
+    const { status, body } = await h.call('POST', '/api/shift-restorations', { shift_id: s.id });
+    expect([status, body.shift.id]).toEqual([201, s.id]);
+    expect((await h.call('GET', `/api/shifts/${s.id}`)).status).toBe(200);
+    expect((await outbox())[0].cancelled).toBe(true);
+  });
+
+  it('refuses undo after the window and for shifts that were not deleted', async () => {
+    const s = await shift();
+    expect((await h.call('POST', '/api/shift-restorations', { shift_id: s.id })).status).toBe(404);
+    await h.call('DELETE', `/api/shifts/${s.id}`);
+    h.clock.advance(31);
+    expect((await h.call('POST', '/api/shift-restorations', { shift_id: s.id })).body.error.code).toBe('UNDO_EXPIRED');
+  });
+
+  it('duplicates to the next day as a draft', async () => {
+    const s = await shift(true);
+    const { status, body } = await h.call('POST', '/api/shifts', { duplicate_of: s.id });
+    expect(status).toBe(201);
+    expect(body.shift).toMatchObject({ state: 'draft', employee_ref: 'E1', start_at: '2026-10-15T01:00:00Z', end_at: '2026-10-15T09:00:00Z' });
+    expect(body.shift.id).not.toBe(s.id);
+  });
+
+  it('warns when the copy lands on top of the original', async () => {
+    const s = await shift();
+    const clash = { duplicate_of: s.id, start_at: '2026-10-14T10:00:00+08:00' };
+    expect((await h.call('POST', '/api/shifts', clash)).body.error.code).toBe('SHIFT_CONFLICT');
+    const { status, body } = await h.call('POST', '/api/shifts', { ...clash, acknowledge_conflicts: true });
+    expect([status, body.shift.start_at, body.shift.end_at]).toEqual([201, '2026-10-14T02:00:00Z', '2026-10-14T10:00:00Z']);
+  });
+
+  it('404s when duplicating a missing shift', async () => {
+    expect((await h.call('POST', '/api/shifts', { duplicate_of: 'nope' })).status).toBe(404);
+  });
+});

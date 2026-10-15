@@ -65,7 +65,7 @@ export const catalog = {
       description: 'Create and change shifts, with warnings when a shift breaks a planning rule.',
       does: ['Create a shift', 'Move or reassign a shift', 'Duplicate or delete a shift', 'Undo a deletion'],
       best_for: 'Managers building and adjusting the team schedule.',
-      endpoints: ['POST /api/shifts', 'GET /api/shifts/{id}', 'PATCH /api/shifts/{id}'],
+      endpoints: ['POST /api/shifts', 'GET /api/shifts/{id}', 'PATCH /api/shifts/{id}', 'DELETE /api/shifts/{id}', 'POST /api/shift-restorations'],
     },
   ] as Capability[],
   workflows: [
