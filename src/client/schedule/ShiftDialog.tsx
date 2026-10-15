@@ -113,6 +113,19 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
     });
   }
 
+  async function publish() {
+    if (!shift) return;
+    await guarded(async () => {
+      const lines = [
+        ...(shift.employee_ref ? ['The employee will be told about this shift.'] : ['This open shift will become visible.']),
+        ...(JSON.stringify(form) !== JSON.stringify(initial) ? ['Changes you have not saved will be discarded.'] : []),
+      ];
+      if (!(await confirm('Publish this shift?', lines, 'Publish'))) return;
+      await api('POST', '/api/publications', { shift_ids: [shift.id] });
+      await done('Shift published.');
+    });
+  }
+
   const field = (name: keyof ShiftForm) => errors[name] && <span className="field-error">{errors[name]}</span>;
 
   return (
@@ -140,9 +153,11 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
           <label>Allocated %<input type="number" min={1} max={100} value={form.allocated_percent} onChange={(e) => set({ allocated_percent: e.target.value })} />{field('allocated_percent')}</label>
           <label className="wide">Note for the employee<textarea rows={2} maxLength={2000} value={form.note} onChange={(e) => set({ note: e.target.value })} />{field('note')}</label>
         </div>
+        <p className="muted">Times are in {zone}.</p>
         {message && <p className="form-error">{message}</p>}
         <div className="actions">
-          {shift && <><button type="button" className="danger" disabled={busy} onClick={remove}>Delete</button><button type="button" disabled={busy} onClick={duplicate}>Duplicate</button><span className="spacer" /></>}
+          {shift && <><button type="button" className="danger" disabled={busy} onClick={remove}>Delete</button><button type="button" disabled={busy} onClick={duplicate}>Duplicate</button>
+            {shift.state === 'draft' && <button type="button" disabled={busy} onClick={publish}>Publish</button>}<span className="spacer" /></>}
           <button type="button" onClick={onClose}>Cancel</button>
           <button type="submit" className="primary" disabled={busy}>Save</button>
         </div>
