@@ -5,6 +5,8 @@ import type { DepartmentNames, Roster, RosterPerson } from './roster';
 
 export const DIRECTORY_MAX_AGE_SECONDS = 86_400;
 const BACKOFF_MS = 5 * 60_000;
+/** The longest a page waits for a first-load refresh before carrying on with what is cached. */
+export const REFRESH_BUDGET_MS = 3_000;
 
 /** Column limits from the employee_directory table. */
 const LIMITS = { ref: 64, departmentId: 64, status: 32, displayName: 200, departmentName: 160, photoUrl: 500 };
@@ -43,7 +45,8 @@ export function toDirectoryRows(people: RosterPerson[], names: Map<string, strin
  * department service is down, the old cache stays and planning goes on (NFR-06).
  */
 export class DirectoryRefresher {
-  private lastFailureAt = 0;
+  private lastAttemptAt = Number.NEGATIVE_INFINITY;
+  private inFlight: Promise<boolean> | null = null;
 
   constructor(
     private readonly roster: Roster,
@@ -51,6 +54,7 @@ export class DirectoryRefresher {
     private readonly directory: DirectoryRepository,
     private readonly clock: Clock,
     private readonly log: Logger,
+    private readonly budgetMs = REFRESH_BUDGET_MS,
   ) {}
 
   async refresh(): Promise<boolean> {
@@ -88,17 +92,33 @@ export class DirectoryRefresher {
     }
   }
 
-  /** First-use bootstrap. After a failure, waits 5 minutes before trying again so pages stay fast. */
+  /**
+   * First-use bootstrap. Concurrent callers share one refresh, and after any attempt that
+   * leaves the directory empty it waits 5 minutes before trying again. A caller waits at most
+   * the budget; a slow refresh keeps running and later requests use its result. Never throws.
+   */
   async refreshIfEmpty(): Promise<boolean> {
     try {
+      if (this.inFlight) return await this.withinBudget(this.inFlight);
       if (!(await this.directory.isEmpty())) return false;
+      if (this.inFlight) return await this.withinBudget(this.inFlight);
+      const now = this.clock.now().getTime();
+      if (now - this.lastAttemptAt < BACKOFF_MS) return false;
+      this.lastAttemptAt = now;
+      const run = this.refresh().catch(() => false).finally(() => {
+        if (this.inFlight === run) this.inFlight = null;
+      });
+      this.inFlight = run;
+      return await this.withinBudget(run);
     } catch {
       return false;
     }
-    const now = this.clock.now().getTime();
-    if (now - this.lastFailureAt < BACKOFF_MS) return false;
-    const ok = await this.refresh();
-    this.lastFailureAt = ok ? 0 : now;
-    return ok;
+  }
+
+  private withinBudget(run: Promise<boolean>): Promise<boolean> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), this.budgetMs);
+      run.then(resolve, () => resolve(false)).finally(() => clearTimeout(timer));
+    });
   }
 }

@@ -91,4 +91,36 @@ describe('DirectoryRefresher', () => {
     expect(await directory.all()).toHaveLength(1);
     expect(logs.some((line) => line.includes('no plannable people'))).toBe(true);
   });
+
+  it('shares one refresh between concurrent first-load callers', async () => {
+    const { roster, refresher } = setup();
+    roster.add('u1', 'Ana Lim', 'ana@x.test');
+    let calls = 0;
+    const original = roster.listPlannable.bind(roster);
+    roster.listPlannable = async () => { calls += 1; return original(); };
+    await Promise.all([refresher.refreshIfEmpty(), refresher.refreshIfEmpty(), refresher.refreshIfEmpty()]);
+    expect(calls).toBe(1);
+  });
+
+  it('stops waiting after the budget when the roster hangs', async () => {
+    const roster = new FakeRoster();
+    roster.listPlannable = () => new Promise(() => {});
+    const refresher = new DirectoryRefresher(roster, new FakeDepartments(), new DirectoryRepository(database.db, ORG), FixedClock.at('2026-10-13T00:00:00Z'), () => {}, 50);
+    const started = Date.now();
+    expect(await refresher.refreshIfEmpty()).toBe(false);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it('does not retry an empty roster within 5 minutes', async () => {
+    const { roster, clock, refresher } = setup();
+    let calls = 0;
+    const original = roster.listPlannable.bind(roster);
+    roster.listPlannable = async () => { calls += 1; return original(); };
+    await refresher.refreshIfEmpty();
+    await refresher.refreshIfEmpty();
+    expect(calls).toBe(1);
+    clock.advance(301);
+    await refresher.refreshIfEmpty();
+    expect(calls).toBe(2);
+  });
 });
