@@ -135,7 +135,7 @@ export class App {
     return this.deps.roster ?? this.once('roster', () => {
       const credentials = this.credentials();
       const url = env('INTERN_DATABASE_URL');
-      return credentials && url ? new InternDatabaseRoster(this.http(), credentials, url) : unconfiguredRoster;
+      return credentials && url ? new InternDatabaseRoster(this.http(), credentials, url, this.log) : unconfiguredRoster;
     });
   }
 

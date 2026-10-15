@@ -39,6 +39,17 @@ describe('InternDatabaseRoster', () => {
     expect(people[200].ref).toBe('b2');
   });
 
+  it('logs a warning when the listing stops at the page cap', async () => {
+    const full = Array.from({ length: 200 }, (_, i) => intern(`c${i}`, `c${i}@x.test`));
+    const logs: string[] = [];
+    const http = new FakeHttpClient().on('GET', `${BASE}/api/interns?limit=200&offset=`, reply(200, { data: full, pagination: { total: 1_000_000 } }));
+    http.on('POST', 'https://gw.test/oauth/token', reply(200, { access_token: 'tok', expires_in: 3600 }));
+    const credentials = new ClientCredentials(http, 'https://gw.test', 'id', 's', FixedClock.at('2026-10-13T00:00:00Z'));
+    const people = await new InternDatabaseRoster(http, credentials, BASE, (line) => logs.push(line)).listPlannable();
+    expect(people).toHaveLength(25 * 200);
+    expect(logs.join('\n')).toContain('page cap');
+  });
+
   it('drops unsafe photo URLs', () => {
     expect(toRosterPerson({ ...intern('u1', 'a@x.test'), photo_url: 'javascript:alert(1)' }).photoUrl).toBeNull();
   });

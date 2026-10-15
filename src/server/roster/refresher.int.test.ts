@@ -54,4 +54,41 @@ describe('DirectoryRefresher', () => {
     expect(await refresher.refreshIfEmpty()).toBe(true);
     expect(await refresher.refreshIfEmpty()).toBe(false);
   });
+
+  it('keeps good rows when one source row is bad, and fixes what it can', async () => {
+    const { roster, departments, directory } = setup();
+    const logs: string[] = [];
+    const bad =new DirectoryRefresher(roster, departments, directory, FixedClock.at('2026-10-13T00:00:00Z'), (line) => logs.push(line));
+    roster.add('u1', 'Ana Lim', 'ana@x.test', 'DEP-1');
+    roster.add('u2', 'N'.repeat(250), 'long@x.test', 'DEP-1');
+    roster.add('u3', 'Pic Person', 'pic@x.test');
+    roster.people.get('pic@x.test')!.photoUrl = `https://img.test/${'a'.repeat(500)}`;
+    roster.add('u1', 'Ana Duplicate', 'ana2@x.test', 'DEP-1');
+    roster.add('x'.repeat(65), 'Bad Ref', 'badref@x.test');
+    departments.names.set('DEP-1', 'F'.repeat(170));
+
+    expect(await bad.refresh()).toBe(true);
+
+    const all = await directory.all();
+    expect(all.map((r) => r.employeeRef).sort()).toEqual(['u1', 'u2', 'u3']);
+    expect((await directory.find('u1'))!.displayName).toBe('Ana Lim');
+    expect((await directory.find('u2'))!.displayName).toHaveLength(200);
+    expect((await directory.find('u2'))!.departmentName).toHaveLength(160);
+    expect((await directory.find('u3'))!.photoUrl).toBeNull();
+    expect(logs.join('\n')).toContain('skipped 1');
+    expect(logs.join('\n')).not.toContain('badref@x.test');
+  });
+
+  it('keeps the old cache when the roster returns nobody but the cache has people', async () => {
+    const { roster, directory } = setup();
+    const logs: string[] = [];
+    const refresher = new DirectoryRefresher(roster, new FakeDepartments(), directory, FixedClock.at('2026-10-13T00:00:00Z'), (line) => logs.push(line));
+    roster.add('u1', 'Ana Lim', 'ana@x.test');
+    expect(await refresher.refresh()).toBe(true);
+
+    roster.people.clear();
+    expect(await refresher.refresh()).toBe(false);
+    expect(await directory.all()).toHaveLength(1);
+    expect(logs.some((line) => line.includes('no plannable people'))).toBe(true);
+  });
 });

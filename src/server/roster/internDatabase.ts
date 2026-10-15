@@ -44,6 +44,7 @@ export class InternDatabaseRoster implements Roster {
     private readonly http: HttpClient,
     private readonly credentials: ClientCredentials,
     private readonly baseUrl: string,
+    private readonly log: (line: string) => void = (line) => console.error(line),
   ) {}
 
   private async get(path: string): Promise<unknown> {
@@ -72,6 +73,7 @@ export class InternDatabaseRoster implements Roster {
       }
       const total = Number((json as { pagination?: { total?: unknown } }).pagination?.total ?? 0);
       if (batch.length < PAGE_SIZE || offset + PAGE_SIZE >= total) break;
+      if (page === MAX_PAGES - 1) this.log(`[planning-api] intern-database listing stopped at the page cap (${MAX_PAGES} pages of ${PAGE_SIZE}); the roster may be incomplete.`);
     }
     return people;
   }
