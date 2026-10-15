@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, query } from '../api';
 import type { Me, SchedulePayload } from '../types';
 import { Board } from './Board';
@@ -17,12 +17,17 @@ export function SchedulePage({ me }: { me: Me }) {
   const [error, setError] = useState<string | null>(null);
   const period = useMemo(() => periodFor(scale, anchor), [scale, anchor]);
 
+  const latest = useRef(0);
+
   const reload = useCallback(async () => {
+    const request = ++latest.current;
     try {
-      setData(await api<SchedulePayload>('GET', `/api/schedule${query({ from: period.from, to: period.to })}`));
+      const payload = await api<SchedulePayload>('GET', `/api/schedule${query({ from: period.from, to: period.to })}`);
+      if (request !== latest.current) return;
+      setData(payload);
       setError(null);
     } catch (e) {
-      setError((e as Error).message);
+      if (request === latest.current) setError((e as Error).message);
     }
   }, [period.from, period.to]);
   useEffect(() => void reload(), [reload]);

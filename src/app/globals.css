@@ -63,4 +63,35 @@ th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); v
   .form-grid { grid-template-columns: 1fr; }
 }
 
-
+.schedule .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.schedule .period { font-weight: 600; min-width: 200px; }
+.notice { background: var(--off); border: 1px solid var(--line); padding: 8px 12px; border-radius: var(--radius); margin: 0 0 12px; }
+.board { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; }
+.board .row { display: grid; grid-template-columns: 200px minmax(640px, 1fr) 110px; border-bottom: 1px solid var(--line); }
+.board .row:last-child { border-bottom: 0; }
+.board .row.head { position: sticky; top: 0; background: var(--surface); z-index: 2; font-size: 12px; color: var(--muted); }
+.board .row.group { grid-template-columns: 1fr; background: var(--off); font-weight: 600; }
+.board .cell { padding: 6px 10px; min-width: 0; }
+.board .label .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board .label .meta { font-size: 12px; color: var(--muted); }
+.track { position: relative; height: calc(var(--lanes, 1) * 30px + 8px); cursor: copy;
+  background-image: repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px calc(100% / var(--cols))); }
+.track.cols { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); height: auto; background: none; cursor: default; }
+.track.cols > div { padding: 6px 4px; border-left: 1px solid var(--line); overflow: hidden; white-space: nowrap; }
+.row.has-hours .track { background-color: var(--off); }
+.band { position: absolute; top: 0; bottom: 0; pointer-events: none; }
+.band.work { background: var(--surface); }
+.band.away { background: var(--away); }
+.shift { position: absolute; height: 26px; border-radius: 4px; padding: 3px 8px; font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  cursor: grab; touch-action: none; user-select: none; border: 1px solid var(--role-color, var(--accent)); background: var(--role-color, var(--accent)); color: #fff; }
+.shift.draft { color: var(--text); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--role-color, var(--accent)) 35%, transparent) 0 6px, color-mix(in srgb, var(--role-color, var(--accent)) 15%, transparent) 6px 12px); }
+.shift.conflict { outline: 2px solid var(--danger); outline-offset: 1px; }
+.shift.clipped-start { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.shift.clipped-end { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.shift .grip { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize; }
+.shift .grip.start { left: 0; }
+.shift .grip.end { right: 0; }
+.shift[style*="translate"] { opacity: 0.85; cursor: grabbing; z-index: 3; box-shadow: 0 4px 12px rgb(0 0 0 / 0.2); }
+.hours { font-size: 12px; font-variant-numeric: tabular-nums; }
+.over { display: block; color: var(--warn); font-weight: 600; }
+.avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 6px; }

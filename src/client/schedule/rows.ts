@@ -26,8 +26,9 @@ export function buildRows(data: SchedulePayload, groupBy: GroupBy, f: Filters): 
     return rows;
   }
   const groups = [...data.roles.map((r) => ({ id: r.id as string | null, name: r.name })), { id: null, name: 'No role' }];
+  const known = new Set(data.roles.map((r) => r.id));
   for (const group of groups) {
-    const inGroup = shifts.filter((s) => s.employee_ref !== null && s.role_id === group.id);
+    const inGroup = shifts.filter((s) => s.employee_ref !== null && (group.id === null ? s.role_id === null || !known.has(s.role_id) : s.role_id === group.id));
     const members = employees.filter((e) => inGroup.some((s) => s.employee_ref === e.employee_ref));
     if (members.length === 0) continue;
     rows.push({ key: `role:${group.id ?? 'none'}`, label: group.name, kind: 'header', employee: null, shifts: [] });

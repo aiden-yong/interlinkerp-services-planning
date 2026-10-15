@@ -31,4 +31,11 @@ describe('buildRows', () => {
       ['open', 'Open shifts'], ['header', 'Technician'], ['employee', 'Ana Lim'], ['header', 'No role'], ['employee', 'Bo Tan'],
     ]);
   });
+
+  it('puts shifts with an unknown role under "No role"', () => {
+    const orphan = payload({ employees: [employee()], shifts: [shift({ id: 'x', role_id: 'gone' })] });
+    const rows = buildRows(orphan, 'role', NO_FILTERS);
+    expect(rows.map((r) => r.label)).toEqual(['Open shifts', 'No role', 'Ana Lim']);
+    expect(rows[2].shifts.map((s) => s.id)).toEqual(['x']);
+  });
 });

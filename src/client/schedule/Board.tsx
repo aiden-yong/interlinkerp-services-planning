@@ -61,9 +61,17 @@ export function Board({ data, rows, period, onOpen, onCreate, onChange }: BoardP
         bar.style.width = `${Math.max(8, width0 - dx)}px`;
       }
     };
-    const up = (e: globalThis.PointerEvent) => {
+    const detach = () => {
       bar.removeEventListener('pointermove', move);
       bar.removeEventListener('pointerup', up);
+      bar.removeEventListener('pointercancel', cancel);
+    };
+    const cancel = () => {
+      detach();
+      bar.setAttribute('style', originalStyle);
+    };
+    const up = (e: globalThis.PointerEvent) => {
+      detach();
       bar.releasePointerCapture(pointerId);
       const targetRef = mode === 'move' && moved ? rowRefAt(bar, e.clientX, e.clientY) : undefined;
       bar.setAttribute('style', originalStyle);
@@ -77,6 +85,7 @@ export function Board({ data, rows, period, onOpen, onCreate, onChange }: BoardP
     };
     bar.addEventListener('pointermove', move);
     bar.addEventListener('pointerup', up);
+    bar.addEventListener('pointercancel', cancel);
   }
 
   function clickTrack(event: MouseEvent<HTMLDivElement>, rowRef: string | null) {
