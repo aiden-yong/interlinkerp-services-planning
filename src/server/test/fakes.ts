@@ -1,3 +1,5 @@
+import type { DepartmentNames, Roster, RosterPerson } from '../roster/roster';
+import { RosterUnavailable } from '../roster/roster';
 import type { Clock } from '../support/clock';
 import type { HttpClient, HttpResult } from '../support/http';
 
@@ -45,4 +47,35 @@ export class FakeHttpClient implements HttpClient {
 /** "planning_session=abc.def; Path=/; ..." -> "abc.def" */
 export function cookieValue(setCookie: string): string {
   return setCookie.slice(setCookie.indexOf('=') + 1, setCookie.indexOf(';'));
+}
+
+export class FakeRoster implements Roster {
+  readonly people = new Map<string, RosterPerson>();
+  down = false;
+
+  add(ref: string, name: string, email: string | null = null, departmentId: string | null = null, status = 'Active'): RosterPerson {
+    const person = { ref, name, email: email?.toLowerCase() ?? null, photoUrl: null, departmentId, status };
+    this.people.set(person.email ?? ref, person);
+    return person;
+  }
+
+  async findByEmail(email: string): Promise<RosterPerson | null> {
+    if (this.down) throw new RosterUnavailable('roster is down');
+    return this.people.get(email.toLowerCase()) ?? null;
+  }
+
+  async listPlannable(): Promise<RosterPerson[]> {
+    if (this.down) throw new RosterUnavailable('roster is down');
+    return [...this.people.values()];
+  }
+}
+
+export class FakeDepartments implements DepartmentNames {
+  names = new Map<string, string>();
+  down = false;
+
+  async all(): Promise<Map<string, string>> {
+    if (this.down) throw new Error('department-api is down');
+    return this.names;
+  }
 }

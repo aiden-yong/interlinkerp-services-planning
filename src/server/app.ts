@@ -11,8 +11,14 @@ import { catalog } from './http/catalog';
 import { type AccessGuard, Kernel, type Logger } from './http/kernel';
 import { buildOpenApi } from './http/openapi';
 import type { Router } from './http/router';
+import { DirectoryRepository } from './repo/directory';
 import { ManagerRepository } from './repo/managers';
 import { buildRouter } from './routes';
+import { ClientCredentials } from './roster/clientCredentials';
+import { DepartmentApi } from './roster/departments';
+import { InternDatabaseRoster } from './roster/internDatabase';
+import { DirectoryRefresher } from './roster/refresher';
+import { type DepartmentNames, type Roster, unconfiguredRoster } from './roster/roster';
 import { type Clock, systemClock } from './support/clock';
 import { FetchHttpClient, type HttpClient } from './support/http';
 
@@ -30,6 +36,9 @@ export interface AppDeps {
   http?: HttpClient;
   jwks?: JWTVerifyGetKey;
   devIdentity?: DevIdentity | null;
+  roster?: Roster;
+  departments?: DepartmentNames;
+  cronSecret?: string | null;
 }
 
 /**
@@ -108,6 +117,42 @@ export class App {
 
   managers(): ManagerRepository {
     return this.once('managers', () => new ManagerRepository(this.database().db, this.organisationId()));
+  }
+
+  cronSecret(): string | null {
+    return this.deps.cronSecret !== undefined ? this.deps.cronSecret : env('CRON_SECRET') ?? null;
+  }
+
+  credentials(): ClientCredentials | null {
+    return this.once('credentials', () => {
+      const id = env('INTERLINK_CLIENT_ID');
+      const secret = env('INTERLINK_CLIENT_SECRET');
+      return id && secret ? new ClientCredentials(this.http(), this.gatewayUrl(), id, secret, this.clock()) : null;
+    });
+  }
+
+  roster(): Roster {
+    return this.deps.roster ?? this.once('roster', () => {
+      const credentials = this.credentials();
+      const url = env('INTERN_DATABASE_URL');
+      return credentials && url ? new InternDatabaseRoster(this.http(), credentials, url) : unconfiguredRoster;
+    });
+  }
+
+  departments(): DepartmentNames {
+    return this.deps.departments ?? this.once('departments', () => {
+      const credentials = this.credentials();
+      const url = env('DEPARTMENT_API_URL');
+      return credentials && url ? new DepartmentApi(this.http(), credentials, url) : unconfiguredRoster;
+    });
+  }
+
+  directory(): DirectoryRepository {
+    return this.once('directory', () => new DirectoryRepository(this.database().db, this.organisationId()));
+  }
+
+  directoryRefresher(): DirectoryRefresher {
+    return this.once('directoryRefresher', () => new DirectoryRefresher(this.roster(), this.departments(), this.directory(), this.clock(), this.log));
   }
 
   router(): Router {

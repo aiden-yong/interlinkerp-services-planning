@@ -1,0 +1,53 @@
+import { and, eq, max } from 'drizzle-orm';
+import type { Db } from '../db/client';
+import { employeeDirectory } from '../db/schema';
+
+export interface DirectoryRow {
+  employeeRef: string;
+  displayName: string;
+  photoUrl: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
+  status: string;
+}
+
+const COLUMNS = {
+  employeeRef: employeeDirectory.employeeRef,
+  displayName: employeeDirectory.displayName,
+  photoUrl: employeeDirectory.photoUrl,
+  departmentId: employeeDirectory.departmentId,
+  departmentName: employeeDirectory.departmentName,
+  status: employeeDirectory.status,
+};
+
+/** DR-02: display fields only, at most 24 hours old. No emails or other personal data. */
+export class DirectoryRepository {
+  constructor(private readonly db: Db, private readonly org: string) {}
+
+  async replaceAll(rows: DirectoryRow[], fetchedAt: Date): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx.delete(employeeDirectory).where(eq(employeeDirectory.organisationId, this.org));
+      if (rows.length > 0) await tx.insert(employeeDirectory).values(rows.map((r) => ({ ...r, organisationId: this.org, fetchedAt })));
+    });
+  }
+
+  all(): Promise<DirectoryRow[]> {
+    return this.db.select(COLUMNS).from(employeeDirectory).where(eq(employeeDirectory.organisationId, this.org)).orderBy(employeeDirectory.displayName);
+  }
+
+  async find(ref: string): Promise<DirectoryRow | null> {
+    const [row] = await this.db.select(COLUMNS).from(employeeDirectory)
+      .where(and(eq(employeeDirectory.organisationId, this.org), eq(employeeDirectory.employeeRef, ref))).limit(1);
+    return row ?? null;
+  }
+
+  async isEmpty(): Promise<boolean> {
+    const rows = await this.db.select({ ref: employeeDirectory.employeeRef }).from(employeeDirectory).where(eq(employeeDirectory.organisationId, this.org)).limit(1);
+    return rows.length === 0;
+  }
+
+  async lastFetchedAt(): Promise<Date | null> {
+    const [row] = await this.db.select({ at: max(employeeDirectory.fetchedAt) }).from(employeeDirectory).where(eq(employeeDirectory.organisationId, this.org));
+    return row?.at ?? null;
+  }
+}
