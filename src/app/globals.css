@@ -110,3 +110,15 @@ th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); v
   .day { min-height: 0; }
   .day.empty-day { display: none; }
 }
+
+.settings .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+.settings .tabs a { padding: 8px 12px; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; }
+.settings .tabs a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); }
+.panel-head, .panel-head .inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin-bottom: 12px; }
+.panel-head .inline { margin: 0; }
+.row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.table-wrap { overflow-x: auto; }
+.narrow { max-width: 560px; }
+.check { display: flex; gap: 6px; align-items: center; }
+fieldset { border: 1px solid var(--line); border-radius: var(--radius); margin: 0 0 12px; }
+button:disabled { opacity: 0.6; cursor: not-allowed; }
