@@ -369,7 +369,7 @@ Source: ODOO-DOC (allocated time and percentage), VENDOR (over-allocation), OWN 
 
 Source: ODOO-DOC. How ties are broken is OI-04.
 
-**BR-10 Time.** All instants are stored in UTC. Each employee's working hours carry a time zone. Shifts display in the viewer's time zone. Source: OWN.
+**BR-10 Time.** All instants are stored in UTC. Each employee's working hours carry a time zone. Shifts display in the viewer's time zone: the zone on the viewer's own planning profile, or the organisation's when they have none. The schedule's days start and end at midnight in that zone, and times entered in the shift form are read in it. Source: OWN.
 
 **BR-11 Editing published shifts.** Editing a published shift keeps it published; affected employees are notified (FR-NTF-02). There is no "unpublish". Source: OWN.
 

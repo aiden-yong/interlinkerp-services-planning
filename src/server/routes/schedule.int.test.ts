@@ -80,6 +80,24 @@ describe('GET /api/schedule', () => {
     expect((await week()).shifts[0].conflicts[0].rule).toBe('overlap');
   });
 
+  it('lays the period out in the requested time zone, the viewer zone (BR-10)', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    // 2026-10-12 00:00-04:00 (+08:00) = 2026-10-11 16:00-20:00Z: inside the Kuala Lumpur week, before the New York week
+    await shift('E1', '2026-10-12T00:00:00+08:00', '2026-10-12T04:00:00+08:00');
+    const ny = (await h.call('GET', '/api/schedule', undefined, { ...WEEK, timezone: 'America/New_York' })).body;
+    expect(ny.period).toEqual({ from: '2026-10-12', to: '2026-10-18', timezone: 'America/New_York', from_at: '2026-10-12T04:00:00Z', to_at: '2026-10-19T04:00:00Z' });
+    expect(ny.shifts).toHaveLength(0);
+    const kl = await week();
+    expect(kl.period.timezone).toBe('Asia/Kuala_Lumpur');
+    expect(kl.shifts).toHaveLength(1);
+  });
+
+  it('rejects an unknown time zone with the field named', async () => {
+    const { status, body } = await h.call('GET', '/api/schedule', undefined, { ...WEEK, timezone: 'Mars/Olympus' });
+    expect(status).toBe(422);
+    expect(body.error.details).toHaveProperty('timezone');
+  });
+
   it('validates the range and is for managers only', async () => {
     expect((await h.call('GET', '/api/schedule', undefined, { from: '2026-10-12' })).status).toBe(422);
     expect((await h.call('GET', '/api/schedule', undefined, { from: '2026-01-01', to: '2026-12-31' })).status).toBe(422);

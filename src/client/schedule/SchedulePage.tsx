@@ -15,7 +15,8 @@ import { todayIn } from './tz';
 export function SchedulePage({ me }: { me: Me }) {
   const { confirm, toast } = useFeedback();
   const [scale, setScale] = useState<Scale>('week');
-  const [anchor, setAnchor] = useState(() => todayIn(me.organisation_timezone));
+  const zone = me.timezone || me.organisation_timezone; // the viewer's own time zone (BR-10)
+  const [anchor, setAnchor] = useState(() => todayIn(zone));
   const [groupBy, setGroupBy] = useState<GroupBy>('employee');
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [data, setData] = useState<SchedulePayload | null>(null);
@@ -29,14 +30,14 @@ export function SchedulePage({ me }: { me: Me }) {
   const reload = useCallback(async () => {
     const request = ++latest.current;
     try {
-      const payload = await api<SchedulePayload>('GET', `/api/schedule${query({ from: period.from, to: period.to })}`);
+      const payload = await api<SchedulePayload>('GET', `/api/schedule${query({ from: period.from, to: period.to, timezone: zone })}`);
       if (request !== latest.current) return;
       setData(payload);
       setError(null);
     } catch (e) {
       if (request === latest.current) setError((e as Error).message);
     }
-  }, [period.from, period.to]);
+  }, [period.from, period.to, zone]);
   useEffect(() => void reload(), [reload]);
 
   const rows = useMemo(() => (data ? buildRows(data, groupBy, filters) : []), [data, groupBy, filters]);
@@ -99,7 +100,7 @@ export function SchedulePage({ me }: { me: Me }) {
     <section className="schedule">
       <div className="toolbar">
         <button type="button" aria-label="Previous period" onClick={() => setAnchor(step(scale, anchor, -1))}>‹</button>
-        <button type="button" onClick={() => setAnchor(todayIn(me.organisation_timezone))}>Today</button>
+        <button type="button" onClick={() => setAnchor(todayIn(zone))}>Today</button>
         <button type="button" aria-label="Next period" onClick={() => setAnchor(step(scale, anchor, 1))}>›</button>
         <span className="period">{periodLabel(period)}</span>
         <select aria-label="Scale" value={scale} onChange={(e) => setScale(e.target.value as Scale)}>

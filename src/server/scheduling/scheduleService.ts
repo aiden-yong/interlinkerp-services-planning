@@ -34,10 +34,12 @@ export class ScheduleService {
     private readonly clock: Clock,
   ) {}
 
-  async build(fromDate: string, toDate: string) {
+  /** `viewZone` is the viewer's time zone (BR-10): the period's days start and end there. It defaults to the organisation's. */
+  async build(fromDate: string, toDate: string, viewZone?: string) {
     const orgZone = await this.settings.timezone();
-    const from = localMidnight(fromDate, orgZone);
-    const to = localMidnight(nextDay(toDate), orgZone);
+    const periodZone = viewZone ?? orgZone;
+    const from = localMidnight(fromDate, periodZone);
+    const to = localMidnight(nextDay(toDate), periodZone);
     const period = new Interval(from, to);
     const wideFrom = new Date(from - CONTEXT_MARGIN_MS);
     const wideTo = new Date(to + CONTEXT_MARGIN_MS);
@@ -98,7 +100,7 @@ export class ScheduleService {
     employees.sort((a, b) => a.name.localeCompare(b.name) || a.employee_ref.localeCompare(b.employee_ref));
 
     return {
-      period: { from: fromDate, to: toDate, timezone: orgZone, from_at: iso(from), to_at: iso(to) },
+      period: { from: fromDate, to: toDate, timezone: periodZone, from_at: iso(from), to_at: iso(to) },
       directory_stale: !lastFetched || this.clock.now().getTime() - lastFetched.getTime() > DIRECTORY_MAX_AGE_SECONDS * 1000,
       roles,
       employees,
