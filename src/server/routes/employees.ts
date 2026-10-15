@@ -36,8 +36,9 @@ export function register(r: Router, app: App): void {
 
   r.add('PATCH', '/api/employees/{ref}', 'manager', "Set an employee's planning roles, default role, time zone and working hours.", async ({ params, body }) => {
     const ref = params.ref;
+    await app.directoryRefresher().refreshIfEmpty();
     const row = await app.directory().find(ref);
-    if (!row && !(await app.directory().isEmpty())) throw HttpError.notFound('No employee with that reference on the roster.');
+    if (!row) throw HttpError.notFound('No employee with that reference on the roster.');
     const current = await app.profiles().find(ref);
     const input = new Input(await body());
 
@@ -54,7 +55,9 @@ export function register(r: Router, app: App): void {
     const roleIds = input.has('role_ids') ? (input.stringList('role_ids', 50) ?? []) : current.roleIds;
     const known = await app.roles().ids();
     const unknown = roleIds.find((id) => !known.has(id));
+    const newlyArchived = roleIds.find((id) => known.get(id) === true && !current.roleIds.includes(id));
     if (unknown) input.error('role_ids', `Unknown role ${unknown}.`);
+    else if (newlyArchived) input.error('role_ids', `Role ${newlyArchived} is archived and cannot be newly assigned.`);
     const defaultRoleId = input.has('default_role_id') ? input.string('default_role_id', 36) : current.defaultRoleId;
     if (defaultRoleId && !roleIds.includes(defaultRoleId)) input.error('default_role_id', "The default role must be one of the employee's roles.");
     const timezone = input.has('timezone') ? input.string('timezone', 64) : current.timezone;
@@ -62,8 +65,7 @@ export function register(r: Router, app: App): void {
     input.check();
 
     await app.profiles().save({ employeeRef: ref, roleIds, defaultRoleId, timezone, workingHours }, app.clock().now());
-    const display = row ?? { employeeRef: ref, displayName: 'Unknown employee', photoUrl: null, departmentId: null, departmentName: null, status: 'unknown' };
-    return json(200, { employee: shape(display, await app.profiles().find(ref), await app.settings().timezone()) });
+    return json(200, { employee: shape(row, await app.profiles().find(ref), await app.settings().timezone()) });
   }, op('Update Planning Profile', 'Change how an employee can be planned', ['Giving someone a role', 'Setting part-time working hours', 'Marking someone as flexible hours'], ['Changing personal details on the roster'],
     ['role_ids', 'default_role_id', 'timezone', 'working_hours'], ['employee'], ['Planning Manager', 'Employee on the roster'], ['GET /api/employees', 'GET /api/roles'],
     ['working hours', 'schedule', 'roles', 'part time', 'flexible']));

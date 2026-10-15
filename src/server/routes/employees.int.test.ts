@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { employeeProfiles } from '../db/schema';
 import { useApiHarness } from '../test/harness';
 
 const h = useApiHarness();
@@ -55,6 +56,38 @@ describe('employees API (FR-CFG-02)', () => {
     expect((await h.call('PATCH', '/api/employees/E404', { timezone: null })).status).toBe(404);
     h.asEmployee('E1');
     expect((await h.call('GET', '/api/employees')).status).toBe(403);
+  });
+
+  it('refreshes an empty directory before saving, so a rostered person can be configured', async () => {
+    h.roster.add('u7', 'Bo Tan', 'bo@x.test');
+    const { status, body } = await h.call('PATCH', '/api/employees/u7', { timezone: 'Asia/Singapore' });
+    expect(status).toBe(200);
+    expect(body.employee).toMatchObject({ employee_ref: 'u7', name: 'Bo Tan', effective_timezone: 'Asia/Singapore' });
+  });
+
+  it('never writes a profile for a ref that is not on the roster, even after refreshing', async () => {
+    const { status } = await h.call('PATCH', '/api/employees/ghost', { timezone: 'Asia/Singapore' });
+    expect(status).toBe(404);
+    expect(await h.database.db.select().from(employeeProfiles)).toEqual([]);
+  });
+
+  it('refuses to newly assign an archived role, but keeps one already held', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    const held = await h.addRole('Technician');
+    await h.call('PATCH', '/api/employees/E1', { role_ids: [held] });
+    await h.call('PATCH', `/api/roles/${held}`, { archived: true });
+    const retired = await h.addRole('Retired');
+    await h.call('PATCH', `/api/roles/${retired}`, { archived: true });
+
+    const refused = await h.call('PATCH', '/api/employees/E1', { role_ids: [held, retired] });
+    expect(refused.status).toBe(422);
+    expect(Object.keys(refused.body.error.details)).toEqual(['role_ids']);
+
+    const kept = await h.call('PATCH', '/api/employees/E1', { timezone: 'Asia/Singapore' });
+    expect(kept.status).toBe(200);
+    expect(kept.body.employee.role_ids).toEqual([held]);
+    const resent = await h.call('PATCH', '/api/employees/E1', { role_ids: [held] });
+    expect(resent.status).toBe(200);
   });
 
   it('reports the effective time zone in /api/me', async () => {
