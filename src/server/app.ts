@@ -21,6 +21,7 @@ import { DirectoryRefresher } from './roster/refresher';
 import { type DepartmentNames, type Roster, unconfiguredRoster } from './roster/roster';
 import { type Clock, systemClock } from './support/clock';
 import { FetchHttpClient, type HttpClient } from './support/http';
+import { PageGate } from './web/pageGate';
 
 /** Checked before any request is served (contract SS-20). Later tasks extend this list. */
 export const REQUIRED_ENV = ['SERVICE_ID', 'OPENAPI_EXTENSION_KEY', 'DATABASE_URL', 'GATEWAY_URL', 'PUBLIC_URL', 'SESSION_SECRET'];
@@ -153,6 +154,12 @@ export class App {
 
   directoryRefresher(): DirectoryRefresher {
     return this.once('directoryRefresher', () => new DirectoryRefresher(this.roster(), this.departments(), this.directory(), this.clock(), this.log));
+  }
+
+  pageGate(): PageGate {
+    return this.once('pageGate', () => new PageGate(
+      this.gateway(), this.tokenVerifier(), this.sessions(), this.roster(), this.devIdentity(), this.publicUrl(), this.log,
+    ));
   }
 
   router(): Router {
