@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { DateTime } from 'luxon';
 import { actorId, type Principal } from '../auth/principal';
 import type { Conflict } from '../domain/conflicts';
 import { HttpError } from '../http/errors';
@@ -7,6 +8,7 @@ import type { DirectoryRepository } from '../repo/directory';
 import type { Outbox } from '../repo/outbox';
 import type { ProfileRepository } from '../repo/profiles';
 import type { RoleRepository } from '../repo/roles';
+import type { SettingsRepository } from '../repo/settings';
 import type { ShiftRecord, ShiftRepository } from '../repo/shifts';
 import type { Clock } from '../support/clock';
 import { iso } from '../support/time';
@@ -31,6 +33,7 @@ export class ShiftService {
     private readonly directory: DirectoryRepository,
     private readonly context: ConflictContext,
     private readonly outbox: Outbox,
+    private readonly settings: SettingsRepository,
     private readonly clock: Clock,
     private readonly unit: UnitOfWork,
   ) {}
@@ -129,10 +132,21 @@ export class ShiftService {
     const acknowledged = input.bool('acknowledge_conflicts');
     input.check();
     const source = (await this.shifts.find(sourceId!)) ?? (() => { throw HttpError.notFound('No shift with that id.'); })();
-    const offset = start ? start.getTime() - source.start.getTime() : 86_400_000;
+    let copyStart: Date;
+    let copyEnd: Date;
+    if (start) {
+      copyStart = start;
+      copyEnd = new Date(start.getTime() + (source.end.getTime() - source.start.getTime()));
+    } else {
+      // One day later on the organisation's wall clock, so 09:00 stays 09:00 across a DST change.
+      const zone = await this.settings.timezone();
+      const nextDayAt = (d: Date) => DateTime.fromJSDate(d, { zone }).plus({ days: 1 }).toJSDate();
+      copyStart = nextDayAt(source.start);
+      copyEnd = nextDayAt(source.end);
+    }
     const now = this.clock.now();
     const copy: ShiftRecord = {
-      ...source, id: randomUUID(), start: new Date(source.start.getTime() + offset), end: new Date(source.end.getTime() + offset),
+      ...source, id: randomUUID(), start: copyStart, end: copyEnd,
       state: 'draft', publishedAt: null, version: 1, createdBy: actorId(by), deletedAt: null,
     };
     const result = await this.guardConflicts(copy, acknowledged, by, now);

@@ -6,7 +6,7 @@ import { Input } from '../http/input';
 import { json, noContent } from '../http/responses';
 import type { Router } from '../http/router';
 import { toApi } from '../repo/timeOff';
-import { localMidnight } from '../support/time';
+import { localMidnight, nextDay } from '../support/time';
 
 const MAX_MS = 366 * 86_400_000;
 
@@ -23,7 +23,7 @@ export function register(r: Router, app: App): void {
     const ref = input.string('employee_ref', 64);
     input.check();
     const zone = await app.settings().timezone();
-    const records = await app.timeOff().between(new Date(localMidnight(range![0], zone)), new Date(localMidnight(range![1], zone) + 86_400_000), ref);
+    const records = await app.timeOff().between(new Date(localMidnight(range![0], zone)), new Date(localMidnight(nextDay(range![1]), zone)), ref);
     return json(200, { unavailabilities: records.map(toApi) });
   }, op('List Time Off', 'See when employees are away', ['Checking who is on leave this week'], ['Listing public holidays'],
     ['from', 'to', 'employee_ref'], ['unavailabilities[]'], ['Planning Manager'], ['POST /api/unavailabilities', 'GET /api/schedule'],

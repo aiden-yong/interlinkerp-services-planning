@@ -14,6 +14,11 @@ export type GateResult =
   | { kind: 'redirect'; location: string; cookies: string[] }
   | { kind: 'error'; status: number; html: string; cookies: string[] };
 
+/** Paths served by route handlers. Bare /api and /internal have none, so the proxy answers them with the JSON 404. */
+export function isApiPath(path: string): boolean {
+  return path === '/health' || path === '/openapi.json' || path.startsWith('/api/') || path.startsWith('/internal/');
+}
+
 export function isPagePath(path: string): boolean {
   const clean = path.replace(/\/+$/, '') || '/';
   return PAGE_PATHS.includes(clean) || clean.startsWith('/settings/');

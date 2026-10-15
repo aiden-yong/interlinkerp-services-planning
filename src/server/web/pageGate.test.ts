@@ -4,7 +4,7 @@ import { SessionCodec } from '../auth/session';
 import { TokenVerifier } from '../auth/tokens';
 import { cookieValue, FakeHttpClient, FakeRoster, FixedClock, reply } from '../test/fakes';
 import { AUDIENCE, ISSUER, makeTestTokens, type TestTokens } from '../test/tokens';
-import { type GateResult, isPagePath, PageGate, safeReturnPath } from './pageGate';
+import { type GateResult, isApiPath, isPagePath, PageGate, safeReturnPath } from './pageGate';
 
 const PUBLIC = 'https://planning.test';
 let tokens: TestTokens;
@@ -93,6 +93,11 @@ describe('paths', () => {
   it('knows which paths are pages', () => {
     expect(['/', '/schedule', '/my/', '/settings', '/settings/roles', '/not-on-roster'].every(isPagePath)).toBe(true);
     expect(['/nope', '/robots.txt', '/api/me'].some(isPagePath)).toBe(false);
+  });
+
+  it('leaves bare /api and /internal to the JSON 404, not the route handlers', () => {
+    expect(['/health', '/openapi.json', '/api/me', '/api/shifts/1', '/internal/cron/x'].every(isApiPath)).toBe(true);
+    expect(['/api', '/internal', '/apix', '/internalx', '/'].some(isApiPath)).toBe(false);
   });
 
   it.each([

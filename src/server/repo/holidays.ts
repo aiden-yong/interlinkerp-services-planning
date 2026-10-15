@@ -73,7 +73,7 @@ export class HolidayRepository {
         await this.db.insert(publicHolidays).values({ id: randomUUID(), organisationId: this.org, holidayDate: h.date, name: h.name, source: 'provider', providerKey: h.key, createdAt: now, updatedAt: now });
         added++;
       } else if (!existing.edited && (existing.holidayDate !== h.date || existing.name !== h.name)) {
-        await this.db.update(publicHolidays).set({ holidayDate: h.date, name: h.name, updatedAt: now }).where(eq(publicHolidays.id, existing.id));
+        await this.db.update(publicHolidays).set({ holidayDate: h.date, name: h.name, updatedAt: now }).where(this.where(existing.id));
         updated++;
       }
     }

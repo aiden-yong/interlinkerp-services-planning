@@ -4,13 +4,9 @@ import { requireAll } from '@/server/config/env';
 import { getApp } from '@/server/entry';
 import { correlationIdFor } from '@/server/http/kernel';
 import { envelope } from '@/server/http/responses';
-import { isPagePath } from '@/server/web/pageGate';
+import { isApiPath, isPagePath } from '@/server/web/pageGate';
 
 const NO_STORE: Record<string, string> = { 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0', Pragma: 'no-cache', Expires: '0' };
-
-function isApiPath(path: string): boolean {
-  return path === '/health' || path === '/openapi.json' || path === '/api' || path.startsWith('/api/') || path.startsWith('/internal/');
-}
 
 /** Next.js 16 proxy (formerly middleware). Runs on Node.js before every request. */
 export async function proxy(request: NextRequest): Promise<NextResponse> {

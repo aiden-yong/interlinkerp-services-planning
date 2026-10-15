@@ -19,6 +19,12 @@ describe('time off API (FR-CFG-03)', () => {
     expect((await h.call('GET', '/api/unavailabilities', undefined, { from: '2026-10-12', to: '2026-10-18', employee_ref: 'E2' })).body.unavailabilities).toHaveLength(0);
   });
 
+  it('ends the range at local midnight on a 25-hour day', async () => {
+    await h.call('PATCH', '/api/settings', { timezone: 'America/New_York' });
+    await create('2026-11-01T23:30:00-05:00', '2026-11-02T01:00:00-05:00'); // 2026-11-01 is the day US clocks go back
+    expect((await h.call('GET', '/api/unavailabilities', undefined, { from: '2026-11-01', to: '2026-11-01' })).body.unavailabilities).toHaveLength(1);
+  });
+
   it('names invalid fields', async () => {
     const { status, body } = await h.call('POST', '/api/unavailabilities', { employee_ref: 'E9', start_at: '2026-10-16T10:00:00+08:00', end_at: '2026-10-16T09:00:00+08:00' });
     expect(status).toBe(422);

@@ -76,6 +76,15 @@ describe('delete, undo and duplicate', () => {
     expect(body.shift.id).not.toBe(s.id);
   });
 
+  it('duplicates to the same wall-clock time across a DST change', async () => {
+    await h.call('PATCH', '/api/settings', { timezone: 'America/New_York' });
+    const { body: created } = await h.call('POST', '/api/shifts', { employee_ref: 'E1', start_at: '2026-03-07T09:00:00-05:00', end_at: '2026-03-07T17:00:00-05:00' });
+    const { status, body } = await h.call('POST', '/api/shifts', { duplicate_of: created.shift.id });
+    expect(status, JSON.stringify(body)).toBe(201);
+    // 2026-03-08 is the day US clocks go forward: 09:00 EDT is 13:00Z.
+    expect([body.shift.start_at, body.shift.end_at]).toEqual(['2026-03-08T13:00:00Z', '2026-03-08T21:00:00Z']);
+  });
+
   it('warns when the copy lands on top of the original', async () => {
     const s = await shift();
     const clash = { duplicate_of: s.id, start_at: '2026-10-14T10:00:00+08:00' };

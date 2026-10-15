@@ -178,7 +178,7 @@ export class App {
 
   shiftService(): ShiftService {
     return this.once('shiftService', () => new ShiftService(
-      this.shifts(), this.profiles(), this.roles(), this.directory(), this.conflictContext(), this.outbox(), this.clock(), this.unitOfWork(),
+      this.shifts(), this.profiles(), this.roles(), this.directory(), this.conflictContext(), this.outbox(), this.settings(), this.clock(), this.unitOfWork(),
     ));
   }
 
