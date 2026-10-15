@@ -1,3 +1,4 @@
+import type { HolidayProvider } from '../holidays/provider';
 import type { DepartmentNames, Roster, RosterPerson } from '../roster/roster';
 import { RosterUnavailable } from '../roster/roster';
 import type { Clock } from '../support/clock';
@@ -77,5 +78,20 @@ export class FakeDepartments implements DepartmentNames {
   async all(): Promise<Map<string, string>> {
     if (this.down) throw new Error('department-api is down');
     return this.names;
+  }
+}
+
+export class FakeHolidayProvider implements HolidayProvider {
+  configured = false;
+  list: { key: string; date: string; name: string }[] = [];
+  readonly calls: [number, string, string | null][] = [];
+
+  isConfigured(): boolean {
+    return this.configured;
+  }
+
+  async holidays(year: number, country: string, region: string | null) {
+    this.calls.push([year, country, region]);
+    return this.list.map((h) => ({ ...h }));
   }
 }

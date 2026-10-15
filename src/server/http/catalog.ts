@@ -32,6 +32,14 @@ export const catalog = {
       best_for: 'Screens that change depending on who is looking.',
       endpoints: ['GET /api/me'],
     },
+    {
+      name: 'Configure Planning',
+      icon: '⚙️',
+      description: 'Set up the roles and organisation settings planning relies on.',
+      does: ['Create and archive roles', 'Set the organisation time zone and country'],
+      best_for: 'Planning Managers setting Planning up for their team.',
+      endpoints: ['GET /api/roles', 'POST /api/roles', 'PATCH /api/roles/{id}', 'GET /api/settings', 'PATCH /api/settings'],
+    },
   ] as Capability[],
   workflows: [
     { name: 'Plan and publish a week', steps: ['GET /api/schedule', 'POST /api/shifts', 'PATCH /api/shifts/{id}', 'POST /api/publications'] },

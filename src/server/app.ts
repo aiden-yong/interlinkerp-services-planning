@@ -11,8 +11,11 @@ import { catalog } from './http/catalog';
 import { type AccessGuard, Kernel, type Logger } from './http/kernel';
 import { buildOpenApi } from './http/openapi';
 import type { Router } from './http/router';
+import { HolidayProvider, nullHolidayProvider } from './holidays/provider';
 import { DirectoryRepository } from './repo/directory';
 import { ManagerRepository } from './repo/managers';
+import { RoleRepository } from './repo/roles';
+import { SettingsRepository } from './repo/settings';
 import { buildRouter } from './routes';
 import { ClientCredentials } from './roster/clientCredentials';
 import { DepartmentApi } from './roster/departments';
@@ -21,6 +24,7 @@ import { DirectoryRefresher } from './roster/refresher';
 import { type DepartmentNames, type Roster, unconfiguredRoster } from './roster/roster';
 import { type Clock, systemClock } from './support/clock';
 import { FetchHttpClient, type HttpClient } from './support/http';
+import { isTimezone } from './support/time';
 import { PageGate } from './web/pageGate';
 
 /** Checked before any request is served (contract SS-20). Later tasks extend this list. */
@@ -40,6 +44,7 @@ export interface AppDeps {
   roster?: Roster;
   departments?: DepartmentNames;
   cronSecret?: string | null;
+  holidayProvider?: HolidayProvider;
 }
 
 /**
@@ -118,6 +123,23 @@ export class App {
 
   managers(): ManagerRepository {
     return this.once('managers', () => new ManagerRepository(this.database().db, this.organisationId()));
+  }
+
+  defaultTimezone(): string {
+    const zone = this.deps.defaultTimezone ?? env('DEFAULT_TIMEZONE', 'UTC')!;
+    return isTimezone(zone) ? zone : 'UTC';
+  }
+
+  settings(): SettingsRepository {
+    return this.once('settings', () => new SettingsRepository(this.database().db, this.organisationId(), this.defaultTimezone()));
+  }
+
+  roles(): RoleRepository {
+    return this.once('roles', () => new RoleRepository(this.database().db, this.organisationId()));
+  }
+
+  holidayProvider(): HolidayProvider {
+    return this.deps.holidayProvider ?? nullHolidayProvider;
   }
 
   cronSecret(): string | null {
