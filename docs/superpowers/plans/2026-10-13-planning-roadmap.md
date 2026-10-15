@@ -2,6 +2,8 @@
 
 **Spec:** [ListOfRequirements.md](../../../ListOfRequirements.md) (v0.2, approved 2026-10-13)
 
+**Stack (decided 2026-10-15):** Next.js 16 App Router, React 19 and TypeScript; Drizzle ORM on PostgreSQL (18 locally, Neon `aws-ap-southeast-1` in production); Vercel region `sin1`. No separate backend service: the JSON API runs in Next.js route handlers.
+
 Release 1 is built in four milestones. Each one ends with working, deployable software and gets its own detailed implementation plan, written when the milestone starts so it is based on the real code. Only M1 has a detailed plan so far: [2026-10-13-planning-m1-foundation.md](2026-10-13-planning-m1-foundation.md).
 
 | Milestone | Theme | Depends on | Detailed plan |
@@ -52,7 +54,7 @@ Release 1 is built in four milestones. Each one ends with working, deployable so
 **Likely adds**
 - Columns: `organisation_settings.give_up_mode`, `organisation_settings.unassign_window_days`; on `shifts`: `switch_requested_at`, `switch_requested_by`.
 - Endpoints: `GET /api/my/open-shifts`, `POST /api/shift-claims`, `POST /api/switch-requests`, `DELETE /api/switch-requests/{shift_id}`, `POST /api/switch-takeovers`, `POST /api/unassignments`, `/internal/cron/notifications`.
-- Notification delivery using the InterlinkERP notification standard (in-app badges) and email. Read the recruitment app's notification and badge code first; it already follows the standard.
+- Notification delivery using the InterlinkERP notification standard (in-app badges) and email. Read the recruitment app's notification and badge code first; it already follows the standard. Consider `SELECT ... FOR UPDATE SKIP LOCKED` on `notification_outbox` so overlapping delivery runs never send a notice twice.
 
 **Open risk:** Vercel Hobby crons run at most once a day. Deletion notices wait 30 seconds and other notices should arrive within minutes, so M2 must either deliver inline at the end of the request that created the notice (with the cron only sweeping missed rows) or move to a plan with frequent crons. Decide at the start of M2.
 
