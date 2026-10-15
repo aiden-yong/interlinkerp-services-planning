@@ -24,6 +24,7 @@ import { TimeOffRepository } from './repo/timeOff';
 import { buildRouter } from './routes';
 import { ConflictContext } from './scheduling/conflictContext';
 import { ShiftService } from './scheduling/shiftService';
+import { UnitOfWork } from './scheduling/unitOfWork';
 import { ClientCredentials } from './roster/clientCredentials';
 import { DepartmentApi } from './roster/departments';
 import { InternDatabaseRoster } from './roster/internDatabase';
@@ -169,9 +170,13 @@ export class App {
     return this.once('conflictContext', () => new ConflictContext(this.shifts(), this.profiles(), this.timeOff(), this.holidays(), this.settings()));
   }
 
+  unitOfWork(): UnitOfWork {
+    return this.once('unitOfWork', () => new UnitOfWork(this.database().db, this.organisationId()));
+  }
+
   shiftService(): ShiftService {
     return this.once('shiftService', () => new ShiftService(
-      this.shifts(), this.profiles(), this.roles(), this.directory(), this.conflictContext(), this.outbox(), this.clock(),
+      this.shifts(), this.profiles(), this.roles(), this.directory(), this.conflictContext(), this.outbox(), this.clock(), this.unitOfWork(),
     ));
   }
 

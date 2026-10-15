@@ -83,13 +83,13 @@ export class ShiftRepository {
     });
   }
 
-  /** Saves only if nobody else saved since `expectedVersion` (optimistic concurrency); bumps the version. */
-  async update(s: ShiftRecord, expectedVersion: number, now: Date): Promise<boolean> {
+  /** Saves only if nobody else saved since `expectedVersion` (optimistic concurrency); bumps the version. Returns the saved row, or null when the shift changed or was deleted meanwhile. */
+  async update(s: ShiftRecord, expectedVersion: number, now: Date): Promise<ShiftRecord | null> {
     const updated = await this.db.update(shifts).set({
       employeeRef: s.employeeRef, roleId: s.roleId, startAt: s.start, endAt: s.end, breakMinutes: s.breakMinutes, allocatedPercent: s.percent,
       note: s.note, conflictAcknowledgedBy: s.ackBy, conflictAcknowledgedAt: s.ackAt, version: expectedVersion + 1, updatedAt: now,
-    }).where(and(this.live(), eq(shifts.id, s.id), eq(shifts.version, expectedVersion))).returning({ id: shifts.id });
-    return updated.length === 1;
+    }).where(and(this.live(), eq(shifts.id, s.id), eq(shifts.version, expectedVersion))).returning();
+    return updated.length === 1 ? toRecord(updated[0]!) : null;
   }
 
   async softDelete(id: string, by: string, now: Date): Promise<void> {

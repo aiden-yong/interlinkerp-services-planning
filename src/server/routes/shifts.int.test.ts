@@ -30,6 +30,11 @@ describe('shifts API', () => {
     expect(body.shift).toMatchObject({ employee_ref: null, state: 'draft', start_at: '2026-10-14T01:00:00Z', allocated_percent: 100, allocated_hours: 4, version: 1, conflicts: [] });
   });
 
+  it('drops seconds from times', async () => {
+    const shift = await created({ start_at: '2026-10-14T09:00:45+08:00' });
+    expect(shift.start_at).toBe('2026-10-14T01:00:00Z');
+  });
+
   it("uses the employee's default role unless a role is sent (FR-SHF-01 AC2)", async () => {
     const tech = await h.addRole('Technician');
     await h.call('PATCH', '/api/employees/E1', { role_ids: [tech], default_role_id: tech });

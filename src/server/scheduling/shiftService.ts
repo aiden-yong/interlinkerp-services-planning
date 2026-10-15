@@ -10,6 +10,7 @@ import type { RoleRepository } from '../repo/roles';
 import type { ShiftRecord, ShiftRepository } from '../repo/shifts';
 import type { Clock } from '../support/clock';
 import type { ConflictContext } from './conflictContext';
+import type { UnitOfWork, WriteScope } from './unitOfWork';
 
 export const MAX_DURATION_MS = 7 * 86_400_000;
 export const UNDO_MS = 30_000;
@@ -30,6 +31,7 @@ export class ShiftService {
     private readonly context: ConflictContext,
     private readonly outbox: Outbox,
     private readonly clock: Clock,
+    private readonly unit: UnitOfWork,
   ) {}
 
   async create(body: Record<string, unknown>, by: Principal): Promise<{ shift: ShiftRecord; conflicts: Conflict[] }> {
@@ -54,7 +56,7 @@ export class ShiftService {
       ackBy: null, ackAt: null, version: 1, createdBy: actorId(by), deletedAt: null,
     };
     const { shift, conflicts } = await this.guardConflicts(draft, acknowledged, by, now);
-    await this.shifts.insert(shift, now);
+    await this.unit.run(({ shifts }) => shifts.insert(shift, now));
     return { shift, conflicts };
   }
 
@@ -85,9 +87,12 @@ export class ShiftService {
     if (version !== current.version) throw stale();
     const now = this.clock.now();
     const { shift, conflicts } = await this.guardConflicts(next, acknowledged, by, now);
-    if (!(await this.shifts.update(shift, current.version, now))) throw stale();
-    const saved = (await this.shifts.find(id))!;
-    if (current.state === 'published') await this.notifyChange(current, saved, now); // BR-11: stays published; employees are told
+    const saved = await this.unit.run(async (scope) => {
+      const row = await scope.shifts.update(shift, current.version, now);
+      if (!row) throw stale();
+      if (current.state === 'published') await this.notifyChange(scope, current, row, now); // BR-11: stays published; employees are told
+      return row;
+    });
     return { shift: saved, conflicts };
   }
 
@@ -100,15 +105,15 @@ export class ShiftService {
     return { shift: { ...shift, ackBy: actorId(by), ackAt: now }, conflicts };
   }
 
-  private async notifyChange(before: ShiftRecord, after: ShiftRecord, now: Date): Promise<void> {
+  private async notifyChange({ outbox }: WriteScope, before: ShiftRecord, after: ShiftRecord, now: Date): Promise<void> {
     const changed = NOTIFY_FIELDS.filter(([field]) => !same(before[field], after[field])).map(([, label]) => label);
     if (changed.length === 0) return;
     if (before.employeeRef !== after.employeeRef) {
-      if (before.employeeRef) await this.outbox.add('shift_unassigned', before.employeeRef, after.id, { shift_id: after.id }, now, now);
-      if (after.employeeRef) await this.outbox.add('shift_assigned', after.employeeRef, after.id, { shift_id: after.id }, now, now);
+      if (before.employeeRef) await outbox.add('shift_unassigned', before.employeeRef, after.id, { shift_id: after.id }, now, now);
+      if (after.employeeRef) await outbox.add('shift_assigned', after.employeeRef, after.id, { shift_id: after.id }, now, now);
       return;
     }
-    if (after.employeeRef) await this.outbox.add('shift_changed', after.employeeRef, after.id, { shift_id: after.id, changed }, now, now);
+    if (after.employeeRef) await outbox.add('shift_changed', after.employeeRef, after.id, { shift_id: after.id, changed }, now, now);
   }
 
   private async validateEmployee(input: Input, employeeRef: string | null): Promise<void> {
