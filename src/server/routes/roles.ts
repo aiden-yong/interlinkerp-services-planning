@@ -9,6 +9,16 @@ import { isUniqueViolation } from '../support/ids';
 const COLOR = /^#[0-9a-fA-F]{6}$/;
 const taken = (name: string) => HttpError.conflict('ROLE_NAME_TAKEN', `A role named "${name}" already exists.`);
 
+/** Maps a unique-name race (two requests passing the pre-check at once) to the same 409 as the pre-check. */
+async function saveNamed<T>(name: string, save: () => Promise<T>): Promise<T> {
+  try {
+    return await save();
+  } catch (error) {
+    if (isUniqueViolation(error)) throw taken(name);
+    throw error;
+  }
+}
+
 export function register(r: Router, app: App): void {
   r.add('GET', '/api/roles', 'person', 'List the roles shifts can require.', async ({ query }) =>
     json(200, { roles: await app.roles().all(query.include_archived === 'true') }),
@@ -23,12 +33,7 @@ export function register(r: Router, app: App): void {
     if (color && !COLOR.test(color)) input.error('color', 'Use a hex colour such as #3B82F6.');
     input.check();
     if (await app.roles().nameTaken(name!, null)) throw taken(name!);
-    try {
-      return json(201, { role: await app.roles().create(name!, color!.toUpperCase(), app.clock().now()) });
-    } catch (error) {
-      if (isUniqueViolation(error)) throw taken(name!); // two managers creating the same name at once
-      throw error;
-    }
+    return json(201, { role: await saveNamed(name!, () => app.roles().create(name!, color!.toUpperCase(), app.clock().now())) });
   }, op('Create Role', 'Add a job role that shifts can require', ['Setting up a new kind of work to plan'], ['Renaming an existing role'],
     ['name', 'color'], ['role'], ['Planning Manager', 'Name not already used'], ['GET /api/roles', 'PATCH /api/roles/{id}'],
     ['role', 'create role', 'add position']));
@@ -43,10 +48,14 @@ export function register(r: Router, app: App): void {
       if (color && !COLOR.test(color)) input.error('color', 'Use a hex colour such as #3B82F6.');
       fields.color = color?.toUpperCase();
     }
-    if (input.has('archived')) fields.archived = input.bool('archived');
+    if (input.has('archived')) {
+      if (typeof input.raw('archived') === 'boolean') fields.archived = input.raw('archived') as boolean;
+      else input.error('archived', 'Must be true or false.');
+    }
     input.check();
     if (fields.name && (await app.roles().nameTaken(fields.name, role.id))) throw taken(fields.name);
-    return json(200, { role: await app.roles().update(role.id, fields, app.clock().now()) });
+    const name = fields.name ?? role.name;
+    return json(200, { role: await saveNamed(name, () => app.roles().update(role.id, fields, app.clock().now())) });
   }, op('Update Role', 'Change or retire a role', ['Renaming a role', 'Archiving a role nobody uses any more'], ['Creating a role'],
     ['name', 'color', 'archived'], ['role'], ['Planning Manager', 'Role exists'], ['GET /api/roles'],
     ['role', 'archive role', 'rename role']));

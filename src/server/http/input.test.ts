@@ -21,6 +21,14 @@ describe('Input', () => {
     expect(errors(input).c).toBe('Not a real date-time.');
   });
 
+  it('collects an error rather than throwing for numbers and objects given as instants', () => {
+    const input = new Input({ x: 1_786_000_000_000, y: { at: '2026-10-13T09:00:00+08:00' } });
+    expect(input.instant('x')).toBeNull();
+    expect(input.instant('y')).toBeNull();
+    expect(errors(input).x).toContain('time zone offset');
+    expect(errors(input).y).toContain('time zone offset');
+  });
+
   it('checks required strings and lengths', () => {
     const input = new Input({ name: '  ', long: 'xxxxxx' });
     input.string('name', 10, true);
@@ -40,6 +48,7 @@ describe('Input', () => {
     expect(new Input({ from: '2026-10-12', to: '2026-10-18' }).dateRange('from', 'to', 62)).toEqual(['2026-10-12', '2026-10-18']);
     const bad = new Input({ d: '2026-13-01' });
     expect(bad.date('d')).toBeNull();
+    expect(errors(bad).d).toBe('Use a real date in YYYY-MM-DD format.');
     const long = new Input({ from: '2026-01-01', to: '2026-12-31' });
     expect(long.dateRange('from', 'to', 62)).toBeNull();
     expect(errors(long)).toEqual({ to: 'The range can be at most 62 days.' });

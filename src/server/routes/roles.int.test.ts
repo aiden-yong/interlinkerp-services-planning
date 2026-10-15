@@ -33,6 +33,27 @@ describe('roles API (FR-CFG-01)', () => {
     expect((await h.call('GET', '/api/roles', undefined, { include_archived: 'true' })).body.roles).toHaveLength(1);
   });
 
+  it('refuses renaming onto another role name regardless of case', async () => {
+    await h.addRole('Technician');
+    const id = await h.addRole('Driver');
+    const { status, body } = await h.call('PATCH', `/api/roles/${id}`, { name: 'technician' });
+    expect([status, body.error.code]).toEqual([409, 'ROLE_NAME_TAKEN']);
+  });
+
+  it('names a non-string name and a null archived flag as invalid fields', async () => {
+    const id = await h.addRole('Technician');
+    const named = await h.call('PATCH', `/api/roles/${id}`, { name: 5 });
+    expect(named.status).toBe(422);
+    expect(Object.keys(named.body.error.details)).toEqual(['name']);
+    const archived = await h.call('PATCH', `/api/roles/${id}`, { archived: null });
+    expect(archived.status).toBe(422);
+    expect(Object.keys(archived.body.error.details)).toEqual(['archived']);
+  });
+
+  it('returns 404 for a well-formed id that matches no role', async () => {
+    expect((await h.call('PATCH', '/api/roles/00000000-0000-4000-8000-000000000000', { name: 'X' })).status).toBe(404);
+  });
+
   it('returns 404, 403 and 401 where it should', async () => {
     expect((await h.call('PATCH', '/api/roles/not-a-uuid', { name: 'X' })).status).toBe(404);
     h.asEmployee('E1');
