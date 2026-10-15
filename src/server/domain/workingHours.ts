@@ -48,9 +48,12 @@ export function workingIntervals(hours: WorkingHoursMap, fromMs: number, toMs: n
   const range = new Interval(fromMs, toMs);
   const out: Interval[] = [];
   const end = DateTime.fromMillis(toMs, { zone });
-  for (let day = DateTime.fromMillis(fromMs, { zone }).startOf('day'); day < end; day = day.plus({ days: 1 })) {
+  for (let day = DateTime.fromMillis(fromMs, { zone }).startOf('day'); day < end; day = day.plus({ days: 1 }).startOf('day')) {
     for (const [from, to] of hours[DAYS[day.weekday - 1]]) {
-      const piece = new Interval(at(day, from), at(day, to)).intersect(range);
+      const start = at(day, from);
+      const stop = at(day, to);
+      if (stop <= start) continue; // the range sits in a daylight-saving gap
+      const piece = new Interval(start, stop).intersect(range);
       if (piece) out.push(piece);
     }
   }

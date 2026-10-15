@@ -21,6 +21,14 @@ describe('workingIntervals', () => {
     expect(total(list)).toBe(4);
   });
 
+  it('skips a range that falls in a daylight-saving gap instead of throwing', () => {
+    const ny = 'America/New_York';
+    const hours = parseWorkingHours({ sun: [['02:00', '03:00'], ['09:00', '17:00']] });
+    const list = workingIntervals(hours, localMidnight('2026-03-08', ny), localMidnight('2026-03-09', ny), ny);
+    expect(list).toHaveLength(1);
+    expect(total(list)).toBe(8);
+  });
+
   it('gives a 25-hour day when daylight saving ends', () => {
     const ny = 'America/New_York';
     const list = workingIntervals(parseWorkingHours({ sun: [['00:00', '24:00']] }), localMidnight('2026-11-01', ny), localMidnight('2026-11-02', ny), ny);
