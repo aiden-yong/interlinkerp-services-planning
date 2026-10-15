@@ -28,9 +28,9 @@ export const catalog = {
       name: 'Check Access',
       icon: '🔑',
       description: 'See who is signed in and whether they can manage planning.',
-      does: ['See who is signed in', 'Check if someone is a Planning Manager'],
+      does: ['See who is signed in', 'Check if someone is a Planning Manager', 'Grant or revoke Planning Manager access'],
       best_for: 'Screens that change depending on who is looking.',
-      endpoints: ['GET /api/me'],
+      endpoints: ['GET /api/me', 'GET /api/managers', 'POST /api/managers', 'DELETE /api/managers/{email}'],
     },
     {
       name: 'Configure Planning',
