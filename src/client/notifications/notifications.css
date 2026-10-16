@@ -1,0 +1,9 @@
+.bell { position: relative; }
+.bell-button { position: relative; background: none; border: 0; font-size: 1.2rem; cursor: pointer; }
+.bell-count { position: absolute; top: -4px; right: -6px; min-width: 1.2em; padding: 0 4px; border-radius: 999px; background: var(--warn, #dc2626); color: #fff; font-size: 0.7rem; line-height: 1.2em; text-align: center; }
+.bell-panel { position: absolute; right: 0; top: 2.2rem; z-index: 50; width: min(22rem, 90vw); max-height: 26rem; overflow-y: auto; background: var(--bg, #fff); border: 1px solid var(--line, #ddd); border-radius: 8px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.15); padding: 0.5rem; }
+.bell-head { display: flex; justify-content: space-between; align-items: center; padding: 0.25rem 0.5rem 0.5rem; }
+.bell-panel ul { list-style: none; margin: 0; padding: 0; }
+.bell-panel li button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 0.5rem; border-radius: 6px; cursor: pointer; }
+.bell-panel li.unread button { background: color-mix(in srgb, var(--accent, #2563eb) 10%, transparent); }
+.bell-body { display: block; white-space: pre-line; font-size: 0.85rem; opacity: 0.8; }

@@ -84,3 +84,6 @@ export interface Settings { country_code: string | null; region_code: string | n
 export interface TimeOff { id: string; employee_ref: string; start_at: string; end_at: string; reason: string }
 export interface Holiday { id: string; date: string; name: string; source: 'manual' | 'provider'; hidden: boolean; edited: boolean }
 export interface ManagerGrant { email: string; granted_by: string; granted_at: string }
+
+export interface NotificationItem { id: number; kind: string; title: string; body: string; link: string; shift_id: string | null; created_at: string; read_at: string | null }
+export interface NotificationsPayload { notifications: NotificationItem[]; unread_count: number }
