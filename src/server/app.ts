@@ -14,7 +14,9 @@ import type { Router } from './http/router';
 import { HolidayProvider, nullHolidayProvider } from './holidays/provider';
 import { HolidayRepository } from './repo/holidays';
 import { DirectoryRepository } from './repo/directory';
+import { type BadgePublisher, GatewayBadgePublisher, noBadges } from './notifications/badges';
 import { DeliveryService } from './notifications/deliveryService';
+import { LogMailer, type Mailer, SmtpMailer } from './notifications/mailer';
 import { ManagerRepository } from './repo/managers';
 import { NotificationRepository } from './repo/notifications';
 import { Outbox } from './repo/outbox';
@@ -60,6 +62,8 @@ export interface AppDeps {
   cronSecret?: string | null;
   holidayProvider?: HolidayProvider;
   publicUrl?: string;
+  mailer?: Mailer;
+  badges?: BadgePublisher;
 }
 
 /**
@@ -177,10 +181,29 @@ export class App {
     return this.once('notifications', () => new NotificationRepository(this.database().db, this.organisationId()));
   }
 
+  mailer(): Mailer {
+    return this.deps.mailer ?? this.once('mailer', () => {
+      const url = env('SMTP_URL');
+      const from = env('MAIL_FROM');
+      return url && from ? new SmtpMailer(url, from) : new LogMailer(this.log);
+    });
+  }
+
+  badges(): BadgePublisher {
+    return this.deps.badges ?? this.once('badges', () => {
+      const id = env('INTERLINK_CLIENT_ID');
+      const secret = env('INTERLINK_CLIENT_SECRET');
+      return env('GATEWAY_BADGES') === 'on' && id && secret
+        ? new GatewayBadgePublisher(this.http(), this.gatewayUrl(), this.serviceInfo().serviceId, id, secret, this.log)
+        : noBadges;
+    });
+  }
+
   delivery(): DeliveryService {
     return this.once('delivery', () => new DeliveryService({
       db: this.database().db, org: this.organisationId(), shifts: this.shifts(), directory: this.directory(), profiles: this.profiles(),
       managers: this.managers(), settings: this.settings(), clock: this.clock(), log: this.log, publicUrl: () => this.publicUrl(),
+      mailer: this.mailer(), badges: this.badges(), inbox: this.notifications(),
     }));
   }
 

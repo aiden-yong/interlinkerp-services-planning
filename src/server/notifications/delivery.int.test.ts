@@ -10,8 +10,8 @@ const h = useApiHarness();
 const inbox = () => h.database.db.select().from(notifications).orderBy(notifications.id);
 const queue = () => h.database.db.select().from(notificationOutbox).orderBy(notificationOutbox.id);
 
-async function publishedFor(ref: string): Promise<string> {
-  const created = await h.call('POST', '/api/shifts', { employee_ref: ref, start_at: '2026-10-14T09:00:00+08:00', end_at: '2026-10-14T17:00:00+08:00' });
+async function publishedFor(ref: string, day = 14): Promise<string> {
+  const created = await h.call('POST', '/api/shifts', { employee_ref: ref, start_at: `2026-10-${day}T09:00:00+08:00`, end_at: `2026-10-${day}T17:00:00+08:00` });
   await h.call('POST', '/api/publications', { shift_ids: [created.body.shift.id] });
   return created.body.shift.id as string;
 }
@@ -73,5 +73,81 @@ describe('delivery: queue to inbox', () => {
     const [bad] = await h.database.db.select().from(notificationOutbox).where(eq(notificationOutbox.kind, 'mystery'));
     expect(bad).toMatchObject({ attempts: 5, lastError: expect.stringContaining('Unknown notification kind') });
     expect(bad!.deliveredAt).not.toBeNull();
+  });
+});
+
+describe('delivery: email and badges', () => {
+  it('emails employees at their directory address and managers at their list address', async () => {
+    await h.addEmployee('E1', 'Ana Lim', null, null, 'ana@example.com');
+    await new ManagerRepository(h.database.db, ORG).grant('mona@example.com', 'admin@example.com', h.clock.now());
+    const id = await publishedFor('E1');
+    await new Outbox(h.database.db, ORG).addForManagers('shift_claimed', id, { shift_id: id, employee_ref: 'E1' }, h.clock.now());
+    const report = await h.app.delivery().deliverDue();
+    expect(report.emailed).toBe(2);
+    expect(h.mailer.sent.map((m) => [m.to, m.subject]).sort()).toEqual([['ana@example.com', 'Your shift was published'], ['mona@example.com', 'Open shift claimed']]);
+    expect(h.mailer.sent[0]!.text).toContain('https://');
+  });
+
+  it('records why an email cannot be sent and does not retry it (Review Focus 2)', async () => {
+    await h.addEmployee('E1', 'Ana Lim'); // no email on the roster
+    await publishedFor('E1');
+    await h.app.delivery().deliverDue();
+    h.clock.advance(3600);
+    await h.app.delivery().deliverDue();
+    const [row] = await inbox();
+    expect(row).toMatchObject({ emailedAt: null, emailAttempts: 5, emailError: 'No email address on the roster.' });
+    expect(h.mailer.sent).toEqual([]);
+  });
+
+  it('retries a failed email with growing delays and gives up after five tries', async () => {
+    await h.addEmployee('E1', 'Ana Lim', null, null, 'ana@example.com');
+    await publishedFor('E1');
+    h.mailer.failures = 2;
+    await h.app.delivery().deliverDue(); // try 1 fails, next in 2 min
+    h.clock.advance(60);
+    await h.app.delivery().deliverDue(); // not due yet
+    expect(h.mailer.attempts).toBe(1);
+    h.clock.advance(60);
+    await h.app.delivery().deliverDue(); // try 2 fails, next in 4 min
+    h.clock.advance(240);
+    await h.app.delivery().deliverDue(); // try 3 succeeds
+    expect(h.mailer.sent).toHaveLength(1);
+    expect((await inbox())[0]!.emailedAt).not.toBeNull();
+
+    await publishedFor('E1', 15);
+    h.mailer.failures = 99;
+    for (let i = 0; i < 8; i++) {
+      await h.app.delivery().deliverDue();
+      h.clock.advance(3600);
+    }
+    expect((await inbox())[1]).toMatchObject({ emailedAt: null, emailAttempts: 5, emailError: 'smtp down' });
+  });
+
+  it('sends each email once when sweeps overlap', async () => {
+    for (const ref of ['E1', 'E2', 'E3']) {
+      await h.addEmployee(ref, ref, null, null, `${ref.toLowerCase()}@example.com`);
+      await publishedFor(ref);
+    }
+    await h.app.delivery().expandDue();
+    await Promise.all([h.app.delivery().sendEmails(), h.app.delivery().sendEmails()]);
+    expect(h.mailer.sent.map((m) => m.to).sort()).toEqual(['e1@example.com', 'e2@example.com', 'e3@example.com']);
+  });
+
+  it('pushes one combined unread count for an employee who is also a manager (Review Focus 1)', async () => {
+    await h.addEmployee('E1', 'Ana Lim', null, null, 'ana@example.com');
+    await new ManagerRepository(h.database.db, ORG).grant('ana@example.com', 'admin@example.com', h.clock.now());
+    const id = await publishedFor('E1');
+    await new Outbox(h.database.db, ORG).addForManagers('shift_claimed', id, { shift_id: id, employee_ref: 'E1' }, h.clock.now());
+    await h.app.delivery().deliverDue();
+    expect(h.badges.published.at(-1)).toEqual([{ email: 'ana@example.com', count: 2 }]);
+  });
+
+  it('never saves the recipient address from an SMTP error (DR-02)', async () => {
+    await h.addEmployee('E1', 'Ana Lim', null, null, 'ana@example.com');
+    await publishedFor('E1');
+    h.mailer.failures = 1;
+    h.mailer.error = '550 <ana@example.com>: Recipient address rejected';
+    await h.app.delivery().deliverDue();
+    expect((await inbox())[0]!.emailError).toBe('550 <[address]>: Recipient address rejected');
   });
 });

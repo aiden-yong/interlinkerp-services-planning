@@ -1,4 +1,6 @@
 import type { HolidayProvider } from '../holidays/provider';
+import type { BadgeCount, BadgePublisher } from '../notifications/badges';
+import type { MailMessage, Mailer, SendResult } from '../notifications/mailer';
 import type { DepartmentNames, Roster, RosterPerson } from '../roster/roster';
 import { RosterUnavailable } from '../roster/roster';
 import type { Clock } from '../support/clock';
@@ -93,5 +95,33 @@ export class FakeHolidayProvider implements HolidayProvider {
   async holidays(year: number, country: string, region: string | null) {
     this.calls.push([year, country, region]);
     return this.list.map((h) => ({ ...h }));
+  }
+}
+
+export class FakeMailer implements Mailer {
+  readonly sent: MailMessage[] = [];
+  attempts = 0;
+  /** How many of the next sends fail, and with what message. */
+  failures = 0;
+  error = 'smtp down';
+
+  async send(message: MailMessage): Promise<SendResult> {
+    this.attempts++;
+    if (this.failures > 0) {
+      this.failures--;
+      return { ok: false, error: this.error };
+    }
+    this.sent.push(message);
+    return { ok: true };
+  }
+}
+
+export class FakeBadges implements BadgePublisher {
+  readonly enabled = true;
+  readonly published: BadgeCount[][] = [];
+
+  async publish(badges: BadgeCount[]): Promise<boolean> {
+    this.published.push(badges);
+    return true;
   }
 }

@@ -1,17 +1,23 @@
-import { and, eq, isNull, lte } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, lte } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { notificationOutbox, notifications } from '../db/schema';
+import { MAX_EMAIL_ATTEMPTS, notificationOutbox, notifications } from '../db/schema';
 import type { Logger } from '../http/kernel';
 import type { DirectoryRepository } from '../repo/directory';
 import type { ManagerRepository } from '../repo/managers';
+import type { NotificationRepository } from '../repo/notifications';
 import type { ProfileRepository } from '../repo/profiles';
 import type { SettingsRepository } from '../repo/settings';
 import type { ShiftRepository } from '../repo/shifts';
 import type { Clock } from '../support/clock';
+import type { BadgePublisher } from './badges';
+import type { Mailer } from './mailer';
 import { render, scrubAddresses, shiftIdsOf } from './messages';
 
 export const MAX_OUTBOX_ATTEMPTS = 5;
 const BATCH = 100;
+/** At most 10 sends of at most 10 s each, so one sweep stays well inside a serverless function's time limit. */
+const EMAIL_BATCH = 10;
+const LEASE_MS = 5 * 60_000;
 
 /** Who a sweep wrote to, so their badge counts can be refreshed. */
 export interface Touched {
@@ -21,6 +27,7 @@ export interface Touched {
 
 export interface DeliveryReport {
   notified: number;
+  emailed: number;
 }
 
 export interface DeliveryDeps {
@@ -33,6 +40,9 @@ export interface DeliveryDeps {
   settings: SettingsRepository;
   clock: Clock;
   log: Logger;
+  mailer: Mailer;
+  badges: BadgePublisher;
+  inbox: NotificationRepository;
   /** Read only when there is something to render, so building the service never needs PUBLIC_URL. */
   publicUrl: () => string;
 }
@@ -85,14 +95,72 @@ export class DeliveryService {
     return touched;
   }
 
+  /**
+   * Step 2. Rows are leased first (email_next_at pushed 5 minutes ahead in a short transaction), then sent outside
+   * it, so overlapping sweeps never send the same email twice and a slow SMTP server holds no locks.
+   */
+  async sendEmails(): Promise<number> {
+    const { db, org, clock } = this.d;
+    const now = clock.now();
+    const leased = await db.transaction(async (tx) => {
+      const due = await tx.select().from(notifications)
+        .where(and(eq(notifications.organisationId, org), isNull(notifications.emailedAt), lt(notifications.emailAttempts, MAX_EMAIL_ATTEMPTS), lte(notifications.emailNextAt, now)))
+        .orderBy(notifications.id).limit(EMAIL_BATCH).for('update', { skipLocked: true });
+      if (due.length > 0) {
+        await tx.update(notifications).set({ emailNextAt: new Date(now.getTime() + LEASE_MS) })
+          .where(and(eq(notifications.organisationId, org), inArray(notifications.id, due.map((n) => n.id))));
+      }
+      return due;
+    });
+    if (leased.length === 0) return 0;
+    const byId = (id: number) => and(eq(notifications.organisationId, org), eq(notifications.id, id));
+    const addresses = await this.d.directory.emailsFor(leased.flatMap((n) => (n.recipientRef ? [n.recipientRef] : [])));
+    let sent = 0;
+    for (const n of leased) {
+      const to = n.recipientEmail ?? (n.recipientRef ? addresses.get(n.recipientRef) : undefined);
+      if (!to) {
+        await db.update(notifications).set({ emailAttempts: MAX_EMAIL_ATTEMPTS, emailError: 'No email address on the roster.' }).where(byId(n.id));
+        continue;
+      }
+      const result = await this.d.mailer.send({ to, subject: n.title, text: `${n.body}\n\nOpen Planning: ${n.link}` });
+      if (result.ok) {
+        sent++;
+        await db.update(notifications).set({ emailedAt: clock.now(), emailError: null }).where(byId(n.id));
+      } else {
+        const attempts = n.emailAttempts + 1;
+        await db.update(notifications)
+          .set({ emailAttempts: attempts, emailError: scrubAddresses(result.error), emailNextAt: new Date(clock.now().getTime() + 2 ** attempts * 60_000) })
+          .where(byId(n.id));
+      }
+    }
+    return sent;
+  }
+
+  /** Step 3, also called after mark-read. A person's count covers their employee and manager notices. Never throws. */
+  async pushBadges(touched: Touched): Promise<void> {
+    if (!this.d.badges.enabled || (touched.refs.size === 0 && touched.emails.size === 0)) return;
+    try {
+      const refEmails = await this.d.directory.emailsFor([...touched.refs]);
+      const emails = [...new Set([...touched.emails, ...refEmails.values()])];
+      const refOf = await this.d.directory.refsFor(emails);
+      const badges = [];
+      for (const email of emails) badges.push({ email, count: await this.d.inbox.unreadCount({ ref: refOf.get(email) ?? null, email }) });
+      await this.d.badges.publish(badges);
+    } catch (error) {
+      this.d.log(`[badges] could not compute counts: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   /** The whole sweep. Never throws: delivery must not break the request that triggered it. */
   async deliverDue(): Promise<DeliveryReport> {
     try {
       const touched = await this.expandDue();
-      return { notified: touched.refs.size + touched.emails.size };
+      const emailed = await this.sendEmails();
+      await this.pushBadges(touched);
+      return { notified: touched.refs.size + touched.emails.size, emailed };
     } catch (error) {
       this.d.log(`[delivery] sweep failed: ${error instanceof Error ? error.message : String(error)}`);
-      return { notified: 0 };
+      return { notified: 0, emailed: 0 };
     }
   }
 }

@@ -6,7 +6,7 @@ import { employeeDirectory } from '../db/schema';
 import { HttpError } from '../http/errors';
 import type { AccessGuard } from '../http/kernel';
 import { ORG, useTestDatabase } from './db';
-import { FakeDepartments, FakeHolidayProvider, FakeRoster, FixedClock } from './fakes';
+import { FakeBadges, FakeDepartments, FakeHolidayProvider, FakeMailer, FakeRoster, FixedClock } from './fakes';
 
 export interface Harness {
   app: App;
@@ -15,6 +15,8 @@ export interface Harness {
   roster: FakeRoster;
   departments: FakeDepartments;
   holidays: FakeHolidayProvider;
+  mailer: FakeMailer;
+  badges: FakeBadges;
   asManager(email?: string): void;
   asEmployee(ref: string | null, email?: string): void;
   asNobody(): void;
@@ -91,9 +93,12 @@ export function useApiHarness(): Harness {
     h.roster = new FakeRoster();
     h.departments = new FakeDepartments();
     h.holidays = new FakeHolidayProvider();
+    h.mailer = new FakeMailer();
+    h.badges = new FakeBadges();
     h.app = new App({
       database, organisationId: ORG, defaultTimezone: 'Asia/Kuala_Lumpur', clock: h.clock, guard, devIdentity: null,
       roster: h.roster, departments: h.departments, holidayProvider: h.holidays, logger: () => {}, publicUrl: 'https://planning.test',
+      mailer: h.mailer, badges: h.badges,
     });
     h.asManager();
   });
