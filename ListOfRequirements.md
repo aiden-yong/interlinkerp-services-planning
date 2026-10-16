@@ -393,7 +393,7 @@ Planning owns these entities in its own private database:
 - Audit entry
 
 **DR-02** · Must
-Planning shall not keep its own copy of employee personal data. It stores `employee_ref` (the roster id) as the only lasting reference. Display fields (name, photo URL, department) may be cached for at most 24 hours to meet NFR-01, and are refreshed from IF-02 / IF-03.
+Planning shall not keep its own copy of employee personal data. It stores `employee_ref` (the roster id) as the only lasting reference. Display fields (name, photo URL, department) may be cached for at most 24 hours to meet NFR-01, and are refreshed from IF-02 / IF-03. The work email may be cached on the same terms, only to address notification emails (FR-NTF-04); notification records refer to employees by `employee_ref`, never by a stored copy of their email.
 
 **DR-03** · Must
 Personal unavailability shall be stored so it can be retired when an HR leave service exists (IF-05), without changing Shift or Auto Plan logic.

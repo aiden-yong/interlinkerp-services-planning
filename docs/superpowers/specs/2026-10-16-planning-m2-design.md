@@ -16,11 +16,11 @@ This document records only the decisions the requirements leave open. It does no
 
 ## Data (one migration)
 
-- `shifts`: `switch_requested_at` (instant, null), `switch_requested_by` (email, null). A request is active only while the shift has not started, so it lapses by itself when the shift starts (FR-OPN-03 AC3). There is no lapse job and no lapsed state.
+- `shifts`: `switch_requested_at` (instant, null). The requester is always the shift's own employee, so no separate column is kept. A request is active only while the shift has not started, so it lapses by itself when the shift starts (FR-OPN-03 AC3). There is no lapse job and no lapsed state.
 - `organisation_settings`: `give_up_mode` (`switch` | `unassign`, default `switch`, CHECK), `unassign_window_days` (smallint 0..60, default 2).
-- `employee_directory`: `email` (null). The refresher stores the roster's email, normalised to lower case.
+- `employee_directory`: `email` (null). The refresher stores the roster's email, normalised to lower case. Like the display fields it is replaced on every refresh and used only to address emails (DR-02 as amended in v0.4).
 - `notification_outbox`: `audience` (`employee` | `managers`, default `employee`), `attempts` (smallint, default 0), `last_error` (text, null). A row addresses one employee (`employee_ref`) or the Planning Manager list (`audience = 'managers'`).
-- New `notifications` (the inbox): `id` (bigserial), `organisation_id`, `recipient_email`, `kind`, `title`, `body`, `link`, `shift_id` (null), `outbox_id`, `created_at`, `read_at` (null), `emailed_at` (null), `email_attempts` (smallint, default 0), `email_next_at` (instant), `email_error` (null). Indexes: `(organisation_id, recipient_email, created_at desc)`, a partial index for unread rows, and a partial index on `email_next_at` for unsent email.
+- New `notifications` (the inbox): `id` (bigserial), `organisation_id`, exactly one of `recipient_ref` (an employee) or `recipient_email` (a Planning Manager, from the manager list), so no copy of an employee's email is kept (DR-02), `kind`, `title`, `body`, `link`, `shift_id` (null), `outbox_id`, `created_at`, `read_at` (null), `emailed_at` (null), `email_attempts` (smallint, default 0), `email_next_at` (instant), `email_error` (null). Indexes: `(organisation_id, recipient_ref, created_at)`, `(organisation_id, recipient_email, created_at)`, and a partial index on `email_next_at` for unsent email. A signed-in person's inbox is the rows matching their `employee_ref` or their email.
 
 ## Claiming, switching and unassigning (NFR-04)
 
@@ -47,8 +47,8 @@ Related changes:
 
 `DeliveryService.deliverDue()` runs these steps:
 
-1. **Expand.** In one transaction, select due queue rows (`deliver_after <= now`, not delivered, not cancelled) with `FOR UPDATE SKIP LOCKED LIMIT 100`. For each row, resolve the recipients: the employee's directory email, or every Planning Manager email. Render the message, insert the inbox rows, and mark the queue row delivered. A row whose employee has no email is marked delivered with `last_error` set and no inbox row. A rendering failure increments `attempts`; after 5 attempts the row is marked delivered with the error recorded.
-2. **Email.** Select inbox rows with `emailed_at is null`, `email_attempts < 5` and `email_next_at <= now`, again with `FOR UPDATE SKIP LOCKED LIMIT 50`. Send each one. On failure, increment the attempts and set `email_next_at = now + 2^attempts minutes`.
+1. **Expand.** In one transaction, select due queue rows (`deliver_after <= now`, not delivered, not cancelled) with `FOR UPDATE SKIP LOCKED LIMIT 100`. For each row, resolve the recipients: the employee (`recipient_ref`), or every Planning Manager email (`recipient_email`). Render the message, insert the inbox rows, and mark the queue row delivered. A row whose employee has no email is marked delivered with `last_error` set and no inbox row. A rendering failure increments `attempts`; after 5 attempts the row is marked delivered with the error recorded.
+2. **Email.** Select inbox rows with `emailed_at is null`, `email_attempts < 5` and `email_next_at <= now`, again with `FOR UPDATE SKIP LOCKED LIMIT 50`. Address it from the directory email (employees) or the manager email. With no address, record `email_error` and stop retrying. Send each one. On failure, increment the attempts and set `email_next_at = now + 2^attempts minutes`.
 3. **Badges.** For every recipient touched in steps 1 and 2, and on mark-read, push the unread count. Batches hold at most 500 entries.
 
 Messages are rendered in one module with times in the recipient's time zone: the employee's profile zone, otherwise the organisation's. Publishing produces one notice per employee that lists their shifts (FR-PUB-01 AC1). The link points to `PUBLIC_URL` plus `/my`, or plus `/schedule` for managers.
