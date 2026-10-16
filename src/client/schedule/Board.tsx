@@ -1,12 +1,14 @@
 'use client';
 
-import type { CSSProperties, KeyboardEvent, MouseEvent, PointerEvent } from 'react';
+import { type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent, useEffect, useState } from 'react';
+import { WarningIcon } from '../icons';
 import type { Role, SchedulePayload, Shift, TimeSpan } from '../types';
 import { applyDrag, deltaFromPixels, type DragMode, snapMinutes } from './drag';
 import { assignLanes, geometry } from './layout';
-import { dayLabel, type Period } from './period';
+import { inkOn } from './ink';
+import { type Period, weekdayOf } from './period';
 import type { Row } from './rows';
-import { formatTime, toIso } from './tz';
+import { formatTime, todayIn, toIso } from './tz';
 
 export interface ShiftChange { start_at?: string; end_at?: string; employee_ref?: string | null }
 
@@ -32,9 +34,20 @@ export function Board({ data, rows, period, onOpen, onCreate, onChange }: BoardP
   const { from_at: from, to_at: to, timezone: zone } = data.period;
   const periodMs = Date.parse(to) - Date.parse(from);
   const roles = new Map(data.roles.map((r) => [r.id, r]));
+  // Each label has a part that narrow columns drop (".rest"): "09:00" becomes "09", "Wed" becomes "W".
   const columns = period.scale === 'day'
-    ? Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`)
-    : period.days.map((d) => dayLabel(d, period.scale));
+    ? Array.from({ length: 24 }, (_, h) => ({ key: String(h), weekday: '', date: String(h).padStart(2, '0'), rest: ':00' }))
+    : period.days.map((d) => ({ key: d, weekday: weekdayOf(d), date: String(Number(d.slice(8))), rest: '' }));
+  const todayColumn = period.scale === 'day' ? -1 : period.days.indexOf(todayIn(zone));
+
+  // The current-time line moves once a minute.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const nowAt = (now - Date.parse(from)) / periodMs;
+  const showNow = nowAt >= 0 && nowAt <= 1;
 
   function startGesture(event: PointerEvent<HTMLDivElement>, shift: Shift) {
     if (event.button !== 0 || !onChange) return;
@@ -110,7 +123,8 @@ export function Board({ data, rows, period, onOpen, onCreate, onChange }: BoardP
     const g = geometry(shift.start_at, shift.end_at, from, to);
     if (!g) return null;
     const role: Role | undefined = shift.role_id ? roles.get(shift.role_id) : undefined;
-    const label = `${formatTime(shift.start_at, zone)}–${formatTime(shift.end_at, zone)}${role ? ` ${role.name}` : ''}`;
+    const [startTime, endTime] = [formatTime(shift.start_at, zone), formatTime(shift.end_at, zone)];
+    const label = `${startTime}–${endTime}${role ? ` ${role.name}` : ''}`;
     const problems = shift.conflicts.map((c) => c.message);
     const title = [label, shift.state === 'draft' ? 'Draft, not published' : 'Published', ...problems].join('\n');
     const classes = ['shift', shift.state, problems.length && 'conflict', g.clippedStart && 'clipped-start', g.clippedEnd && 'clipped-end'].filter(Boolean).join(' ');
@@ -123,23 +137,37 @@ export function Board({ data, rows, period, onOpen, onCreate, onChange }: BoardP
         tabIndex={0}
         title={title}
         aria-label={title.replace(/\n/g, '. ')}
-        style={{ left: `${g.left}%`, width: `${g.width}%`, top: lane * 30 + 4, ...(role ? { '--role-color': role.color } : {}) } as CSSProperties}
+        style={{ left: `${g.left}%`, width: `${g.width}%`, '--lane': lane, ...(role ? { '--role-color': role.color, '--role-ink': inkOn(role.color) } : {}) } as CSSProperties}
         onPointerDown={(e) => startGesture(e, shift)}
         onKeyDown={(e) => keyOnShift(e, shift)}
       >
         <span className="grip start" data-grip="resize-start" />
-        {problems.length > 0 && '⚠ '}
-        {label}
+        {problems.length > 0 && <WarningIcon />}
+        {/* A short bar drops the role, then the end time, rather than cutting a time in half. */}
+        <span className="time">{startTime}<span className="end">–{endTime}</span></span>
+        {role && <span className="role">{role.name}</span>}
         <span className="grip end" data-grip="resize-end" />
       </div>
     );
   };
 
   return (
-    <div className="board" role="region" aria-label="Schedule">
+    <div
+      className={['board', `scale-${period.scale}`, todayColumn >= 0 && 'has-today', showNow && 'has-now'].filter(Boolean).join(' ')}
+      role="region"
+      aria-label="Schedule"
+      style={{ '--today': todayColumn, ...(showNow ? { '--now': `${nowAt * 100}%` } : {}) } as CSSProperties}
+    >
       <div className="row head">
         <div className="cell label">{rows.some((r) => r.kind === 'header') ? 'Role / employee' : 'Employee'}</div>
-        <div className="track cols" style={{ '--cols': columns.length } as CSSProperties}>{columns.map((c, i) => <div key={i}>{c}</div>)}</div>
+        <div className="track cols" style={{ '--cols': columns.length } as CSSProperties}>
+          {columns.map((c, i) => (
+            <div key={c.key} className={i === todayColumn ? 'today' : undefined} aria-current={i === todayColumn ? 'date' : undefined}>
+              {c.weekday && <span className="weekday">{c.weekday[0]}<span className="rest">{c.weekday.slice(1)}</span></span>}
+              <span className="date">{c.date}{c.rest && <span className="rest">{c.rest}</span>}</span>
+            </div>
+          ))}
+        </div>
         <div className="cell hours">Hours</div>
       </div>
       {rows.map((row) => {
@@ -161,7 +189,7 @@ export function Board({ data, rows, period, onOpen, onCreate, onChange }: BoardP
             <div className="track" data-track style={{ '--cols': columns.length, '--lanes': count } as CSSProperties} onClick={(ev) => clickTrack(ev, rowRef)}>
               {e && !e.flexible && e.working_intervals.map((i, n) => band(i, 'work', '', `w${n}`))}
               {e?.unavailable.map((u, n) => band(u, `away ${u.kind}`, u.label, `u${n}`))}
-              {row.shifts.map((s) => bar(s, lanes.get(s.id) ?? 0))}
+              <div className="lanes">{row.shifts.map((s) => bar(s, lanes.get(s.id) ?? 0))}</div>
             </div>
             <div className="cell hours">
               {e && (
@@ -169,7 +197,7 @@ export function Board({ data, rows, period, onOpen, onCreate, onChange }: BoardP
                   {e.allocated_hours.toFixed(1)} / {e.available_hours === null ? 'flexible' : e.available_hours.toFixed(1)} h
                   {e.over_allocated_days.length > 0 && (
                     <span className="over" title={`Over-allocated on ${e.over_allocated_days.join(', ')}`}>
-                      ⚠ {e.over_allocated_days.length} day{e.over_allocated_days.length > 1 ? 's' : ''} over
+                      <WarningIcon /> {e.over_allocated_days.length} day{e.over_allocated_days.length > 1 ? 's' : ''} over
                     </span>
                   )}
                 </>

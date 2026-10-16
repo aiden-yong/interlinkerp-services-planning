@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, query } from '../api';
 import { useFeedback } from '../feedback';
+import { Segmented } from '../Segmented';
+import { Stepper } from '../Stepper';
 import type { Me, SchedulePayload, Shift } from '../types';
 import { Board, type ShiftChange } from './Board';
 import { newShiftTimes, publishSummary } from './drag';
@@ -11,6 +13,8 @@ import { buildRows, type Filters, type GroupBy, NO_FILTERS } from './rows';
 import { ShiftDialog } from './ShiftDialog';
 import { saveShift, type ShiftForm, shiftToForm, STALE_MESSAGE } from './shiftForm';
 import { todayIn } from './tz';
+
+const SCALES = [{ value: 'day', label: 'Day' }, { value: 'week', label: 'Week' }, { value: 'month', label: 'Month' }] as const satisfies readonly { value: Scale; label: string }[];
 
 export function SchedulePage({ me }: { me: Me }) {
   const { confirm, toast } = useFeedback();
@@ -99,13 +103,14 @@ export function SchedulePage({ me }: { me: Me }) {
   return (
     <section className="schedule">
       <div className="toolbar">
-        <button type="button" aria-label="Previous period" onClick={() => setAnchor(step(scale, anchor, -1))}>‹</button>
-        <button type="button" onClick={() => setAnchor(todayIn(zone))}>Today</button>
-        <button type="button" aria-label="Next period" onClick={() => setAnchor(step(scale, anchor, 1))}>›</button>
-        <span className="period">{periodLabel(period)}</span>
-        <select aria-label="Scale" value={scale} onChange={(e) => setScale(e.target.value as Scale)}>
-          <option value="day">Day</option><option value="week">Week</option><option value="month">Month</option>
-        </select>
+        <Stepper unit="period" nowLabel="Today" onStep={(d) => setAnchor(step(scale, anchor, d))} onNow={() => setAnchor(todayIn(zone))} />
+        <h1 className="period">{periodLabel(period)}</h1>
+        <span className="spacer" />
+        <Segmented label="Scale" value={scale} segments={SCALES} onChange={setScale} />
+        <button type="button" onClick={() => openNew(null, null)}>Add shift</button>
+        <button type="button" className="primary" disabled={busy} onClick={publish}>Publish</button>
+      </div>
+      <div className="filters">
         <select aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}>
           <option value="employee">By employee</option><option value="role">By role</option>
         </select>
@@ -121,9 +126,6 @@ export function SchedulePage({ me }: { me: Me }) {
           <option value="">All shifts</option><option value="draft">Drafts</option><option value="published">Published</option><option value="open">Open shifts</option>
         </select>
         <input type="search" aria-label="Find employee" placeholder="Find employee" value={filters.name} onChange={(e) => set({ name: e.target.value })} />
-        <span className="spacer" />
-        <button type="button" onClick={() => openNew(null, null)}>Add shift</button>
-        <button type="button" className="primary" disabled={busy} onClick={publish}>Publish</button>
       </div>
       {data?.directory_stale && <p className="notice">Employee names may be out of date because the roster could not be refreshed. Planning still works.</p>}
       {error && <p className="form-error">{error}</p>}
