@@ -1,0 +1,12 @@
+/* My Planning: available shifts and the give-up control. Theme tokens come from globals.css. */
+
+.available { margin-top: 24px; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm), var(--edge); }
+.available h2 { margin: 0 0 6px; font-size: 1.0625rem; font-weight: 650; letter-spacing: -0.01em; }
+.available ul { margin: 0; padding: 0; list-style: none; }
+.available li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.available li:last-child { border-bottom: 0; padding-bottom: 0; }
+.available .when { font-variant-numeric: tabular-nums; }
+.available .muted { color: var(--muted); }
+
+.card .give-up { margin-top: 6px; min-height: 28px; padding: 0 10px; font-size: 0.75rem; }
+.card .switch-flag { margin-top: 4px; font-size: 0.75rem; font-weight: 600; color: var(--accent); }

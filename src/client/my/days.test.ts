@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { MyShift } from '../types';
 import { groupByDay } from './days';
 
-const shift = (id: string, start: string, end: string): MyShift => ({ id, role_id: null, start_at: start, end_at: end, break_minutes: 0, allocated_hours: 8, note: null });
+const shift = (id: string, start: string, end: string): MyShift => ({ id, role_id: null, start_at: start, end_at: end, break_minutes: 0, allocated_hours: 8, note: null, switch_requested: false });
 const days = ['2026-10-12', '2026-10-13', '2026-10-14'];
 
 describe('groupByDay', () => {
