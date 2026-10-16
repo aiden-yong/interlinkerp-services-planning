@@ -56,6 +56,9 @@ export class DeliveryService {
     const { db, org, clock } = this.d;
     const now = clock.now();
     const touched: Touched = { refs: new Set(), emails: new Set() };
+    // Cheap check first (an optimisation only: the select inside the transaction stays authoritative).
+    const due = and(eq(notificationOutbox.organisationId, org), isNull(notificationOutbox.deliveredAt), isNull(notificationOutbox.cancelledAt), lte(notificationOutbox.deliverAfter, now));
+    if ((await db.select({ id: notificationOutbox.id }).from(notificationOutbox).where(due).limit(1)).length === 0) return touched;
     // Reference data comes through the pool BEFORE the transaction, so the transaction (which holds a connection and row locks) never waits on the pool.
     const [directory, profiles, managers, orgZone] = await Promise.all([this.d.directory.all(), this.d.profiles.all(), this.d.managers.all(), this.d.settings.timezone()]);
     const names = new Map(directory.map((e) => [e.employeeRef, e.displayName]));
@@ -139,18 +142,19 @@ export class DeliveryService {
     return sent;
   }
 
-  /** Step 3, also called after mark-read. A person's count covers their employee and manager notices. Never throws. */
-  async pushBadges(touched: Touched): Promise<void> {
-    if (!this.d.badges.enabled || (touched.refs.size === 0 && touched.emails.size === 0)) return;
+  /** Step 3, also called after mark-read. A person's count covers their employee and manager notices. Never throws; false means the push did not succeed and should be retried. */
+  async pushBadges(touched: Touched): Promise<boolean> {
+    if (!this.d.badges.enabled || (touched.refs.size === 0 && touched.emails.size === 0)) return true;
     try {
       const refEmails = await this.d.directory.emailsFor([...touched.refs]);
       const emails = [...new Set([...touched.emails, ...refEmails.values()])];
       const refOf = await this.d.directory.refsFor(emails);
       const badges = [];
       for (const email of emails) badges.push({ email, count: await this.d.inbox.unreadCount({ ref: refOf.get(email) ?? null, email }) });
-      await this.d.badges.publish(badges);
+      return await this.d.badges.publish(badges);
     } catch (error) {
       this.d.log(`[badges] could not compute counts: ${scrubAddresses(error instanceof Error ? error.message : String(error))}`);
+      return false;
     }
   }
 

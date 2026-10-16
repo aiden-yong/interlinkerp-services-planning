@@ -227,3 +227,21 @@ describe('delivery: badge after mark-read', () => {
     expect(h.badges.published.at(-1)).toEqual([{ email: 'ana@example.com', count: 0 }]);
   });
 });
+
+describe('delivery: badge retry', () => {
+  it('keeps a badge pending when the gateway refuses it, and pushes it on the next kick', async () => {
+    await h.addEmployee('E1', 'Ana Lim', null, null, 'ana@example.com');
+    let accept = false;
+    const published: unknown[][] = [];
+    const badges = { enabled: true, publish: async (b: unknown[]) => { published.push(b); return accept; } };
+    const app = new App({ ...h.app.deps, logger: () => {}, badges });
+    app.deliveryTrigger().noteBadges({ refs: new Set(['E1']), emails: new Set() });
+    await app.deliveryTrigger().kick();
+    expect(published).toHaveLength(1);
+    accept = true;
+    await app.deliveryTrigger().kick();
+    expect(published).toHaveLength(2);
+    await app.deliveryTrigger().kick();
+    expect(published).toHaveLength(2);
+  });
+});

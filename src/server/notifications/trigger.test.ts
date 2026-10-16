@@ -2,14 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { FixedClock } from '../test/fakes';
 import { DeliveryTrigger } from './trigger';
 
-function setup(result: () => Promise<unknown> = async () => ({}), push: (refs: string[]) => Promise<void> = async () => {}) {
+type Push = (refs: string[]) => Promise<boolean>;
+
+function setup(result: () => Promise<unknown> = async () => ({}), push: Push = async () => true) {
   const clock = FixedClock.at('2026-10-13T02:00:00Z');
   const logs: string[] = [];
   const pushed: string[][] = [];
   let runs = 0;
   const trigger = new DeliveryTrigger({
     deliverDue: () => { runs++; return result(); },
-    pushBadges: async (t) => { pushed.push([...t.refs, ...t.emails]); await push([...t.refs]); },
+    pushBadges: async (t) => { pushed.push([...t.refs, ...t.emails]); return push([...t.refs]); },
   }, clock, (l) => logs.push(l));
   return { trigger, clock, logs, pushed, runs: () => runs };
 }
@@ -52,16 +54,17 @@ describe('DeliveryTrigger', () => {
     expect(s.pushed).toEqual([['E1', 'ana@example.com']]);
   });
 
-  it('notes badges again when pushing them failed, so the next kick retries', async () => {
+  it.each([
+    ['resolves false', async () => false],
+    ['rejects', async (): Promise<boolean> => { throw new Error('gateway down'); }],
+  ])('notes badges again when the push %s, so the next kick retries once', async (_name, failing) => {
     let fail = true;
-    const s = setup(undefined, async () => { if (fail) throw new Error('gateway down'); });
+    const s = setup(undefined, async () => (fail ? failing() : true));
     s.trigger.noteBadges({ refs: new Set(['E1']), emails: new Set() });
     await s.trigger.kick();
-    expect(s.logs.join()).toContain('gateway down');
     fail = false;
     await s.trigger.kick();
-    expect(s.pushed).toEqual([['E1'], ['E1']]);
     await s.trigger.kick();
-    expect(s.pushed).toHaveLength(2);
+    expect(s.pushed).toEqual([['E1'], ['E1']]);
   });
 });

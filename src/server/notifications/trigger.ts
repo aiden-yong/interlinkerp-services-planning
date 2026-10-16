@@ -18,7 +18,7 @@ export class DeliveryTrigger {
   private pending: Touched = { refs: new Set(), emails: new Set() };
 
   constructor(
-    private readonly delivery: { deliverDue(): Promise<unknown>; pushBadges(touched: Touched): Promise<void> },
+    private readonly delivery: { deliverDue(): Promise<unknown>; pushBadges(touched: Touched): Promise<boolean> },
     private readonly clock: Clock,
     private readonly log: Logger,
     private readonly minGapMs = MIN_GAP_MS,
@@ -37,10 +37,15 @@ export class DeliveryTrigger {
     if (this.pending.refs.size === 0 && this.pending.emails.size === 0) return Promise.resolve();
     const touched = this.pending;
     this.pending = { refs: new Set(), emails: new Set() };
-    return this.delivery.pushBadges(touched).catch((error: unknown) => {
-      this.log(`[badges] push failed: ${message(error)}`);
-      this.noteBadges(touched); // the next kick retries them
-    });
+    return this.delivery.pushBadges(touched).then(
+      (ok) => {
+        if (!ok) this.noteBadges(touched); // the next kick retries them
+      },
+      (error: unknown) => {
+        this.log(`[badges] push failed: ${message(error)}`);
+        this.noteBadges(touched);
+      },
+    );
   }
 
   private sweep(): Promise<void> {
