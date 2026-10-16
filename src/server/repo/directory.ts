@@ -1,4 +1,4 @@
-import { and, eq, inArray, max } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, max, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { employeeDirectory } from '../db/schema';
 
@@ -53,6 +53,13 @@ export class DirectoryRepository {
   async isEmpty(): Promise<boolean> {
     const rows = await this.db.select({ ref: employeeDirectory.employeeRef }).from(employeeDirectory).where(eq(employeeDirectory.organisationId, this.org)).limit(1);
     return rows.length === 0;
+  }
+
+  /** False until a directory refresh has stored at least one work email (right after the email column was added). */
+  async hasAnyEmail(): Promise<boolean> {
+    const rows = await this.db.select({ one: sql<number>`1` }).from(employeeDirectory)
+      .where(and(eq(employeeDirectory.organisationId, this.org), isNotNull(employeeDirectory.email))).limit(1);
+    return rows.length > 0;
   }
 
   async lastFetchedAt(): Promise<Date | null> {

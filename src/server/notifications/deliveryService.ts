@@ -122,9 +122,16 @@ export class DeliveryService {
     const byId = (id: number) => and(eq(notifications.organisationId, org), eq(notifications.id, id));
     const addresses = await this.d.directory.emailsFor(leased.flatMap((n) => (n.recipientRef ? [n.recipientRef] : [])));
     let sent = 0;
+    let directoryHasEmails: boolean | undefined;
     for (const n of leased) {
       const to = n.recipientEmail ?? (n.recipientRef ? addresses.get(n.recipientRef) : undefined);
       if (!to) {
+        // Right after the email column was added no address is known yet: wait for the next directory refresh instead of giving up.
+        directoryHasEmails ??= await this.d.directory.hasAnyEmail();
+        if (!directoryHasEmails) {
+          await db.update(notifications).set({ emailAttempts: n.emailAttempts, emailNextAt: new Date(clock.now().getTime() + 3600_000) }).where(byId(n.id));
+          continue;
+        }
         await db.update(notifications).set({ emailAttempts: MAX_EMAIL_ATTEMPTS, emailError: 'No email address on the roster.' }).where(byId(n.id));
         continue;
       }

@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import { notificationOutbox, notifications } from '../db/schema';
+import { employeeDirectory, notificationOutbox, notifications } from '../db/schema';
 import { ManagerRepository } from '../repo/managers';
 import { Outbox } from '../repo/outbox';
 import { App } from '../app';
@@ -104,7 +104,8 @@ describe('delivery: email and badges', () => {
   });
 
   it('records why an email cannot be sent and does not retry it (Review Focus 2)', async () => {
-    await h.addEmployee('E1', 'Ana Lim'); // no email on the roster
+    await h.addEmployee('E1', 'Ana Lim'); // no email on the roster, while a colleague has one
+    await h.addEmployee('E2', 'Bo Tan', null, null, 'bo@example.com');
     await publishedFor('E1');
     await h.app.delivery().deliverDue();
     h.clock.advance(3600);
@@ -112,6 +113,23 @@ describe('delivery: email and badges', () => {
     const [row] = await inbox();
     expect(row).toMatchObject({ emailedAt: null, emailAttempts: 5, emailError: 'No email address on the roster.' });
     expect(h.mailer.sent).toEqual([]);
+  });
+
+  it('waits an hour, without counting a try, while the directory has no addresses at all (first deploy)', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    await publishedFor('E1');
+    await h.app.delivery().deliverDue();
+    const [first] = await inbox();
+    expect(first).toMatchObject({ emailedAt: null, emailAttempts: 0, emailError: null });
+    expect(first!.emailNextAt).toEqual(new Date(h.clock.now().getTime() + 3600_000));
+    h.clock.advance(1800);
+    await h.app.delivery().deliverDue();
+    expect(h.mailer.sent).toEqual([]);
+    await h.database.db.update(employeeDirectory).set({ email: 'ana@example.com' }).where(eq(employeeDirectory.employeeRef, 'E1'));
+    h.clock.advance(1800);
+    await h.app.delivery().deliverDue();
+    expect(h.mailer.sent.map((m) => m.to)).toEqual(['ana@example.com']);
+    expect((await inbox())[0]).toMatchObject({ emailAttempts: 1, emailError: null });
   });
 
   it('retries a failed email with growing delays and gives up after five tries', async () => {
