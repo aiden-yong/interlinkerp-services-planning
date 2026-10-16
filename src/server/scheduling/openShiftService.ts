@@ -72,7 +72,7 @@ export class OpenShiftService {
       roles,
       open: open.filter((s) => allowed.has(s.id)).map(shiftToMyApi),
       up_for_switch: takeable.filter((s) => allowed.has(s.id)).map((s) => ({
-        ...shiftToMyApi(s), note: null, owner_ref: s.employeeRef, owner_name: names.get(s.employeeRef!) ?? 'Unknown employee',
+        ...shiftToMyApi(s), note: null, owner_name: names.get(s.employeeRef!) ?? 'Unknown employee',
       })),
     };
   }
@@ -85,6 +85,7 @@ export class OpenShiftService {
     const early = await this.shifts.find(id);
     if (!early || early.state !== 'published') throw HttpError.notFound('No published shift with that id.');
     if (early.start <= now) throw started();
+    if (early.employeeRef === ref) throw HttpError.conflict('OWN_SHIFT', 'This is already your shift.');
     if (early.employeeRef) throw taken();
     return this.unit.run(async (scope) => {
       await scope.lockEmployee(ref);

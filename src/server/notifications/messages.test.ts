@@ -16,26 +16,26 @@ const ctx = {
 
 describe('messages', () => {
   it('formats a span in the recipient zone, with the end date only when it differs', () => {
-    expect(formatSpan(new Date('2026-10-14T01:00:00Z'), new Date('2026-10-14T09:00:00Z'), KL)).toBe('Wed 14 Oct, 09:00–17:00');
-    expect(formatSpan(new Date('2026-10-15T14:00:00Z'), new Date('2026-10-15T22:00:00Z'), KL)).toBe('Thu 15 Oct, 22:00 – Fri 16 Oct, 06:00');
+    expect(formatSpan(new Date('2026-10-14T01:00:00Z'), new Date('2026-10-14T09:00:00Z'), KL)).toBe('Wed 14 Oct, 09:00–17:00 GMT+8');
+    expect(formatSpan(new Date('2026-10-15T14:00:00Z'), new Date('2026-10-15T22:00:00Z'), KL)).toBe('Thu 15 Oct, 22:00 – Fri 16 Oct, 06:00 GMT+8');
   });
 
   it('lists every published shift in one notice (FR-PUB-01 AC1)', () => {
     expect(render('schedule_published', { shift_ids: ['s1', 's2'] }, ctx)).toEqual({
       title: 'Your 2 shifts were published',
-      body: 'Wed 14 Oct, 09:00–17:00\nThu 15 Oct, 22:00 – Fri 16 Oct, 06:00',
+      body: 'Wed 14 Oct, 09:00–17:00 GMT+8\nThu 15 Oct, 22:00 – Fri 16 Oct, 06:00 GMT+8',
       link: 'https://planning.example.com/my',
     });
   });
 
   it('names people in manager notices and links managers to the schedule (FR-NTF-03)', () => {
     expect(render('shift_switched', { shift_id: 's1', from_ref: 'E1', to_ref: 'E2' }, ctx)).toEqual({
-      title: 'Shift switched', body: "Bo Tan took over Ana Lim's shift on Wed 14 Oct, 09:00–17:00.", link: 'https://planning.example.com/schedule',
+      title: 'Shift switched', body: "Bo Tan took over Ana Lim's shift on Wed 14 Oct, 09:00–17:00 GMT+8.", link: 'https://planning.example.com/schedule',
     });
   });
 
   it('renders a cancelled shift from the times saved in the notice (FR-NTF-02)', () => {
-    expect(render('shift_deleted', { shift_id: 'gone', start_at: '2026-10-14T01:00:00Z', end_at: '2026-10-14T09:00:00Z' }, ctx).body).toBe('Wed 14 Oct, 09:00–17:00');
+    expect(render('shift_deleted', { shift_id: 'gone', start_at: '2026-10-14T01:00:00Z', end_at: '2026-10-14T09:00:00Z' }, ctx).body).toBe('Wed 14 Oct, 09:00–17:00 GMT+8');
   });
 
   it('throws instead of rendering a nonsense message (the sweep retries the row)', () => {

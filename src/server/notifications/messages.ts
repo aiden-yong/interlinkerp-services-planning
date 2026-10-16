@@ -25,14 +25,15 @@ export function shiftIdsOf(payload: Record<string, unknown>): string[] {
 }
 
 /**
- * "Wed 14 Oct, 09:00–17:00" in `zone`; the end date is shown only when it falls on another day.
+ * "Wed 14 Oct, 09:00–17:00 GMT+8" in `zone`; the end date is shown only when it falls on another day, and the zone name closes the span once.
  * The locale is pinned to English so emails and tests never depend on the server's default language.
  */
 export function formatSpan(start: Date, end: Date, zone: string): string {
   const s = DateTime.fromJSDate(start, { zone }).setLocale('en');
   const e = DateTime.fromJSDate(end, { zone }).setLocale('en');
   const day = s.toFormat('ccc d LLL');
-  return s.hasSame(e, 'day') ? `${day}, ${s.toFormat('HH:mm')}–${e.toFormat('HH:mm')}` : `${day}, ${s.toFormat('HH:mm')} – ${e.toFormat('ccc d LLL, HH:mm')}`;
+  const span = s.hasSame(e, 'day') ? `${day}, ${s.toFormat('HH:mm')}–${e.toFormat('HH:mm')}` : `${day}, ${s.toFormat('HH:mm')} – ${e.toFormat('ccc d LLL, HH:mm')}`;
+  return `${span} ${s.toFormat('ZZZZ')}`;
 }
 
 /** One place for every notice's wording (FR-NTF-01..03). Throws on an unknown kind or a missing shift; the sweep retries. */

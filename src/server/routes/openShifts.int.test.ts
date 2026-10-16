@@ -101,6 +101,14 @@ describe('open shifts', () => {
     expect(results.find((r) => r.status === 409)!.body.error.code).toBe('SHIFT_TAKEN');
   });
 
+  it('answers OWN_SHIFT when claiming a shift that is already yours', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    const id = await published('E1', '2026-10-14T09:00:00+08:00', '2026-10-14T17:00:00+08:00');
+    h.asEmployee('E1');
+    const { status, body } = await h.call('POST', '/api/shift-claims', { shift_id: id });
+    expect([status, body.error.code, body.error.message]).toEqual([409, 'OWN_SHIFT', 'This is already your shift.']);
+  });
+
   it('never gives one employee two overlapping shifts claimed at the same moment', async () => {
     await h.addEmployee('E1', 'Ana Lim');
     const a = await published(null, '2026-10-14T09:00:00+08:00', '2026-10-14T17:00:00+08:00');
@@ -164,7 +172,8 @@ describe('open shifts', () => {
     h.asEmployee('E1');
     const { body } = await h.call('GET', '/api/my/open-shifts', undefined, WEEK);
     expect(body.up_for_switch).toHaveLength(1);
-    expect(body.up_for_switch[0]).toMatchObject({ id, owner_ref: 'E2', note: null });
+    expect(body.up_for_switch[0]).toMatchObject({ id, owner_name: 'Bo Tan', note: null });
+    expect(body.up_for_switch[0]).not.toHaveProperty('owner_ref');
   });
 
   describe('a manager changing the shift while it is being claimed', () => {

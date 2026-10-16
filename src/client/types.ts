@@ -65,7 +65,7 @@ export interface MyShift { id: string; role_id: string | null; start_at: string;
 export interface MyShiftsPayload { timezone: string; from: string; to: string; roles: Role[]; shifts: MyShift[] }
 
 export interface GiveUp { mode: 'switch' | 'unassign'; window_days: number }
-export interface SwitchableShift extends MyShift { owner_ref: string; owner_name: string }
+export interface SwitchableShift extends MyShift { owner_name: string }
 export interface OpenShiftsPayload { timezone: string; from: string; to: string; give_up: GiveUp; roles: Role[]; open: MyShift[]; up_for_switch: SwitchableShift[] }
 
 export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';

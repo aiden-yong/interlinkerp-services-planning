@@ -53,7 +53,7 @@ describe('AvailableShifts', () => {
     const fetchMock = vi.fn(async () => new Response('{}', { status: 201 }));
     vi.stubGlobal('fetch', fetchMock);
     const onChanged = vi.fn(async () => {});
-    const withSwitch = { ...data, open: [], up_for_switch: [{ ...data.open[0], id: 'u1', owner_ref: 'E2', owner_name: 'Sam' }] };
+    const withSwitch = { ...data, open: [], up_for_switch: [{ ...data.open[0], id: 'u1', owner_name: 'Sam' }] };
     render(<FeedbackProvider><AvailableShifts data={withSwitch} onChanged={onChanged} /></FeedbackProvider>);
     expect(screen.getByRole('list')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Take shift Wed 14 Oct 09:00-17:00 from Sam' }));
