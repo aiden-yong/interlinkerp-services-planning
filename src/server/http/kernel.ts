@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Principal } from '../auth/principal';
 import { requestContext } from '../support/requestContext';
+import { redactAddresses } from '../support/scrub';
 import { HttpError } from './errors';
 import { envelope, json } from './responses';
 import type { Route, Router } from './router';
@@ -70,7 +71,7 @@ export class Kernel {
           response = json(error.status, envelope(error.code, error.message, cid, error.details), error.headers);
         } else {
           const detail = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error);
-          this.log(`[planning-api] ${cid} ${detail}`);
+          this.log(`[planning-api] ${cid} ${redactAddresses(detail)}`);
           response = json(500, envelope('INTERNAL_ERROR', 'An unexpected error occurred.', cid, null));
         }
       }

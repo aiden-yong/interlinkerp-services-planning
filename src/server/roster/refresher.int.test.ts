@@ -16,6 +16,25 @@ function setup() {
 }
 
 describe('DirectoryRefresher', () => {
+  it('keeps employee addresses out of the log when the write or the roster fails (DR-02)', async () => {
+    const lines: string[] = [];
+    const clock = FixedClock.at('2026-10-13T00:00:00Z');
+    const directory = new DirectoryRepository(database.db, ORG);
+    directory.replaceAll = async () => {
+      throw new Error('Failed query: insert ...\nparams: u1,Ana,ana@example.com');
+    };
+    const roster = new FakeRoster();
+    roster.add('u1', 'Ana Lim', 'ana@example.com');
+    expect(await new DirectoryRefresher(roster, new FakeDepartments(), directory, clock, (l) => lines.push(l)).refresh()).toBe(false);
+    roster.listPlannable = async () => {
+      throw new Error('bad row ana@example.com');
+    };
+    expect(await new DirectoryRefresher(roster, new FakeDepartments(), directory, clock, (l) => lines.push(l)).refresh()).toBe(false);
+    expect(lines).toHaveLength(2);
+    expect(lines.join('\n')).not.toContain('@example.com');
+    expect(lines.join('\n')).toContain('[address]');
+  });
+
   it('stores people with department names', async () => {
     const { roster, departments, directory, clock, refresher } = setup();
     roster.add('u1', 'Ana Lim', 'ana@x.test', 'DEP-1');

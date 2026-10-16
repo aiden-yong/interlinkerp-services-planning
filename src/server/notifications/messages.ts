@@ -17,10 +17,7 @@ export interface RenderContext {
   publicUrl: string;
 }
 
-/** DR-02: error text saved to the database never keeps an email address (SMTP errors often quote the recipient). */
-export function scrubAddresses(text: string): string {
-  return text.replace(/[^\s@<>"'(),;:]+@[^\s@<>"'(),;:]+/g, '[address]').slice(0, 500);
-}
+export { scrubAddresses } from '../support/scrub';
 
 export function shiftIdsOf(payload: Record<string, unknown>): string[] {
   if (Array.isArray(payload.shift_ids)) return payload.shift_ids.filter((id): id is string => typeof id === 'string');

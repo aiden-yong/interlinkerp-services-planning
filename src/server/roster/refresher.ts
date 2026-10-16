@@ -1,6 +1,7 @@
 import type { Logger } from '../http/kernel';
 import type { DirectoryRepository, DirectoryRow } from '../repo/directory';
 import type { Clock } from '../support/clock';
+import { scrubAddresses } from '../support/scrub';
 import type { DepartmentNames, Roster, RosterPerson } from './roster';
 
 export const DIRECTORY_MAX_AGE_SECONDS = 86_400;
@@ -65,7 +66,7 @@ export class DirectoryRefresher {
     try {
       people = await this.roster.listPlannable();
     } catch (error) {
-      this.log(`[planning-api] roster refresh failed: ${(error as Error).message}`);
+      this.log(`[planning-api] roster refresh failed: ${scrubAddresses((error as Error).message)}`);
       return false;
     }
     try {
@@ -75,14 +76,14 @@ export class DirectoryRefresher {
         return false;
       }
     } catch (error) {
-      this.log(`[planning-api] directory read failed: ${(error as Error).message}`);
+      this.log(`[planning-api] directory read failed: ${scrubAddresses((error as Error).message)}`);
       return false;
     }
     let names = new Map<string, string>();
     try {
       names = await this.departments.all();
     } catch (error) {
-      this.log(`[planning-api] department names unavailable: ${(error as Error).message}`);
+      this.log(`[planning-api] department names unavailable: ${scrubAddresses((error as Error).message)}`);
     }
     const { rows, skipped } = toDirectoryRows(people, names);
     if (skipped > 0) this.log(`[planning-api] skipped ${skipped} directory row(s) with over-long or invalid fields.`);
@@ -90,7 +91,7 @@ export class DirectoryRefresher {
       await this.directory.replaceAll(rows, this.clock.now());
       return true;
     } catch (error) {
-      this.log(`[planning-api] directory write failed: ${(error as Error).message}`);
+      this.log(`[planning-api] directory write failed: ${scrubAddresses((error as Error).message)}`);
       return false;
     }
   }

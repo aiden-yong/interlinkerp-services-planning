@@ -44,6 +44,18 @@ describe('Kernel', () => {
     expect(logged[0]).toContain('secret_table');
   });
 
+  it('scrubs email addresses from the logged 500 and never returns them (DR-02)', async () => {
+    const r = new Router();
+    r.add('GET', '/boom', 'public', 'Boom', () => {
+      throw new Error('Failed query: insert\nparams: ana@example.com');
+    });
+    const logged: string[] = [];
+    const response = await kernel(r, open, logged).handle(req('/boom'));
+    expect(await response.text()).not.toContain('example.com');
+    expect(logged[0]).toContain('[address]');
+    expect(logged[0]).not.toContain('@example.com');
+  });
+
   it('passes the principal to the handler and appends guard cookies', async () => {
     const r = new Router();
     r.add('GET', '/me', 'person', 'Me', ({ principal }) => json(200, { who: principal?.email }));
