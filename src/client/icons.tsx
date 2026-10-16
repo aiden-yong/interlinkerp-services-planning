@@ -40,6 +40,13 @@ export const WarningIcon = () => (
   </Icon>
 );
 
+export const BellIcon = () => (
+  <Icon>
+    <path d="M3.5 11.25h9l-1-1.5V6.5a3.5 3.5 0 0 0-7 0v3.25l-1 1.5Z" />
+    <path d="M6.75 13.5a1.4 1.4 0 0 0 2.5 0" />
+  </Icon>
+);
+
 export const PlanningMark = () => (
   <Icon size={18}>
     <rect x="2" y="3" width="12" height="11" rx="2" />

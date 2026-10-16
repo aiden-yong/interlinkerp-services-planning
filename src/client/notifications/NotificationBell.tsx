@@ -3,6 +3,7 @@
 import './notifications.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { BellIcon } from '../icons';
 import type { NotificationItem, NotificationsPayload } from '../types';
 import { unreadLabel } from './inbox';
 
@@ -63,14 +64,16 @@ export function NotificationBell() {
 
   async function openItem(item: NotificationItem) {
     if (!item.read_at) await markRead({ ids: [item.id] });
-    window.location.assign(item.link);
+    // Path and query only, so a preview deployment never jumps to the production host named in the link.
+    const target = new URL(item.link, window.location.origin);
+    window.location.assign(target.pathname + target.search);
   }
 
   const unread = data?.unread_count ?? 0;
   return (
     <div className="bell" ref={rootRef}>
       <button type="button" className="bell-button" ref={buttonRef} aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'} aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span aria-hidden="true">🔔</span>
+        <BellIcon />
         {unread > 0 && <span className="bell-count" aria-hidden="true">{unreadLabel(unread)}</span>}
       </button>
       {open && (

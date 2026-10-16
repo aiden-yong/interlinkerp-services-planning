@@ -51,6 +51,18 @@ describe('SchedulePage publish with open-shift notices (FR-OPN-04)', () => {
     await waitFor(() => expect((screen.getByLabelText('Tell eligible employees about open shifts') as HTMLInputElement).checked).toBe(false));
   });
 
+  it('mentions the open-shift notices in the confirm dialog only when the box is ticked', async () => {
+    setup(new Response(JSON.stringify({ published: 1, open_shift_notices: 0 }), { status: 200 }));
+    await screen.findByRole('region', { name: 'Schedule' });
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    expect(within(await screen.findByRole('dialog')).queryByText('Eligible employees will also be told about open shifts.')).toBeNull();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    fireEvent.click(screen.getByLabelText('Tell eligible employees about open shifts'));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    expect(await within(await screen.findByRole('dialog')).findByText('Eligible employees will also be told about open shifts.')).toBeTruthy();
+  });
+
   it('keeps the existing error handling when the publish call fails', async () => {
     const { posts } = setup(new Response(JSON.stringify({ error: { code: 'BOOM', message: 'Publishing failed.' } }), { status: 500 }));
     fireEvent.click(await screen.findByLabelText('Tell eligible employees about open shifts'));

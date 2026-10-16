@@ -90,6 +90,7 @@ export function SchedulePage({ me }: { me: Me }) {
       `${summary.ids.length} draft shift${summary.ids.length === 1 ? '' : 's'} in this view will be published.`,
       `${summary.employees} employee${summary.employees === 1 ? '' : 's'} will be told about their shifts.`,
       ...(summary.open ? [`${summary.open} open shift${summary.open === 1 ? '' : 's'} will be published too.`] : []),
+      ...(notifyOpen ? ['Eligible employees will also be told about open shifts.'] : []),
     ];
     if (!(await confirm('Publish shifts?', lines, 'Publish'))) return;
     try {

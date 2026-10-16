@@ -24,7 +24,7 @@ afterEach(() => {
 const tick = () => new Promise((r) => setTimeout(r, 20));
 
 const payload = (unread: number) => ({
-  notifications: [{ id: 7, kind: 'shift_assigned', title: 'You have a new shift', body: 'Wed 14 Oct, 09:00–17:00', link: 'https://x/my', shift_id: null, created_at: '2026-10-13T02:00:00Z', read_at: null }],
+  notifications: [{ id: 7, kind: 'shift_assigned', title: 'You have a new shift', body: 'Wed 14 Oct, 09:00–17:00', link: 'https://planning.example.com/my?week=2026-10-12', shift_id: null, created_at: '2026-10-13T02:00:00Z', read_at: null }],
   unread_count: unread,
 });
 
@@ -60,7 +60,7 @@ describe('NotificationBell', () => {
     render(<NotificationBell />);
     fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }));
     fireEvent.click(screen.getByText('You have a new shift'));
-    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://x/my'));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/my?week=2026-10-12'));
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!;
     expect([post[0], JSON.parse(String(post[1]!.body))]).toEqual(['/api/notification-reads', { ids: [7] }]);
   });
@@ -71,7 +71,7 @@ describe('NotificationBell', () => {
     render(<NotificationBell />);
     fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }));
     fireEvent.click(screen.getByText('You have a new shift'));
-    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://x/my'));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/my?week=2026-10-12'));
     await tick();
     expect(rejections).toEqual([]);
   });
