@@ -1,11 +1,27 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationBell } from './NotificationBell';
+
+const rejections: unknown[] = [];
+const onRejection = (reason: unknown) => rejections.push(reason);
+const realLocation = window.location;
+const assign = vi.fn();
+
+beforeEach(() => {
+  rejections.length = 0;
+  assign.mockClear();
+  process.on('unhandledRejection', onRejection);
+  Object.defineProperty(window, 'location', { configurable: true, value: { ...realLocation, assign } });
+});
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  process.off('unhandledRejection', onRejection);
+  Object.defineProperty(window, 'location', { configurable: true, value: realLocation });
 });
+
+const tick = () => new Promise((r) => setTimeout(r, 20));
 
 const payload = (unread: number) => ({
   notifications: [{ id: 7, kind: 'shift_assigned', title: 'You have a new shift', body: 'Wed 14 Oct, 09:00–17:00', link: 'https://x/my', shift_id: null, created_at: '2026-10-13T02:00:00Z', read_at: null }],
@@ -30,6 +46,61 @@ describe('NotificationBell', () => {
   it('stays quiet when the inbox cannot load', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 500 })));
     render(<NotificationBell />);
-    expect(await screen.findByRole('button', { name: 'Notifications' })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+    await tick();
+    expect(screen.queryByText('You have a new shift')).toBeNull();
+    expect(screen.queryByText('Nothing yet.')).toBeNull();
+    expect(rejections).toEqual([]);
+  });
+
+  it('marks an unread item read then navigates to its link', async () => {
+    const fetchMock = vi.fn(async (_path: string, init?: RequestInit) =>
+      new Response(JSON.stringify(init?.method === 'POST' ? { marked: 1 } : payload(1)), { status: init?.method === 'POST' ? 201 : 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<NotificationBell />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }));
+    fireEvent.click(screen.getByText('You have a new shift'));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://x/my'));
+    const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!;
+    expect([post[0], JSON.parse(String(post[1]!.body))]).toEqual(['/api/notification-reads', { ids: [7] }]);
+  });
+
+  it('still navigates when marking read fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_path: string, init?: RequestInit) =>
+      init?.method === 'POST' ? new Response('', { status: 500 }) : new Response(JSON.stringify(payload(1)), { status: 200 })));
+    render(<NotificationBell />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }));
+    fireEvent.click(screen.getByText('You have a new shift'));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('https://x/my'));
+    await tick();
+    expect(rejections).toEqual([]);
+  });
+
+  it('closes on Escape and returns focus to the bell', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(payload(1)), { status: 200 })));
+    render(<NotificationBell />);
+    const bell = await screen.findByRole('button', { name: 'Notifications, 1 unread' });
+    fireEvent.click(bell);
+    expect(document.activeElement).toBe(screen.getByRole('dialog'));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(bell);
+  });
+
+  it('closes on an outside click but not an inside one', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(payload(1)), { status: 200 })));
+    render(<NotificationBell />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }));
+    fireEvent.pointerDown(screen.getByText('You have a new shift'));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('caps the badge at 99+', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(payload(150)), { status: 200 })));
+    render(<NotificationBell />);
+    await screen.findByRole('button', { name: 'Notifications, 150 unread' });
+    expect(document.querySelector('.bell-count')?.textContent).toBe('99+');
   });
 });

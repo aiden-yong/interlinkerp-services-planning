@@ -1,7 +1,7 @@
 'use client';
 
 import './notifications.css';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { NotificationItem, NotificationsPayload } from '../types';
 import { unreadLabel } from './inbox';
@@ -12,6 +12,9 @@ const POLL_MS = 60_000;
 export function NotificationBell() {
   const [data, setData] = useState<NotificationsPayload | null>(null);
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -31,19 +34,31 @@ export function NotificationBell() {
 
   useEffect(() => {
     if (!open) return;
-    const close = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+    panelRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setOpen(false);
+      buttonRef.current?.focus();
     };
-    window.addEventListener('keydown', close);
-    return () => window.removeEventListener('keydown', close);
+    const onPointer = (e: PointerEvent) => {
+      if (e.target instanceof Node && !rootRef.current?.contains(e.target)) setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onPointer);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPointer);
+    };
   }, [open]);
 
+  /** Marking read is best effort: a failure never blocks the user and never rejects. */
   async function markRead(body: { ids: number[] } | { all: true }) {
     try {
       await api('POST', '/api/notification-reads', body);
-    } finally {
-      await load();
+    } catch {
+      // The reload below shows the true state.
     }
+    await load();
   }
 
   async function openItem(item: NotificationItem) {
@@ -53,13 +68,13 @@ export function NotificationBell() {
 
   const unread = data?.unread_count ?? 0;
   return (
-    <div className="bell">
-      <button type="button" className="bell-button" aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'} aria-expanded={open} onClick={() => setOpen(!open)}>
+    <div className="bell" ref={rootRef}>
+      <button type="button" className="bell-button" ref={buttonRef} aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'} aria-expanded={open} onClick={() => setOpen(!open)}>
         <span aria-hidden="true">🔔</span>
         {unread > 0 && <span className="bell-count" aria-hidden="true">{unreadLabel(unread)}</span>}
       </button>
       {open && (
-        <div className="bell-panel" role="dialog" aria-label="Notifications">
+        <div className="bell-panel" role="dialog" aria-label="Notifications" tabIndex={-1} ref={panelRef}>
           <div className="bell-head">
             <strong>Notifications</strong>
             {unread > 0 && <button type="button" onClick={() => void markRead({ all: true })}>Mark all read</button>}
