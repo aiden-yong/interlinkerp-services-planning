@@ -10,3 +10,4 @@
 
 .card .give-up { margin-top: 6px; min-height: 28px; padding: 0 10px; font-size: 0.75rem; }
 .card .switch-flag { margin-top: 4px; font-size: 0.75rem; font-weight: 600; color: var(--accent); }
+.card .give-up-hint { margin-top: 4px; font-size: 0.75rem; color: var(--muted); }

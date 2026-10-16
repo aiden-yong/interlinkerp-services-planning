@@ -66,4 +66,35 @@ describe('GiveUpButton', () => {
     setup(soon, { mode: 'unassign', window_days: 2 });
     expect(screen.queryByRole('button')).toBeNull();
   });
+
+  it('shows the toast for a failed request and still reloads', async () => {
+    const { onChanged } = setup(mine(), sw);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: { code: 'TOO_LATE', message: 'Too late to switch.', details: null } }), { status: 409 })));
+    fireEvent.click(screen.getByRole('button', { name: /^Ask for cover/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask for cover' }));
+    expect(await screen.findByText('Too late to switch.')).toBeTruthy();
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('is disabled while the request is in flight', async () => {
+    const { onChanged } = setup(mine(), sw);
+    let finish!: () => void;
+    onChanged.mockImplementation(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const pageButton = () => screen.getByRole('button', { name: /^Ask for cover for shift/ }) as HTMLButtonElement;
+    fireEvent.click(pageButton());
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask for cover' }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(pageButton().disabled).toBe(true);
+    finish();
+    await waitFor(() => expect(pageButton().disabled).toBe(false));
+  });
+
+  it('explains why Unassign is unavailable inside the window, but says nothing for started shifts', () => {
+    const soon = { ...mine(), start_at: new Date(Date.now() + 86_400_000).toISOString() };
+    setup(soon, { mode: 'unassign', window_days: 2 });
+    expect(screen.getByText('Can only be given up more than 2 days ahead.')).toBeTruthy();
+    cleanup();
+    setup({ ...mine(), start_at: new Date(Date.now() - 3_600_000).toISOString() }, { mode: 'unassign', window_days: 2 });
+    expect(screen.queryByText(/Already started/)).toBeNull();
+  });
 });

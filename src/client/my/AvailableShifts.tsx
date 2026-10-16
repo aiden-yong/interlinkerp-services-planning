@@ -22,12 +22,12 @@ export function AvailableShifts({ data, onChanged }: { data: OpenShiftsPayload |
     } catch (error) {
       toast(problemText(error), undefined, 6000);
     } finally {
-      setBusy(null);
       try {
         await onChanged();
       } catch {
         // The result is already shown; a failed refresh must not hide it.
       }
+      setBusy(null);
     }
   }
 

@@ -68,4 +68,18 @@ describe('AvailableShifts', () => {
     rerender(<FeedbackProvider><AvailableShifts data={null} onChanged={async () => {}} /></FeedbackProvider>);
     expect(container.querySelector('section')).toBeNull();
   });
+
+  it('keeps the row disabled until the reload settles', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 201 })));
+    let finish!: () => void;
+    const onChanged = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    render(<FeedbackProvider><AvailableShifts data={data} onChanged={onChanged} /></FeedbackProvider>);
+    const button = screen.getByRole('button', claim) as HTMLButtonElement;
+    fireEvent.click(button);
+    expect(button.disabled).toBe(true);
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(button.disabled).toBe(true);
+    finish();
+    await waitFor(() => expect(button.disabled).toBe(false));
+  });
 });

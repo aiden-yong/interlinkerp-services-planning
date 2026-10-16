@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { api } from '../api';
 import { useFeedback } from '../feedback';
 import type { GiveUp, MyShift } from '../types';
-import { giveUpAction, problemText, shiftLabel } from './openShifts';
+import { giveUpAction, problemText, shiftLabel, STARTED } from './openShifts';
 import './openShifts.css';
 
 const TEXT = {
@@ -18,7 +18,7 @@ export function GiveUpButton({ shift, giveUp, zone, onChanged }: { shift: MyShif
   const { confirm, toast } = useFeedback();
   const [busy, setBusy] = useState(false);
   const action = giveUpAction(shift, giveUp, new Date());
-  if (action.kind === 'none') return null;
+  if (action.kind === 'none') return action.reason === STARTED ? null : <span className="give-up-hint">{action.reason}</span>;
   const kind = action.kind;
   const text = TEXT[kind];
 
@@ -32,12 +32,12 @@ export function GiveUpButton({ shift, giveUp, zone, onChanged }: { shift: MyShif
     } catch (error) {
       toast(problemText(error), undefined, 6000);
     } finally {
-      setBusy(false);
       try {
         await onChanged();
       } catch {
         // The result is already shown; a failed refresh must not hide it.
       }
+      setBusy(false);
     }
   }
 
