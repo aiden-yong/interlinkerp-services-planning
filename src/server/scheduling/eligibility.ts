@@ -40,7 +40,10 @@ export class Eligibility {
     if (candidates.length === 0 || refs.length === 0) return result;
     const from = new Date(Math.min(...candidates.map((s) => s.start.getTime())));
     const to = new Date(Math.max(...candidates.map((s) => s.end.getTime())));
-    const [profiles, existing, away] = await Promise.all([this.profiles.all(), this.shifts.overlapping(from, to), this.timeOff.between(from, to)]);
+    // Sequential: this may run on a transaction connection, which can run only one query at a time.
+    const profiles = await this.profiles.all();
+    const existing = await this.shifts.overlapping(from, to);
+    const away = await this.timeOff.between(from, to);
     for (const ref of refs) {
       const roles = profiles.get(ref)?.roleIds ?? [];
       const theirs = existing.filter((s) => s.employeeRef === ref);

@@ -202,7 +202,7 @@ export class App {
 
   delivery(): DeliveryService {
     return this.once('delivery', () => new DeliveryService({
-      db: this.database().db, org: this.organisationId(), shifts: this.shifts(), directory: this.directory(), profiles: this.profiles(),
+      db: this.database().db, org: this.organisationId(), directory: this.directory(), profiles: this.profiles(),
       managers: this.managers(), settings: this.settings(), clock: this.clock(), log: this.log, publicUrl: () => this.publicUrl(),
       mailer: this.mailer(), badges: this.badges(), inbox: this.notifications(),
     }));

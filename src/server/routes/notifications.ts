@@ -9,7 +9,8 @@ export function register(r: Router, app: App): void {
   r.add('GET', '/api/notifications', 'person', 'List my notifications, newest first.', async ({ query, principal }) => {
     const input = new Input(query);
     const before = query.before === undefined ? null : Number(query.before);
-    if (before !== null && (!Number.isInteger(before) || before < 1)) input.error('before', 'Use the id of the oldest notification you have.');
+    if (before !== null && (!Number.isSafeInteger(before) || before < 1)) input.error('before', 'Use the id of the oldest notification you have.');
+    if (query.unread !== undefined && query.unread !== 'true' && query.unread !== 'false') input.error('unread', 'Use true or false.');
     input.check();
     const who = recipientOf(principal!);
     return json(200, { notifications: await app.notifications().list(who, query.unread === 'true', before), unread_count: await app.notifications().unreadCount(who) });
@@ -21,7 +22,7 @@ export function register(r: Router, app: App): void {
     const input = new Input(await body());
     const all = input.raw('all') === true;
     const raw = input.raw('ids');
-    const ids = Array.isArray(raw) && raw.length > 0 && raw.length <= 200 && raw.every((id) => Number.isInteger(id) && (id as number) > 0) ? (raw as number[]) : null;
+    const ids = Array.isArray(raw) && raw.length > 0 && raw.length <= 200 && raw.every((id) => Number.isSafeInteger(id) && (id as number) > 0) ? (raw as number[]) : null;
     if (!all && !ids) input.error('ids', 'Send a list of up to 200 notification ids, or all: true.');
     input.check();
     const who = recipientOf(principal!);

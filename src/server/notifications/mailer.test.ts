@@ -13,7 +13,7 @@ describe('mailer', () => {
     expect(lines.join()).not.toContain('ana@example.com');
   });
 
-  it.each(['not a url', 'smtps://user:SECRETPASS@host:99999', 'smtps://user:p%ZZ@host'])('never throws or leaks a malformed SMTP_URL: %s', async (url) => {
+  it.each(['not a url', 'smtps://user:SECRETPASS@host:99999', 'smtps://user:SECRETPASS@host:0', 'smtps://user:p%ZZ@host'])('never throws or leaks a malformed SMTP_URL: %s', async (url) => {
     const mailer = new SmtpMailer(url, 'x@y.test');
     const result = await mailer.send({ to: 'ana@example.com', subject: 'Hi', text: 'x' });
     expect(result).toEqual({ ok: false, error: 'SMTP_URL is not a valid SMTP URL.' });

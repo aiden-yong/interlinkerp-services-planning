@@ -7,8 +7,9 @@ import type { ManagerRepository } from '../repo/managers';
 import type { NotificationRepository } from '../repo/notifications';
 import type { ProfileRepository } from '../repo/profiles';
 import type { SettingsRepository } from '../repo/settings';
-import type { ShiftRepository } from '../repo/shifts';
+import { ShiftRepository } from '../repo/shifts';
 import type { Clock } from '../support/clock';
+import { isUuid } from '../support/ids';
 import type { BadgePublisher } from './badges';
 import type { Mailer } from './mailer';
 import { render, scrubAddresses, shiftIdsOf } from './messages';
@@ -33,7 +34,6 @@ export interface DeliveryReport {
 export interface DeliveryDeps {
   db: Db;
   org: string;
-  shifts: ShiftRepository;
   directory: DirectoryRepository;
   profiles: ProfileRepository;
   managers: ManagerRepository;
@@ -56,16 +56,16 @@ export class DeliveryService {
     const { db, org, clock } = this.d;
     const now = clock.now();
     const touched: Touched = { refs: new Set(), emails: new Set() };
+    // Reference data comes through the pool BEFORE the transaction, so the transaction (which holds a connection and row locks) never waits on the pool.
+    const [directory, profiles, managers, orgZone] = await Promise.all([this.d.directory.all(), this.d.profiles.all(), this.d.managers.all(), this.d.settings.timezone()]);
+    const names = new Map(directory.map((e) => [e.employeeRef, e.displayName]));
     await db.transaction(async (tx) => {
       const rows = await tx.select().from(notificationOutbox)
         .where(and(eq(notificationOutbox.organisationId, org), isNull(notificationOutbox.deliveredAt), isNull(notificationOutbox.cancelledAt), lte(notificationOutbox.deliverAfter, now)))
         .orderBy(notificationOutbox.id).limit(BATCH).for('update', { skipLocked: true });
       if (rows.length === 0) return;
-      const [shifts, directory, profiles, managers, orgZone] = await Promise.all([
-        this.d.shifts.byIds([...new Set(rows.flatMap((r) => shiftIdsOf(r.payload)))]),
-        this.d.directory.all(), this.d.profiles.all(), this.d.managers.all(), this.d.settings.timezone(),
-      ]);
-      const base = { shifts: new Map(shifts.map((s) => [s.id, s])), names: new Map(directory.map((e) => [e.employeeRef, e.displayName])), publicUrl: this.d.publicUrl() };
+      const shifts = await new ShiftRepository(tx as unknown as Db, org).byIds([...new Set(rows.flatMap((r) => shiftIdsOf(r.payload)))]);
+      const base = { shifts: new Map(shifts.map((s) => [s.id, s])), names, publicUrl: this.d.publicUrl() };
       for (const row of rows) {
         let inbox: (typeof notifications.$inferInsert)[];
         try {
@@ -73,12 +73,15 @@ export class DeliveryService {
             ? managers.map((m) => ({ ref: null, email: m.email, zone: orgZone }))
             : row.employeeRef ? [{ ref: row.employeeRef, email: null, zone: profiles.get(row.employeeRef)?.timezone ?? orgZone }] : [];
           const ids = shiftIdsOf(row.payload);
+          // A shift id that is not a uuid would abort the whole batch at INSERT, so it counts as a render failure of this row only.
+          if (ids.length === 1 && !isUuid(ids[0]!)) throw new Error(`Shift id ${ids[0]} is not a uuid`);
           inbox = recipients.map((r) => ({
             organisationId: org, recipientRef: r.ref, recipientEmail: r.email, kind: row.kind, ...render(row.kind, row.payload, { ...base, zone: r.zone }),
             shiftId: ids.length === 1 ? ids[0]! : null, outboxId: row.id, createdAt: now, emailNextAt: now,
           }));
         } catch (error) {
           const attempts = row.attempts + 1;
+          // After MAX_OUTBOX_ATTEMPTS the row is given up: marked delivered, with last_error saying why, so it stops being picked up.
           await tx.update(notificationOutbox).set({ attempts, lastError: scrubAddresses(String(error)), deliveredAt: attempts >= MAX_OUTBOX_ATTEMPTS ? now : null })
             .where(and(eq(notificationOutbox.organisationId, org), eq(notificationOutbox.id, row.id)));
           this.d.log(`[delivery] notice ${row.id} (${row.kind}) failed: ${scrubAddresses(String(error))}`);

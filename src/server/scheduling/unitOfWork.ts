@@ -18,6 +18,8 @@ export interface WriteScope {
   eligibility: Eligibility;
   /** Serialises this employee's claims and take-overs until the transaction ends (NFR-04). */
   lockEmployee(ref: string): Promise<void>;
+  /** Serialises changes to the give-up settings against switch requests until the transaction ends (BR-07). */
+  lockSettings(): Promise<void>;
 }
 
 /**
@@ -43,6 +45,9 @@ export class UnitOfWork {
         lockEmployee: async (ref) => {
           // hashtext is 32-bit, so two employees can share a key; the only effect is a little extra serialisation.
           await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`${this.org}:${ref}`}))`);
+        },
+        lockSettings: async () => {
+          await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`${this.org}:settings`}))`);
         },
       });
     }, { isolationLevel: 'read committed' });

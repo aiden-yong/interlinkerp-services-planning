@@ -91,6 +91,16 @@ describe('publishing open shifts (FR-PUB-03)', () => {
     expect(notices.map((r) => [r.employee_ref, r.payload])).toEqual([['E3', { shift_ids: [open] }]]);
   });
 
+  it('notifies only people on the roster: not a manager who is no employee, nor a profile without a directory row', async () => {
+    const nurse = await h.addRole('Nurse');
+    await h.app.profiles().save({ ...(await h.app.profiles().find('E9')), roleIds: [nurse] }, h.clock.now()); // roles, but not in the directory
+    h.asManager('mona@example.com'); // a manager with no employee ref
+    const id = (await h.call('POST', '/api/shifts', { employee_ref: null, start_at: '2026-10-14T09:00:00+08:00', end_at: '2026-10-14T17:00:00+08:00' })).body.shift.id;
+    expect((await h.call('POST', '/api/publications', { shift_ids: [id], notify_open_shifts: true })).body.open_shift_notices).toBe(2);
+    const notices = (await new Outbox(h.database.db, ORG).all()).filter((r) => r.kind === 'open_shifts_available');
+    expect(notices.map((r) => r.employee_ref)).toEqual(['E1', 'E2']);
+  });
+
   it('sends nothing about open shifts unless asked, and validates the flag', async () => {
     const id = await shift(null, '2026-10-14');
     expect((await h.call('POST', '/api/publications', { shift_ids: [id], notify_open_shifts: 'yes' })).status).toBe(422);

@@ -47,6 +47,7 @@ export function render(kind: string, payload: Record<string, unknown>, ctx: Rend
   };
   const name = (ref: unknown) => (typeof ref === 'string' && ctx.names.get(ref)) || 'Someone';
   const ids = shiftIdsOf(payload);
+  if (ids.length === 0 && (kind === 'schedule_published' || kind === 'open_shifts_available')) throw new Error(`Notice ${kind} lists no shifts`);
   const first = () => span(ids[0] ?? '');
   const my = `${ctx.publicUrl}/my`;
   const board = `${ctx.publicUrl}/schedule`;
@@ -59,8 +60,12 @@ export function render(kind: string, payload: Record<string, unknown>, ctx: Rend
       return { title: 'A shift is no longer yours', body: first(), link: my };
     case 'shift_changed':
       return { title: 'One of your shifts changed', body: `${first()}. Changed: ${(Array.isArray(payload.changed) ? payload.changed : []).join(', ')}.`, link: my };
-    case 'shift_deleted':
-      return { title: 'A shift was cancelled', body: formatSpan(new Date(String(payload.start_at)), new Date(String(payload.end_at)), ctx.zone), link: my };
+    case 'shift_deleted': {
+      const start = new Date(String(payload.start_at));
+      const end = new Date(String(payload.end_at));
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) throw new Error('Notice shift_deleted has no valid start_at and end_at');
+      return { title: 'A shift was cancelled', body: formatSpan(start, end, ctx.zone), link: my };
+    }
     case 'switch_taken':
       return { title: 'Your shift was taken', body: `${name(payload.taker_ref)} took your shift on ${first()}.`, link: my };
     case 'switch_cancelled':

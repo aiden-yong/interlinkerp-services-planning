@@ -5,6 +5,7 @@ import { ConfigError, requireAll } from './config/env';
 import { envelope, json } from './http/responses';
 
 let app: App | undefined;
+const loggedAfterErrors = new Set<string>();
 
 export function getApp(): App {
   return (app ??= new App());
@@ -24,8 +25,13 @@ export async function handleApi(request: Request): Promise<Response> {
   const response = await app.kernel().handle(request);
   try {
     after(() => app.deliveryTrigger().kick()); // D1: deliver queued notices after the response is sent
-  } catch {
-    // Outside a Next.js request (scripts): the daily cron still delivers.
+  } catch (error) {
+    // Outside a Next.js request (scripts) the daily cron still delivers; anything else is worth one log line per distinct error.
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes('outside a request scope') && !loggedAfterErrors.has(message)) {
+      loggedAfterErrors.add(message);
+      console.error(`[planning-api] could not schedule delivery after the response: ${message}`);
+    }
   }
   return response;
 }

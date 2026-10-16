@@ -38,6 +38,13 @@ describe('messages', () => {
     expect(render('shift_deleted', { shift_id: 'gone', start_at: '2026-10-14T01:00:00Z', end_at: '2026-10-14T09:00:00Z' }, ctx).body).toBe('Wed 14 Oct, 09:00–17:00');
   });
 
+  it('throws instead of rendering a nonsense message (the sweep retries the row)', () => {
+    expect(() => render('shift_deleted', { shift_id: 'gone' }, ctx)).toThrow('start_at');
+    expect(() => render('shift_deleted', { shift_id: 'gone', start_at: '2026-10-14T01:00:00Z', end_at: 'soon' }, ctx)).toThrow('start_at');
+    expect(() => render('schedule_published', { shift_ids: [] }, ctx)).toThrow('lists no shifts');
+    expect(() => render('open_shifts_available', {}, ctx)).toThrow('lists no shifts');
+  });
+
   it('refuses unknown kinds and missing shifts', () => {
     expect(() => render('mystery', {}, ctx)).toThrow('Unknown notification kind mystery');
     expect(() => render('shift_assigned', { shift_id: 'nope' }, ctx)).toThrow('Shift nope not found');

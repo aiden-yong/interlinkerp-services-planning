@@ -22,11 +22,10 @@ export class ConflictContext {
     if (!candidate.employeeRef) return [];
     const profile = await this.profiles.find(candidate.employeeRef);
     const zone = await this.timezoneFor(profile);
-    const [others, away, holidays] = await Promise.all([
-      this.shifts.forEmployeeOverlapping(candidate.employeeRef, candidate.start, candidate.end),
-      this.timeOff.between(candidate.start, candidate.end, candidate.employeeRef),
-      options.holidays === false ? Promise.resolve([]) : this.holidays.visibleBetween(localDate(candidate.start.getTime(), zone), localDate(candidate.end.getTime(), zone)),
-    ]);
+    // Sequential: this may run on a transaction connection, which can run only one query at a time.
+    const others = await this.shifts.forEmployeeOverlapping(candidate.employeeRef, candidate.start, candidate.end);
+    const away = await this.timeOff.between(candidate.start, candidate.end, candidate.employeeRef);
+    const holidays = options.holidays === false ? [] : await this.holidays.visibleBetween(localDate(candidate.start.getTime(), zone), localDate(candidate.end.getTime(), zone));
     const facts = [...others.filter((s) => s.id !== candidate.id).map(factsOf), factsOf(candidate)];
     return conflictsForEmployee(facts, ConflictContext.spans(away, holidays, zone), profile.roleIds).get(candidate.id) ?? [];
   }

@@ -161,7 +161,7 @@ export class ShiftRepository {
   /** BR-07: ends every active switch request on a shift that has not started; returns the shifts whose owners must be told. Bumps the version so an in-flight take-over is caught. */
   async clearSwitchRequests(now: Date): Promise<ShiftRecord[]> {
     const rows = await this.db.update(shifts).set({ switchRequestedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
-      .where(and(this.live(), isNotNull(shifts.switchRequestedAt), gt(shifts.startAt, now))).returning();
+      .where(and(this.live(), isNotNull(shifts.switchRequestedAt), isNotNull(shifts.employeeRef), gt(shifts.startAt, now))).returning();
     return rows.map(toRecord);
   }
 

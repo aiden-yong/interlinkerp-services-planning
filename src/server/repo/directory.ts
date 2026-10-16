@@ -37,6 +37,13 @@ export class DirectoryRepository {
     return this.db.select(COLUMNS).from(employeeDirectory).where(eq(employeeDirectory.organisationId, this.org)).orderBy(employeeDirectory.displayName);
   }
 
+  /** Every employee_ref, for callers that need no other column. */
+  async refs(): Promise<string[]> {
+    const rows = await this.db.select({ ref: employeeDirectory.employeeRef }).from(employeeDirectory)
+      .where(eq(employeeDirectory.organisationId, this.org)).orderBy(employeeDirectory.employeeRef);
+    return rows.map((r) => r.ref);
+  }
+
   async find(ref: string): Promise<DirectoryRow | null> {
     const [row] = await this.db.select(COLUMNS).from(employeeDirectory)
       .where(and(eq(employeeDirectory.organisationId, this.org), eq(employeeDirectory.employeeRef, ref))).limit(1);

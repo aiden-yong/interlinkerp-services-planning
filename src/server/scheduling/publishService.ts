@@ -21,7 +21,7 @@ export class PublishService {
 
     const now = this.clock.now();
     // Read before the transaction, so the transaction never waits on the pool.
-    const people = notifyOpen === true ? (await this.directory.all()).map((p) => p.employeeRef) : [];
+    const people = notifyOpen === true ? await this.directory.refs() : [];
     return this.unit.run(async (scope) => {
       const published = await scope.shifts.publish(ids!, now);
       const byEmployee = new Map<string, string[]>();

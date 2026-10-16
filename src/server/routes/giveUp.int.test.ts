@@ -73,6 +73,68 @@ describe('giving up shifts', () => {
       h.callAs('E3', 'cy@example.com', 'POST', '/api/switch-takeovers', { shift_id: id }),
     ]);
     expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+    const winner = results[0]!.status === 201 ? 'E2' : 'E3';
+    h.asManager();
+    expect((await h.call('GET', `/api/shifts/${id}`)).body.shift.employee_ref).toBe(winner);
+    expect((await outbox()).filter((r) => r.kind === 'shift_switched')).toHaveLength(1);
+  });
+
+  it('refuses a take-over by someone with an overlapping shift (NOT_ELIGIBLE)', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    await h.addEmployee('E2', 'Bo Tan');
+    const id = await published('E1', '2026-10-15T09:00:00+08:00', '2026-10-15T17:00:00+08:00');
+    await published('E2', '2026-10-15T12:00:00+08:00', '2026-10-15T20:00:00+08:00');
+    await h.callAs(...ANA, 'POST', '/api/switch-requests', { shift_id: id });
+    const refused = await h.callAs(...BO, 'POST', '/api/switch-takeovers', { shift_id: id });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe('NOT_ELIGIBLE');
+    h.asManager();
+    expect((await h.call('GET', `/api/shifts/${id}`)).body.shift.employee_ref).toBe('E1');
+  });
+
+  it('queues switch_taken and shift_switched with who and what (FR-NTF-03)', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    await h.addEmployee('E2', 'Bo Tan');
+    const id = await published('E1', '2026-10-15T09:00:00+08:00', '2026-10-15T17:00:00+08:00');
+    await h.callAs(...ANA, 'POST', '/api/switch-requests', { shift_id: id });
+    await h.callAs(...BO, 'POST', '/api/switch-takeovers', { shift_id: id });
+    const rows = (await outbox()).filter((r) => r.subject_id === id);
+    expect(rows.find((r) => r.kind === 'switch_taken')).toMatchObject({ employee_ref: 'E1', payload: { shift_id: id, taker_ref: 'E2' } });
+    expect(rows.find((r) => r.kind === 'shift_switched')).toMatchObject({ employee_ref: null, payload: { shift_id: id, from_ref: 'E1', to_ref: 'E2' } });
+  });
+
+  it('answers 404 when cancelling a request that is not yours or does not exist', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    const id = await published('E1', '2026-10-15T09:00:00+08:00', '2026-10-15T17:00:00+08:00');
+    await h.callAs(...ANA, 'POST', '/api/switch-requests', { shift_id: id });
+    expect((await h.callAs(...BO, 'DELETE', `/api/switch-requests/${id}`)).status).toBe(404);
+    expect((await h.callAs(...ANA, 'DELETE', '/api/switch-requests/6f1c1d1e-0000-4000-8000-000000000000')).status).toBe(404);
+    expect((await h.app.shifts().find(id))!.switchRequestedAt).not.toBeNull();
+  });
+
+  it('is only for people on the roster (NOT_ON_ROSTER)', async () => {
+    h.asEmployee(null, 'nobody@example.com');
+    const id = '6f1c1d1e-0000-4000-8000-000000000000';
+    const calls = [
+      await h.call('POST', '/api/switch-requests', { shift_id: id }),
+      await h.call('DELETE', `/api/switch-requests/${id}`),
+      await h.call('POST', '/api/switch-takeovers', { shift_id: id }),
+      await h.call('POST', '/api/unassignments', { shift_id: id }),
+    ];
+    expect(calls.map((c) => [c.status, c.body.error.code])).toEqual(Array(4).fill([403, 'NOT_ON_ROSTER']));
+  });
+
+  it('refuses a start exactly N days away and allows any future start when N is 0 (BR-06)', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    h.asManager();
+    await h.call('PATCH', '/api/settings', { give_up_mode: 'unassign', unassign_window_days: 2 });
+    const exactly = await published('E1', '2026-10-15T10:00:00+08:00', '2026-10-15T18:00:00+08:00'); // now + 2 days
+    const justAfter = await published('E1', '2026-10-16T10:01:00+08:00', '2026-10-16T18:00:00+08:00');
+    expect((await h.callAs(...ANA, 'POST', '/api/unassignments', { shift_id: exactly })).body.error.code).toBe('OUTSIDE_UNASSIGN_WINDOW');
+    expect((await h.callAs(...ANA, 'POST', '/api/unassignments', { shift_id: justAfter })).status).toBe(201);
+    h.asManager();
+    expect((await h.call('PATCH', '/api/settings', { unassign_window_days: 0 })).status).toBe(200);
+    expect((await h.callAs(...ANA, 'POST', '/api/unassignments', { shift_id: exactly })).status).toBe(201);
   });
 
   it('refuses the wrong mode, own shifts and repeated requests', async () => {
@@ -215,6 +277,47 @@ describe('give-up mode changes', () => {
     h.asManager();
     await h.call('PATCH', '/api/settings', { give_up_mode: 'unassign' });
     expect((await h.callAs(...BO, 'POST', '/api/switch-takeovers', { shift_id: id })).body.error.code).toBe('MODE_NOT_ACTIVE');
-    expect((await h.app.shifts().find(id))!.employeeRef).toBe('E1');
+    const after = (await h.app.shifts().find(id))!;
+    expect([after.employeeRef, after.switchRequestedAt]).toEqual(['E1', null]);
+  });
+
+  it('clears the request when a manager un-assigns the shift, and keeps it on a note-only edit', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    const kept = await published('E1', '2026-10-15T09:00:00+08:00', '2026-10-15T17:00:00+08:00');
+    const dropped = await published('E1', '2026-10-16T09:00:00+08:00', '2026-10-16T17:00:00+08:00');
+    await h.callAs(...ANA, 'POST', '/api/switch-requests', { shift_id: kept });
+    await h.callAs(...ANA, 'POST', '/api/switch-requests', { shift_id: dropped });
+    h.asManager();
+    const note = (await h.call('GET', `/api/shifts/${kept}`)).body.shift;
+    expect((await h.call('PATCH', `/api/shifts/${kept}`, { note: 'bring ID', version: note.version })).body.shift.switch_requested).toBe(true);
+    const open = (await h.call('GET', `/api/shifts/${dropped}`)).body.shift;
+    const result = await h.call('PATCH', `/api/shifts/${dropped}`, { employee_ref: null, version: open.version });
+    expect(result.body.shift).toMatchObject({ employee_ref: null, switch_requested: false });
+  });
+
+  it('cancels nothing and queues no notices for saves that do not move from Switch to Unassign', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    const id = await published('E1', '2026-10-15T09:00:00+08:00', '2026-10-15T17:00:00+08:00');
+    await h.callAs(...ANA, 'POST', '/api/switch-requests', { shift_id: id });
+    h.asManager();
+    await h.call('PATCH', '/api/settings', { give_up_mode: 'switch', unassign_window_days: 3 }); // same mode
+    expect((await h.app.shifts().find(id))!.switchRequestedAt).not.toBeNull();
+    expect((await outbox()).filter((r) => r.kind === 'switch_cancelled')).toHaveLength(0);
+    await h.call('PATCH', '/api/settings', { give_up_mode: 'unassign' }); // switch -> unassign: cancels
+    await h.call('PATCH', '/api/settings', { give_up_mode: 'unassign', unassign_window_days: 4 }); // unassign -> unassign
+    await h.call('PATCH', '/api/settings', { give_up_mode: 'switch' }); // unassign -> switch
+    expect((await outbox()).filter((r) => r.kind === 'switch_cancelled')).toHaveLength(1);
+  });
+
+  it('serialises a switch request against the mode change (BR-07)', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    const id = await published('E1', '2026-10-15T09:00:00+08:00', '2026-10-15T17:00:00+08:00');
+    const current = await h.app.settings().get();
+    await Promise.all([
+      h.callAs(...ANA, 'POST', '/api/switch-requests', { shift_id: id }),
+      h.app.openShifts().applySettings({ ...current, give_up_mode: 'unassign' }),
+    ]);
+    // Whichever ran first, no active request survives Unassign.
+    expect((await h.app.shifts().find(id))!.switchRequestedAt).toBeNull();
   });
 });

@@ -42,5 +42,9 @@ describe('inbox API', () => {
     expect((await h.call('POST', '/api/notification-reads', {})).status).toBe(422);
     expect((await h.call('POST', '/api/notification-reads', { ids: ['x'] })).status).toBe(422);
     expect((await h.call('GET', '/api/notifications', undefined, { before: 'soon' })).status).toBe(422);
+    expect((await h.call('GET', '/api/notifications', undefined, { before: '1e300' })).status).toBe(422);
+    expect((await h.call('POST', '/api/notification-reads', { ids: [1e300] })).status).toBe(422);
+    expect((await h.call('GET', '/api/notifications', undefined, { unread: 'maybe' })).status).toBe(422);
+    expect((await h.call('GET', '/api/notifications', undefined, { unread: 'false' })).status).toBe(200);
   });
 });

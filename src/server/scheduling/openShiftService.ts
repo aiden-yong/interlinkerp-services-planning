@@ -17,7 +17,7 @@ export const changed = () => HttpError.conflict('SHIFT_CHANGED', 'This shift cha
 const notUp = () => HttpError.conflict('NOT_UP_FOR_SWITCH', 'This shift is not up for switch.');
 const alreadyUp = () => HttpError.conflict('ALREADY_UP_FOR_SWITCH', 'This shift is already up for switch.');
 const notYours = () => HttpError.notFound('No published shift of yours with that id.');
-const outsideWindow = (days: number) => HttpError.conflict('OUTSIDE_UNASSIGN_WINDOW', `Shifts can only be given up more than ${days} days before they start.`);
+const outsideWindow = (days: number) => HttpError.conflict('OUTSIDE_UNASSIGN_WINDOW', days > 0 ? `Shifts can only be given up more than ${days} days before they start.` : 'Shifts can only be given up before they start.');
 const modeOff = (mode: 'switch' | 'unassign') => HttpError.conflict('MODE_NOT_ACTIVE', mode === 'switch'
   ? 'Shifts cannot be put up for switch right now. Give them up instead.'
   : 'Shifts cannot be given up right now. Put them up for switch instead.');
@@ -104,6 +104,8 @@ export class OpenShiftService {
     const id = shiftIdFrom(body);
     const now = this.clock.now();
     return this.unit.run(async (scope) => {
+      // Same lock as applySettings: a request cannot read mode=switch and commit after the mode became Unassign.
+      await scope.lockSettings();
       const shift = await ownFresh(scope, id, ref);
       if (shift.start <= now) throw started();
       if ((await scope.settings.get()).give_up_mode !== 'switch') throw modeOff('switch');
@@ -189,8 +191,9 @@ export class OpenShiftService {
   /** Saves settings; switching to Unassign cancels pending switch requests and tells their owners, in one transaction (BR-07). */
   async applySettings(next: OrgSettings): Promise<number> {
     const now = this.clock.now();
-    const previous = await this.settings.get();
     return this.unit.run(async (scope) => {
+      await scope.lockSettings();
+      const previous = await scope.settings.get();
       await scope.settings.save(next, now);
       if (previous.give_up_mode !== 'switch' || next.give_up_mode !== 'unassign') return 0;
       const cancelled = await scope.shifts.clearSwitchRequests(now);

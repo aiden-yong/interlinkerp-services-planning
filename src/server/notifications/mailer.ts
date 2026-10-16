@@ -29,6 +29,7 @@ function assertSmtpUrl(raw: string): void {
   const url = new URL(raw);
   if (url.protocol !== 'smtp:' && url.protocol !== 'smtps:') throw new Error('scheme');
   if (!url.hostname) throw new Error('host');
+  if (url.port === '0') throw new Error('port');
   decodeURIComponent(url.username);
   decodeURIComponent(url.password);
 }

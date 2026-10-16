@@ -37,7 +37,10 @@ export class DeliveryTrigger {
     if (this.pending.refs.size === 0 && this.pending.emails.size === 0) return Promise.resolve();
     const touched = this.pending;
     this.pending = { refs: new Set(), emails: new Set() };
-    return this.delivery.pushBadges(touched).catch((error: unknown) => this.log(`[badges] push failed: ${message(error)}`));
+    return this.delivery.pushBadges(touched).catch((error: unknown) => {
+      this.log(`[badges] push failed: ${message(error)}`);
+      this.noteBadges(touched); // the next kick retries them
+    });
   }
 
   private sweep(): Promise<void> {

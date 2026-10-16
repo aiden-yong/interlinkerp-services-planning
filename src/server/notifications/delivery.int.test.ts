@@ -60,8 +60,22 @@ describe('delivery: queue to inbox', () => {
       await h.addEmployee(ref, ref);
       await publishedFor(ref);
     }
-    await Promise.all([h.app.delivery().deliverDue(), h.app.delivery().deliverDue(), h.app.delivery().deliverDue()]);
+    const lines: string[] = [];
+    const app = new App({ ...h.app.deps, logger: (l) => lines.push(l) });
+    await Promise.all([app.delivery().deliverDue(), app.delivery().deliverDue(), app.delivery().deliverDue()]);
     expect((await inbox()).map((r) => r.recipientRef).sort()).toEqual(['E1', 'E2', 'E3', 'E4']);
+    // The unique indexes would turn a missing SKIP LOCKED into a failed (but silent) sweep, so the log must be clean.
+    expect(lines.filter((l) => l.includes('[delivery] sweep failed'))).toEqual([]);
+  });
+
+  it('counts a notice with a malformed shift id as a failed attempt, without blocking the batch', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    await new Outbox(h.database.db, ORG).add('shift_deleted', 'E1', null, { shift_id: 'not-a-uuid', start_at: '2026-10-14T01:00:00Z', end_at: '2026-10-14T09:00:00Z' }, h.clock.now(), h.clock.now());
+    await publishedFor('E1');
+    await h.app.delivery().deliverDue();
+    expect((await inbox()).map((r) => r.kind)).toEqual(['schedule_published']);
+    const [bad] = await h.database.db.select().from(notificationOutbox).where(eq(notificationOutbox.kind, 'shift_deleted'));
+    expect(bad).toMatchObject({ attempts: 1, deliveredAt: null, lastError: expect.stringContaining('not a uuid') });
   });
 
   it('retries a notice that cannot be rendered, then gives up without blocking others', async () => {
