@@ -19,7 +19,7 @@ export interface Harness {
   asEmployee(ref: string | null, email?: string): void;
   asNobody(): void;
   call(method: string, path: string, body?: unknown, query?: Record<string, string | number>): Promise<{ status: number; body: any }>;
-  addEmployee(ref: string, name: string, departmentId?: string | null, departmentName?: string | null): Promise<void>;
+  addEmployee(ref: string, name: string, departmentId?: string | null, departmentName?: string | null, email?: string | null): Promise<void>;
   addRole(name: string, color?: string): Promise<string>;
 }
 
@@ -63,8 +63,8 @@ export function useApiHarness(): Harness {
       const text = await response.text();
       return { status: response.status, body: text ? JSON.parse(text) : null };
     },
-    async addEmployee(ref: string, name: string, departmentId: string | null = null, departmentName: string | null = null) {
-      await database.db.insert(employeeDirectory).values({ organisationId: ORG, employeeRef: ref, displayName: name, departmentId, departmentName, status: 'Active', fetchedAt: h.clock.now() });
+    async addEmployee(ref: string, name: string, departmentId: string | null = null, departmentName: string | null = null, email: string | null = null) {
+      await database.db.insert(employeeDirectory).values({ organisationId: ORG, employeeRef: ref, displayName: name, departmentId, departmentName, status: 'Active', email, fetchedAt: h.clock.now() });
     },
     async addRole(name: string, color = '#3B82F6') {
       const { status, body } = await h.call('POST', '/api/roles', { name, color });

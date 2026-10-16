@@ -8,6 +8,13 @@
       "when": 1792036009949,
       "tag": "0000_mature_grey_gargoyle",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792118269558,
+      "tag": "0001_certain_talon",
+      "breakpoints": true
     }
   ]
 }

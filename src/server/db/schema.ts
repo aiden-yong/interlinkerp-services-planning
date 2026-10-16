@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
-  bigserial, boolean, char, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid, varchar,
+  bigint, bigserial, boolean, char, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid, varchar,
 } from 'drizzle-orm/pg-core';
 
 export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
@@ -60,6 +60,7 @@ export const shifts = pgTable('shifts', {
   updatedAt: instant('updated_at').notNull(),
   deletedAt: instant('deleted_at'),
   deletedBy: email('deleted_by'),
+  switchRequestedAt: instant('switch_requested_at'),
 }, (t) => [
   check('shifts_end_after_start', sql`${t.endAt} > ${t.startAt}`),
   check('shifts_percent_range', sql`${t.allocatedPercent} between 1 and 100`),
@@ -107,8 +108,13 @@ export const organisationSettings = pgTable('organisation_settings', {
   countryCode: char('country_code', { length: 2 }),
   regionCode: varchar('region_code', { length: 10 }),
   timezone: varchar('timezone', { length: 64 }).notNull(),
+  giveUpMode: varchar('give_up_mode', { length: 16 }).notNull().default('switch'),
+  unassignWindowDays: smallint('unassign_window_days').notNull().default(2),
   updatedAt: instant('updated_at').notNull(),
-});
+}, (t) => [
+  check('organisation_settings_give_up_mode_valid', sql`${t.giveUpMode} in ('switch', 'unassign')`),
+  check('organisation_settings_window_range', sql`${t.unassignWindowDays} between 0 and 60`),
+]);
 
 export const planningManagers = pgTable('planning_managers', {
   organisationId: organisationId(),
@@ -125,6 +131,7 @@ export const employeeDirectory = pgTable('employee_directory', {
   departmentId: varchar('department_id', { length: 64 }),
   departmentName: varchar('department_name', { length: 160 }),
   status: varchar('status', { length: 32 }).notNull(),
+  email: email('email'),
   fetchedAt: instant('fetched_at').notNull(),
 }, (t) => [primaryKey({ columns: [t.organisationId, t.employeeRef] })]);
 
@@ -135,11 +142,40 @@ export const notificationOutbox = pgTable('notification_outbox', {
   employeeRef: varchar('employee_ref', { length: 64 }),
   subjectId: uuid('subject_id'),
   payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+  audience: varchar('audience', { length: 16 }).notNull().default('employee'),
+  attempts: smallint('attempts').notNull().default(0),
+  lastError: text('last_error'),
   deliverAfter: instant('deliver_after').notNull(),
   cancelledAt: instant('cancelled_at'),
   deliveredAt: instant('delivered_at'),
   createdAt: instant('created_at').notNull(),
 }, (t) => [
+  check('notification_outbox_audience_valid', sql`${t.audience} in ('employee', 'managers')`),
   index('notification_outbox_pending_idx').on(t.organisationId, t.deliverAfter).where(sql`${t.deliveredAt} is null and ${t.cancelledAt} is null`),
   index('notification_outbox_subject_idx').on(t.organisationId, t.subjectId),
+]);
+
+/** The in-app inbox (FR-NTF-04). Employees by employee_ref, managers by email (DR-02). */
+export const notifications = pgTable('notifications', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  organisationId: organisationId(),
+  recipientRef: varchar('recipient_ref', { length: 64 }),
+  recipientEmail: email('recipient_email'),
+  kind: varchar('kind', { length: 40 }).notNull(),
+  title: varchar('title', { length: 200 }).notNull(),
+  body: text('body').notNull(),
+  link: varchar('link', { length: 500 }).notNull(),
+  shiftId: uuid('shift_id'),
+  outboxId: bigint('outbox_id', { mode: 'number' }).notNull(),
+  createdAt: instant('created_at').notNull(),
+  readAt: instant('read_at'),
+  emailedAt: instant('emailed_at'),
+  emailAttempts: smallint('email_attempts').notNull().default(0),
+  emailNextAt: instant('email_next_at').notNull(),
+  emailError: text('email_error'),
+}, (t) => [
+  check('notifications_one_recipient', sql`(${t.recipientRef} is null) <> (${t.recipientEmail} is null)`),
+  index('notifications_ref_idx').on(t.organisationId, t.recipientRef, t.createdAt),
+  index('notifications_email_idx').on(t.organisationId, t.recipientEmail, t.createdAt),
+  index('notifications_email_due_idx').on(t.organisationId, t.emailNextAt).where(sql`${t.emailedAt} is null`),
 ]);

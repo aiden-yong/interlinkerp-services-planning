@@ -9,6 +9,7 @@ export interface DirectoryRow {
   departmentId: string | null;
   departmentName: string | null;
   status: string;
+  email: string | null;
 }
 
 const COLUMNS = {
@@ -18,9 +19,10 @@ const COLUMNS = {
   departmentId: employeeDirectory.departmentId,
   departmentName: employeeDirectory.departmentName,
   status: employeeDirectory.status,
+  email: employeeDirectory.email,
 };
 
-/** DR-02: display fields only, at most 24 hours old. No emails or other personal data. */
+/** DR-02: display fields plus the work email (used only to address notification emails), at most 24 hours old. */
 export class DirectoryRepository {
   constructor(private readonly db: Db, private readonly org: string) {}
 

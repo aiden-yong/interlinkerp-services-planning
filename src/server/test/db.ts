@@ -8,7 +8,7 @@ export const ORG = 'test-org';
 
 export const TABLES = [
   'roles', 'employee_profiles', 'employee_roles', 'shifts', 'unavailabilities', 'public_holidays',
-  'organisation_settings', 'planning_managers', 'employee_directory', 'notification_outbox',
+  'organisation_settings', 'planning_managers', 'employee_directory', 'notification_outbox', 'notifications',
 ];
 
 /** One connection pool per test file, emptied before every test. Call at the top of the file. */

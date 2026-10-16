@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DirectoryRepository } from '../repo/directory';
 import { ORG, useTestDatabase } from '../test/db';
 import { FakeDepartments, FakeRoster, FixedClock } from '../test/fakes';
-import { DirectoryRefresher } from './refresher';
+import { DirectoryRefresher, toDirectoryRows } from './refresher';
 
 const database = useTestDatabase();
 
@@ -22,7 +22,7 @@ describe('DirectoryRefresher', () => {
     departments.names.set('DEP-1', 'Field Services');
 
     expect(await refresher.refresh()).toBe(true);
-    expect(await directory.all()).toEqual([{ employeeRef: 'u1', displayName: 'Ana Lim', photoUrl: null, departmentId: 'DEP-1', departmentName: 'Field Services', status: 'Active' }]);
+    expect(await directory.all()).toEqual([{ employeeRef: 'u1', displayName: 'Ana Lim', photoUrl: null, departmentId: 'DEP-1', departmentName: 'Field Services', status: 'Active', email: 'ana@x.test' }]);
     expect(await directory.lastFetchedAt()).toEqual(clock.now());
   });
 
@@ -53,6 +53,12 @@ describe('DirectoryRefresher', () => {
     clock.advance(301);
     expect(await refresher.refreshIfEmpty()).toBe(true);
     expect(await refresher.refreshIfEmpty()).toBe(false);
+  });
+
+  it('keeps the roster email in lower case, and drops one too long for the column', () => {
+    const person = { ref: 'u1', name: 'Ana Lim', photoUrl: null, departmentId: null, status: 'Active' };
+    expect(toDirectoryRows([{ ...person, email: 'Ana.Lim@Example.COM' }], new Map()).rows[0]!.email).toBe('ana.lim@example.com');
+    expect(toDirectoryRows([{ ...person, email: `${'a'.repeat(250)}@x.test` }], new Map()).rows[0]!.email).toBeNull();
   });
 
   it('keeps good rows when one source row is bad, and fixes what it can', async () => {

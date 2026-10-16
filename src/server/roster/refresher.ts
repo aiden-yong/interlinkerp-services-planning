@@ -35,6 +35,7 @@ export function toDirectoryRows(people: RosterPerson[], names: Map<string, strin
       departmentId: p.departmentId,
       departmentName: departmentName === null ? null : departmentName.slice(0, LIMITS.departmentName),
       status: p.status,
+      email: p.email && p.email.length <= 254 ? p.email.toLowerCase() : null,
     });
   }
   return { rows, skipped };
