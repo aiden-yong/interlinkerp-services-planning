@@ -200,3 +200,16 @@ describe('delivery: failures stay contained', () => {
     expect(lines.join('\n')).not.toContain('@example.com');
   });
 });
+describe('delivery: badge after mark-read', () => {
+  it('refreshes the badge after the response, through the trigger (Review Focus 1)', async () => {
+    await h.addEmployee('E1', 'Ana Lim', null, null, 'ana@example.com');
+    await publishedFor('E1');
+    await h.app.delivery().deliverDue();
+    expect(h.badges.published.at(-1)).toEqual([{ email: 'ana@example.com', count: 1 }]);
+    h.asEmployee('E1', 'ana@example.com');
+    await h.call('POST', '/api/notification-reads', { all: true });
+    expect(h.badges.published.at(-1)).toEqual([{ email: 'ana@example.com', count: 1 }]); // the request did not wait on the gateway
+    await h.app.deliveryTrigger().kick(); // what entry.ts's after() does
+    expect(h.badges.published.at(-1)).toEqual([{ email: 'ana@example.com', count: 0 }]);
+  });
+});

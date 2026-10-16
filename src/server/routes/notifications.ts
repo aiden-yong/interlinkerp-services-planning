@@ -24,7 +24,10 @@ export function register(r: Router, app: App): void {
     const ids = Array.isArray(raw) && raw.length > 0 && raw.length <= 200 && raw.every((id) => Number.isInteger(id) && (id as number) > 0) ? (raw as number[]) : null;
     if (!all && !ids) input.error('ids', 'Send a list of up to 200 notification ids, or all: true.');
     input.check();
-    return json(201, { marked: await app.notifications().markRead(recipientOf(principal!), all ? null : ids, app.clock().now()) });
+    const who = recipientOf(principal!);
+    const marked = await app.notifications().markRead(who, all ? null : ids, app.clock().now());
+    if (marked > 0) app.deliveryTrigger().noteBadges({ refs: new Set(who.ref ? [who.ref] : []), emails: new Set(who.email ? [who.email] : []) });
+    return json(201, { marked });
   }, op('Mark Notifications Read', 'Clear my unread notifications', ['Opening a notification', 'Clearing the bell'], [],
     ['ids', 'all'], ['marked'], ['Signed-in person'], ['GET /api/notifications'], ['read', 'clear', 'dismiss']));
 }

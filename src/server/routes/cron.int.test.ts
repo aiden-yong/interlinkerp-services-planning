@@ -25,3 +25,15 @@ describe('GET /internal/cron/directory', () => {
     expect(await response.json()).toEqual({ refreshed: true });
   });
 });
+
+const callPath = (a: App, path: string, auth?: string) => a.kernel().handle(new Request(`http://localhost${path}`, { headers: auth ? { authorization: auth } : {} }));
+
+describe('GET /internal/cron/notifications', () => {
+  it('runs a delivery sweep with the right secret only (D1 backstop)', async () => {
+    const ok = await callPath(app('right'), '/internal/cron/notifications', 'Bearer right');
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ notified: 0, emailed: 0 });
+    expect((await callPath(app('right'), '/internal/cron/notifications', 'Bearer wrong')).status).toBe(401);
+    expect((await callPath(app(null), '/internal/cron/notifications', 'Bearer x')).status).toBe(401);
+  });
+});

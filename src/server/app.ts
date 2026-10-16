@@ -16,6 +16,7 @@ import { HolidayRepository } from './repo/holidays';
 import { DirectoryRepository } from './repo/directory';
 import { type BadgePublisher, GatewayBadgePublisher, noBadges } from './notifications/badges';
 import { DeliveryService } from './notifications/deliveryService';
+import { DeliveryTrigger } from './notifications/trigger';
 import { LogMailer, type Mailer, SmtpMailer } from './notifications/mailer';
 import { ManagerRepository } from './repo/managers';
 import { NotificationRepository } from './repo/notifications';
@@ -205,6 +206,10 @@ export class App {
       managers: this.managers(), settings: this.settings(), clock: this.clock(), log: this.log, publicUrl: () => this.publicUrl(),
       mailer: this.mailer(), badges: this.badges(), inbox: this.notifications(),
     }));
+  }
+
+  deliveryTrigger(): DeliveryTrigger {
+    return this.once('deliveryTrigger', () => new DeliveryTrigger(this.delivery(), this.clock(), this.log));
   }
 
   conflictContext(): ConflictContext {
