@@ -76,6 +76,7 @@ export class ShiftService {
       next.employeeRef = input.string('employee_ref', 64);
       if (next.employeeRef !== current.employeeRef) await this.validateEmployee(input, next.employeeRef);
     }
+    if (next.employeeRef !== current.employeeRef) next.switchRequestedAt = null; // a reassigned shift is no longer up for switch
     if (input.has('role_id')) {
       next.roleId = input.string('role_id', 36);
       if (next.roleId !== current.roleId) await this.validateRole(input, next.roleId);

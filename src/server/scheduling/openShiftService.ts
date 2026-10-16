@@ -4,7 +4,7 @@ import { Input } from '../http/input';
 import type { DirectoryRepository } from '../repo/directory';
 import type { ProfileRepository } from '../repo/profiles';
 import type { RoleRepository } from '../repo/roles';
-import type { SettingsRepository } from '../repo/settings';
+import type { OrgSettings, SettingsRepository } from '../repo/settings';
 import { type ShiftRecord, type ShiftRepository, shiftToMyApi } from '../repo/shifts';
 import type { Clock } from '../support/clock';
 import { localMidnight, nextDay } from '../support/time';
@@ -183,6 +183,19 @@ export class OpenShiftService {
       }
       await scope.outbox.addForManagers('shift_given_up', shift.id, { shift_id: shift.id, employee_ref: ref }, now);
       return row;
+    });
+  }
+
+  /** Saves settings; switching to Unassign cancels pending switch requests and tells their owners, in one transaction (BR-07). */
+  async applySettings(next: OrgSettings): Promise<number> {
+    const now = this.clock.now();
+    const previous = await this.settings.get();
+    return this.unit.run(async (scope) => {
+      await scope.settings.save(next, now);
+      if (previous.give_up_mode !== 'switch' || next.give_up_mode !== 'unassign') return 0;
+      const cancelled = await scope.shifts.clearSwitchRequests(now);
+      for (const shift of cancelled) await scope.outbox.add('switch_cancelled', shift.employeeRef!, shift.id, { shift_id: shift.id }, now, now);
+      return cancelled.length;
     });
   }
 }

@@ -91,7 +91,7 @@ export class ShiftRepository {
   async update(s: ShiftRecord, expectedVersion: number, now: Date): Promise<ShiftRecord | null> {
     const updated = await this.db.update(shifts).set({
       employeeRef: s.employeeRef, roleId: s.roleId, startAt: s.start, endAt: s.end, breakMinutes: s.breakMinutes, allocatedPercent: s.percent,
-      note: s.note, conflictAcknowledgedBy: s.ackBy, conflictAcknowledgedAt: s.ackAt, version: expectedVersion + 1, updatedAt: now,
+      note: s.note, conflictAcknowledgedBy: s.ackBy, conflictAcknowledgedAt: s.ackAt, switchRequestedAt: s.switchRequestedAt, version: expectedVersion + 1, updatedAt: now,
     }).where(and(this.live(), eq(shifts.id, s.id), eq(shifts.version, expectedVersion))).returning();
     return updated.length === 1 ? toRecord(updated[0]!) : null;
   }
@@ -156,6 +156,13 @@ export class ShiftRepository {
   async claim(id: string, ref: string, expectedVersion: number, now: Date): Promise<ShiftRecord | null> {
     return one(await this.db.update(shifts).set({ employeeRef: ref, version: sql`${shifts.version} + 1`, updatedAt: now })
       .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), isNull(shifts.employeeRef), eq(shifts.state, 'published'), gt(shifts.startAt, now))).returning());
+  }
+
+  /** BR-07: ends every active switch request on a shift that has not started; returns the shifts whose owners must be told. Bumps the version so an in-flight take-over is caught. */
+  async clearSwitchRequests(now: Date): Promise<ShiftRecord[]> {
+    const rows = await this.db.update(shifts).set({ switchRequestedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
+      .where(and(this.live(), isNotNull(shifts.switchRequestedAt), gt(shifts.startAt, now))).returning();
+    return rows.map(toRecord);
   }
 
   /** Every give-up update below is guarded by `expectedVersion`, so it only applies to the shift as the caller judged it. null = it changed (or no longer qualifies). */

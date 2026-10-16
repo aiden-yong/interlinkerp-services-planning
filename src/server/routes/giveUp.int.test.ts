@@ -140,5 +140,81 @@ describe('giving up shifts', () => {
       expect(after.employeeRef).toBe('E1');
       expect(after.switchRequestedAt).not.toBeNull();
     });
+
+    it('loses a take-over that races the mode change to Unassign (BR-07)', async () => {
+      await h.addEmployee('E1', 'Ana Lim');
+      await h.addEmployee('E2', 'Bo Tan');
+      const id = await published('E1', '2026-10-15T09:00:00+08:00', '2026-10-15T17:00:00+08:00');
+      await h.callAs(...ANA, 'POST', '/api/switch-requests', { shift_id: id });
+      const real = new UnitOfWork(h.database.db, ORG, 'Asia/Kuala_Lumpur');
+      const unit = {
+        run: (work: Parameters<UnitOfWork['run']>[0]) => real.run(async (scope) => work({
+          ...scope,
+          shifts: Object.assign(Object.create(scope.shifts), {
+            takeOver: async (...args: Parameters<typeof scope.shifts.takeOver>) => {
+              const current = await h.app.settings().get();
+              await h.app.openShifts().applySettings({ ...current, give_up_mode: 'unassign' });
+              return scope.shifts.takeOver(...args);
+            },
+          }),
+        })),
+      } as unknown as UnitOfWork;
+      const a = h.app;
+      const service = new OpenShiftService(a.shifts(), a.profiles(), a.roles(), a.directory(), a.settings(), a.eligibility(), unit, a.clock());
+      await expect(service.takeOver({ shift_id: id }, bo)).rejects.toMatchObject({ code: 'NOT_UP_FOR_SWITCH' });
+      const after = (await h.app.shifts().find(id))!;
+      expect([after.employeeRef, after.switchRequestedAt]).toEqual(['E1', null]);
+    });
+  });
+});
+
+describe('give-up mode changes', () => {
+  it('cancels pending switch requests and tells their owners when the mode becomes Unassign (BR-07)', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    const id = await published('E1', '2026-10-15T09:00:00+08:00', '2026-10-15T17:00:00+08:00');
+    await h.callAs(...ANA, 'POST', '/api/switch-requests', { shift_id: id });
+    h.asManager();
+    expect((await h.call('PATCH', '/api/settings', { give_up_mode: 'unassign' })).status).toBe(200);
+    h.asEmployee('E1');
+    const mine = (await h.call('GET', '/api/my/shifts', undefined, WEEK)).body.shifts;
+    expect(mine[0].switch_requested).toBe(false);
+    expect((await outbox()).filter((r) => r.kind === 'switch_cancelled').map((r) => [r.employee_ref, r.payload])).toEqual([['E1', { shift_id: id }]]);
+  });
+
+  it('clears a switch request when a manager reassigns the shift', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    await h.addEmployee('E2', 'Bo Tan');
+    const id = await published('E1', '2026-10-15T09:00:00+08:00', '2026-10-15T17:00:00+08:00');
+    await h.callAs(...ANA, 'POST', '/api/switch-requests', { shift_id: id });
+    h.asManager();
+    const current = (await h.call('GET', `/api/shifts/${id}`)).body.shift;
+    expect(current.switch_requested).toBe(true);
+    const moved = await h.call('PATCH', `/api/shifts/${id}`, { employee_ref: 'E2', version: current.version });
+    expect(moved.body.shift.switch_requested).toBe(false);
+  });
+
+  it('keeps the request of a shift that already started and tells only owners of cleared shifts', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    await h.addEmployee('E2', 'Bo Tan');
+    const started = await published('E1', '2026-10-13T11:00:00+08:00', '2026-10-13T15:00:00+08:00');
+    const future = await published('E2', '2026-10-15T09:00:00+08:00', '2026-10-15T17:00:00+08:00');
+    await h.callAs(...ANA, 'POST', '/api/switch-requests', { shift_id: started });
+    await h.callAs(...BO, 'POST', '/api/switch-requests', { shift_id: future });
+    h.clock.advance(2 * 3600);
+    h.asManager();
+    await h.call('PATCH', '/api/settings', { give_up_mode: 'unassign' });
+    expect((await outbox()).filter((r) => r.kind === 'switch_cancelled').map((r) => [r.employee_ref, r.payload])).toEqual([['E2', { shift_id: future }]]);
+    expect((await h.app.shifts().find(started))!.switchRequestedAt).not.toBeNull();
+  });
+
+  it('does not let a take-over succeed once the mode has changed to Unassign (BR-07)', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    await h.addEmployee('E2', 'Bo Tan');
+    const id = await published('E1', '2026-10-15T09:00:00+08:00', '2026-10-15T17:00:00+08:00');
+    await h.callAs(...ANA, 'POST', '/api/switch-requests', { shift_id: id });
+    h.asManager();
+    await h.call('PATCH', '/api/settings', { give_up_mode: 'unassign' });
+    expect((await h.callAs(...BO, 'POST', '/api/switch-takeovers', { shift_id: id })).body.error.code).toBe('MODE_NOT_ACTIVE');
+    expect((await h.app.shifts().find(id))!.employeeRef).toBe('E1');
   });
 });

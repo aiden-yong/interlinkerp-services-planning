@@ -25,7 +25,7 @@ export function register(r: Router, app: App): void {
     if (mode && mode !== 'switch' && mode !== 'unassign') input.error('give_up_mode', 'Use switch or unassign.');
     const windowDays = input.has('unassign_window_days') ? input.int('unassign_window_days', 0, 60, current.unassign_window_days) : current.unassign_window_days;
     input.check();
-    await app.settings().save({ country_code: country, region_code: region, timezone: timezone!, give_up_mode: mode as GiveUpMode, unassign_window_days: windowDays! }, app.clock().now());
+    await app.openShifts().applySettings({ country_code: country, region_code: region, timezone: timezone!, give_up_mode: mode as GiveUpMode, unassign_window_days: windowDays! });
     return json(200, { settings: await app.settings().get() });
   }, op('Update Settings', 'Set the organisation country, region and time zone', ['Choosing which public holidays apply', 'Changing the default time zone'], ["Changing one employee's time zone"],
     ['country_code', 'region_code', 'timezone', 'give_up_mode', 'unassign_window_days'], ['settings'], ['Planning Manager'], ['GET /api/settings', 'POST /api/holiday-syncs'],

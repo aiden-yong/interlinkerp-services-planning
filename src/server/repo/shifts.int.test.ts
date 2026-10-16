@@ -29,6 +29,24 @@ describe('ShiftRepository.update', () => {
   });
 });
 
+describe('ShiftRepository.clearSwitchRequests', () => {
+  it('clears and version-bumps only live, not-started, requested shifts', async () => {
+    const repo = new ShiftRepository(database.db, ORG);
+    const [future, started, plain, deleted] = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222', '33333333-3333-4333-8333-333333333333', '44444444-4444-4444-8444-444444444444'];
+    const requested = { employeeRef: 'E1', state: 'published' as const, switchRequestedAt: now };
+    await repo.insert({ ...shift(future!), ...requested }, now);
+    await repo.insert({ ...shift(started!), ...requested, start: new Date('2026-10-12T01:00:00Z'), end: new Date('2026-10-14T09:00:00Z') }, now);
+    await repo.insert({ ...shift(plain!), employeeRef: 'E1', state: 'published' }, now);
+    await repo.insert({ ...shift(deleted!), ...requested }, now);
+    await repo.softDelete(deleted!, 'tester', now);
+    const cleared = await repo.clearSwitchRequests(now);
+    expect(cleared.map((s) => [s.id, s.version, s.switchRequestedAt])).toEqual([[future, 2, null]]);
+    expect((await repo.find(started!))).toMatchObject({ version: 1, switchRequestedAt: now });
+    expect((await repo.find(plain!))!.version).toBe(1);
+    expect(await repo.find(deleted!, true)).toMatchObject({ version: 1, switchRequestedAt: now });
+  });
+});
+
 describe('UnitOfWork', () => {
   it('rolls back the shift and the notification together', async () => {
     const unit = new UnitOfWork(database.db, ORG, 'UTC');
