@@ -47,7 +47,7 @@ describe('publishing (FR-PUB-01, FR-PUB-02) and My Planning (FR-MYP-01)', () => 
     expect(body.shifts.map((s: { id: string }) => s.id)).toEqual([mine]);
     expect(body.shifts.map((s: { id: string }) => s.id)).not.toContain(draft);
     expect(body.timezone).toBe('Asia/Kuala_Lumpur');
-    expect(Object.keys(body.shifts[0])).toEqual(['id', 'role_id', 'start_at', 'end_at', 'break_minutes', 'allocated_hours', 'note']);
+    expect(Object.keys(body.shifts[0])).toEqual(['id', 'role_id', 'start_at', 'end_at', 'break_minutes', 'allocated_hours', 'note', 'switch_requested']);
   });
 
   it('turns away people who are not on the roster, and stops employees publishing', async () => {

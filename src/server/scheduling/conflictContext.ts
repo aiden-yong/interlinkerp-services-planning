@@ -17,15 +17,15 @@ export class ConflictContext {
     private readonly settings: SettingsRepository,
   ) {}
 
-  /** Conflicts the shift would have if saved as given. Open shifts never conflict. */
-  async conflictsFor(candidate: ShiftRecord): Promise<Conflict[]> {
+  /** Conflicts the shift would have if saved as given. Open shifts never conflict. Holidays count unless `holidays: false` (BR-05). */
+  async conflictsFor(candidate: ShiftRecord, options: { holidays?: boolean } = {}): Promise<Conflict[]> {
     if (!candidate.employeeRef) return [];
     const profile = await this.profiles.find(candidate.employeeRef);
     const zone = await this.timezoneFor(profile);
     const [others, away, holidays] = await Promise.all([
       this.shifts.forEmployeeOverlapping(candidate.employeeRef, candidate.start, candidate.end),
       this.timeOff.between(candidate.start, candidate.end, candidate.employeeRef),
-      this.holidays.visibleBetween(localDate(candidate.start.getTime(), zone), localDate(candidate.end.getTime(), zone)),
+      options.holidays === false ? Promise.resolve([]) : this.holidays.visibleBetween(localDate(candidate.start.getTime(), zone), localDate(candidate.end.getTime(), zone)),
     ]);
     const facts = [...others.filter((s) => s.id !== candidate.id).map(factsOf), factsOf(candidate)];
     return conflictsForEmployee(facts, ConflictContext.spans(away, holidays, zone), profile.roleIds).get(candidate.id) ?? [];

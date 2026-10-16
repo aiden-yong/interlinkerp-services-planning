@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNull, lt } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { shifts } from '../db/schema';
 import { type ShiftFacts, shiftHours } from '../domain/allocation';
@@ -23,13 +23,17 @@ export interface ShiftRecord {
   version: number;
   createdBy: string;
   deletedAt: Date | null;
+  switchRequestedAt: Date | null;
 }
 
 const toRecord = (r: typeof shifts.$inferSelect): ShiftRecord => ({
   id: r.id, employeeRef: r.employeeRef, roleId: r.roleId, start: r.startAt, end: r.endAt, breakMinutes: r.breakMinutes, percent: r.allocatedPercent,
   note: r.note, state: r.state as ShiftRecord['state'], publishedAt: r.publishedAt, ackBy: r.conflictAcknowledgedBy, ackAt: r.conflictAcknowledgedAt,
   version: r.version, createdBy: r.createdBy, deletedAt: r.deletedAt,
+  switchRequestedAt: r.switchRequestedAt,
 });
+
+const one = (rows: (typeof shifts.$inferSelect)[]): ShiftRecord | null => (rows.length === 1 ? toRecord(rows[0]!) : null);
 
 export function factsOf(s: ShiftRecord): ShiftFacts {
   return { id: s.id, employeeRef: s.employeeRef, roleId: s.roleId, interval: Interval.of(s.start, s.end), breakMinutes: s.breakMinutes, percent: s.percent };
@@ -40,13 +44,13 @@ export function shiftToApi(s: ShiftRecord, conflicts: Conflict[] = []) {
     id: s.id, employee_ref: s.employeeRef, role_id: s.roleId, start_at: iso(s.start), end_at: iso(s.end),
     break_minutes: s.breakMinutes, allocated_percent: s.percent, allocated_hours: shiftHours(factsOf(s)), note: s.note,
     state: s.state, published_at: s.publishedAt ? iso(s.publishedAt) : null, version: s.version,
-    conflicts, conflict_acknowledged: s.ackAt !== null,
+    conflicts, conflict_acknowledged: s.ackAt !== null, switch_requested: s.switchRequestedAt !== null,
   };
 }
 
 /** What an employee sees of their own published shift (FR-MYP-01). */
 export function shiftToMyApi(s: ShiftRecord) {
-  return { id: s.id, role_id: s.roleId, start_at: iso(s.start), end_at: iso(s.end), break_minutes: s.breakMinutes, allocated_hours: shiftHours(factsOf(s)), note: s.note };
+  return { id: s.id, role_id: s.roleId, start_at: iso(s.start), end_at: iso(s.end), break_minutes: s.breakMinutes, allocated_hours: shiftHours(factsOf(s)), note: s.note, switch_requested: s.switchRequestedAt !== null };
 }
 
 export class ShiftRepository {
@@ -79,7 +83,7 @@ export class ShiftRepository {
     await this.db.insert(shifts).values({
       id: s.id, organisationId: this.org, employeeRef: s.employeeRef, roleId: s.roleId, startAt: s.start, endAt: s.end,
       breakMinutes: s.breakMinutes, allocatedPercent: s.percent, note: s.note, state: s.state, publishedAt: s.publishedAt,
-      conflictAcknowledgedBy: s.ackBy, conflictAcknowledgedAt: s.ackAt, version: s.version, createdBy: s.createdBy, createdAt: now, updatedAt: now,
+      conflictAcknowledgedBy: s.ackBy, conflictAcknowledgedAt: s.ackAt, version: s.version, createdBy: s.createdBy, switchRequestedAt: s.switchRequestedAt, createdAt: now, updatedAt: now,
     });
   }
 
@@ -124,5 +128,33 @@ export class ShiftRepository {
       .where(and(this.live(), eq(shifts.employeeRef, ref), eq(shifts.state, 'published'), lt(shifts.startAt, to), gt(shifts.endAt, from)))
       .orderBy(shifts.startAt);
     return rows.map(toRecord);
+  }
+
+  /** Shifts by id, deleted ones included (notification rendering needs cancelled shifts too). */
+  async byIds(ids: string[]): Promise<ShiftRecord[]> {
+    const valid = ids.filter(isUuid);
+    if (valid.length === 0) return [];
+    const rows = await this.db.select().from(shifts).where(and(eq(shifts.organisationId, this.org), inArray(shifts.id, valid)));
+    return rows.map(toRecord);
+  }
+
+  /** FR-OPN-01: published open shifts that have not started and overlap [from, to). */
+  async openPublished(from: Date, to: Date, now: Date): Promise<ShiftRecord[]> {
+    const rows = await this.db.select().from(shifts).where(and(this.live(), isNull(shifts.employeeRef), eq(shifts.state, 'published'),
+      gt(shifts.startAt, now), lt(shifts.startAt, to), gt(shifts.endAt, from))).orderBy(shifts.startAt, shifts.id);
+    return rows.map(toRecord);
+  }
+
+  /** FR-OPN-03: shifts with an active switch request. A request lapses when its shift starts (AC3). */
+  async upForSwitch(from: Date, to: Date, now: Date): Promise<ShiftRecord[]> {
+    const rows = await this.db.select().from(shifts).where(and(this.live(), isNotNull(shifts.switchRequestedAt), eq(shifts.state, 'published'),
+      gt(shifts.startAt, now), lt(shifts.startAt, to), gt(shifts.endAt, from))).orderBy(shifts.startAt, shifts.id);
+    return rows.map(toRecord);
+  }
+
+  /** NFR-04: takes an open published shift that has not started. null = someone else got it first. */
+  async claim(id: string, ref: string, now: Date): Promise<ShiftRecord | null> {
+    return one(await this.db.update(shifts).set({ employeeRef: ref, version: sql`${shifts.version} + 1`, updatedAt: now })
+      .where(and(this.live(), eq(shifts.id, id), isNull(shifts.employeeRef), eq(shifts.state, 'published'), gt(shifts.startAt, now))).returning());
   }
 }

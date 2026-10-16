@@ -15,6 +15,11 @@ export class Outbox {
     await this.db.insert(notificationOutbox).values({ organisationId: this.org, kind, employeeRef, subjectId, payload, deliverAfter, createdAt: now });
   }
 
+  /** FR-NTF-03: a notice for everyone on the Planning Manager list (expanded at delivery). */
+  async addForManagers(kind: string, subjectId: string | null, payload: Record<string, unknown>, now: Date): Promise<void> {
+    await this.db.insert(notificationOutbox).values({ organisationId: this.org, kind, audience: 'managers', employeeRef: null, subjectId, payload, deliverAfter: now, createdAt: now });
+  }
+
   async cancelPending(kind: string, subjectId: string, now: Date): Promise<number> {
     const cancelled = await this.db.update(notificationOutbox).set({ cancelledAt: now })
       .where(and(eq(notificationOutbox.organisationId, this.org), eq(notificationOutbox.kind, kind), eq(notificationOutbox.subjectId, subjectId),

@@ -19,6 +19,7 @@ export interface Harness {
   asEmployee(ref: string | null, email?: string): void;
   asNobody(): void;
   call(method: string, path: string, body?: unknown, query?: Record<string, string | number>): Promise<{ status: number; body: any }>;
+  callAs(ref: string, email: string, method: string, path: string, body?: unknown): Promise<{ status: number; body: any }>;
   addEmployee(ref: string, name: string, departmentId?: string | null, departmentName?: string | null, email?: string | null): Promise<void>;
   addRole(name: string, color?: string): Promise<string>;
 }
@@ -34,11 +35,13 @@ export function useApiHarness(): Harness {
   const database = useTestDatabase();
   let principal: Principal | null = null;
   const guard: AccessGuard = {
-    async check(route) {
+    async check(route, request) {
+      const override = request.headers.get('x-test-principal');
+      const who = override ? (JSON.parse(override) as Principal) : principal;
       if (route.access === 'public' || route.access === 'internal') return { principal: null, cookies: [] };
-      if (!principal) throw HttpError.unauthorized('Not signed in.');
-      if ((route.access === 'manager' || route.access === 'person-manager') && !principal.isManager) throw HttpError.forbidden('Only Planning Managers can do this.');
-      return { principal, cookies: [] };
+      if (!who) throw HttpError.unauthorized('Not signed in.');
+      if ((route.access === 'manager' || route.access === 'person-manager') && !who.isManager) throw HttpError.forbidden('Only Planning Managers can do this.');
+      return { principal: who, cookies: [] };
     },
   };
 
@@ -58,6 +61,16 @@ export function useApiHarness(): Harness {
       const response = await h.app.kernel().handle(new Request(`http://localhost${path}${qs ? `?${qs}` : ''}`, {
         method,
         headers: body === undefined ? {} : { 'content-type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }));
+      const text = await response.text();
+      return { status: response.status, body: text ? JSON.parse(text) : null };
+    },
+    /** Calls as an employee without changing the default principal, so two people can act at the same moment. */
+    async callAs(ref: string, email: string, method: string, path: string, body?: unknown) {
+      const response = await h.app.kernel().handle(new Request(`http://localhost${path}`, {
+        method,
+        headers: { 'x-test-principal': JSON.stringify(person(email, false, ref)), ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
         body: body === undefined ? undefined : JSON.stringify(body),
       }));
       const text = await response.text();

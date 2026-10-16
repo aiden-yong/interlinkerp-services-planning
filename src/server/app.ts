@@ -23,6 +23,8 @@ import { ShiftRepository } from './repo/shifts';
 import { TimeOffRepository } from './repo/timeOff';
 import { buildRouter } from './routes';
 import { ConflictContext } from './scheduling/conflictContext';
+import { Eligibility } from './scheduling/eligibility';
+import { OpenShiftService } from './scheduling/openShiftService';
 import { PublishService } from './scheduling/publishService';
 import { ScheduleService } from './scheduling/scheduleService';
 import { ShiftService } from './scheduling/shiftService';
@@ -172,8 +174,19 @@ export class App {
     return this.once('conflictContext', () => new ConflictContext(this.shifts(), this.profiles(), this.timeOff(), this.holidays(), this.settings()));
   }
 
+  /** Pool-backed: for reads outside a transaction. Writes use `scope.eligibility`. */
+  eligibility(): Eligibility {
+    return this.once('eligibility', () => new Eligibility(this.shifts(), this.profiles(), this.timeOff(), this.conflictContext()));
+  }
+
+  openShifts(): OpenShiftService {
+    return this.once('openShifts', () => new OpenShiftService(
+      this.shifts(), this.profiles(), this.roles(), this.directory(), this.settings(), this.eligibility(), this.unitOfWork(), this.clock(),
+    ));
+  }
+
   unitOfWork(): UnitOfWork {
-    return this.once('unitOfWork', () => new UnitOfWork(this.database().db, this.organisationId()));
+    return this.once('unitOfWork', () => new UnitOfWork(this.database().db, this.organisationId(), this.defaultTimezone()));
   }
 
   shiftService(): ShiftService {
