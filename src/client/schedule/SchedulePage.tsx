@@ -94,6 +94,7 @@ export function SchedulePage({ me }: { me: Me }) {
     if (!(await confirm('Publish shifts?', lines, 'Publish'))) return;
     try {
       const result = await api<{ published: number; open_shift_notices?: number }>('POST', '/api/publications', { shift_ids: summary.ids, notify_open_shifts: notifyOpen });
+      setNotifyOpen(false); // one publish only, so a later one cannot notify by accident
       const notices = result.open_shift_notices ?? 0;
       toast(`Published ${result.published} shift${result.published === 1 ? '' : 's'}.${notices > 0 ? ` ${notices} employee${notices === 1 ? '' : 's'} told about open shifts.` : ''}`, undefined, 5000);
     } catch (e) {

@@ -48,12 +48,15 @@ describe('SchedulePage publish with open-shift notices (FR-OPN-04)', () => {
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(JSON.parse(String((posts()[0]![1] as RequestInit).body)).notify_open_shifts).toBe(true);
     expect(await screen.findByText('Published 1 shift. 3 employees told about open shifts.')).toBeTruthy();
+    await waitFor(() => expect((screen.getByLabelText('Tell eligible employees about open shifts') as HTMLInputElement).checked).toBe(false));
   });
 
   it('keeps the existing error handling when the publish call fails', async () => {
     const { posts } = setup(new Response(JSON.stringify({ error: { code: 'BOOM', message: 'Publishing failed.' } }), { status: 500 }));
+    fireEvent.click(await screen.findByLabelText('Tell eligible employees about open shifts'));
     await publish();
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(await screen.findByText('Publishing failed.')).toBeTruthy();
+    expect((screen.getByLabelText('Tell eligible employees about open shifts') as HTMLInputElement).checked).toBe(true);
   });
 });

@@ -13,10 +13,10 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   country_code: 'MY', region_code: null, timezone: 'Asia/Kuala_Lumpur', give_up_mode: 'switch', unassign_window_days: 2, ...over,
 });
 
-function setup(initial: Settings, patchStatus = 200, patchBody: unknown = {}) {
+function setup(initial: Settings, patchStatus = 200, patchBody?: unknown) {
   const fetchMock = vi.fn(async (_path: string, init?: RequestInit) =>
     init?.method === 'PATCH'
-      ? new Response(JSON.stringify(patchBody), { status: patchStatus })
+      ? new Response(JSON.stringify(patchBody ?? { settings: { ...initial, ...JSON.parse(String(init.body)) } }), { status: patchStatus })
       : new Response(JSON.stringify({ settings: initial }), { status: 200 }));
   vi.stubGlobal('fetch', fetchMock);
   render(<FeedbackProvider><GeneralTab /></FeedbackProvider>);
@@ -72,5 +72,35 @@ describe('GeneralTab give-up mode', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Save' }));
     expect(await screen.findByText('Must be 0 to 60.')).toBeTruthy();
     expect(patches()).toHaveLength(1);
+  });
+
+  it('does not ask again after a saved Switch to Unassign change', async () => {
+    const { patches } = setup(settings());
+    await pickUnassign();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Switch to Unassign' }));
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    await screen.findByText('Settings saved.');
+    fireEvent.change(screen.getByLabelText('Unassign window (days)'), { target: { value: '9' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(patches()).toHaveLength(2));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(JSON.parse(String((patches()[1]![1] as RequestInit).body)).unassign_window_days).toBe(9);
+  });
+
+  it.each([['', /Required/], ['2.5', /whole number/], ['61', /0 to 60/]])('rejects the window %j without a request', async (value, message) => {
+    const { patches } = setup(settings({ give_up_mode: 'unassign' }));
+    const input = (await screen.findByLabelText('Unassign window (days)')) as HTMLInputElement;
+    fireEvent.change(input, { target: { value } });
+    expect(input.value).toBe(value); // an emptied field stays empty so it can be retyped
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(patches()).toHaveLength(0);
+  });
+
+  it('names the mode control once', async () => {
+    setup(settings());
+    await screen.findByRole('radiogroup', { name: 'Give-up mode' });
+    expect(screen.queryAllByRole('group', { name: 'Give-up mode' })).toHaveLength(0);
   });
 });

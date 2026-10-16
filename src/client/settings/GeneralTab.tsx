@@ -14,29 +14,44 @@ export function GeneralTab() {
   const { toast, confirm } = useFeedback();
   const { data, error } = useLoad(() => api<{ settings: Settings }>('GET', '/api/settings'), []);
   const [form, setForm] = useState<Settings | null>(null);
+  const [saved, setSaved] = useState<Settings | null>(null); // the baseline the BR-07 confirm compares against
+  const [windowText, setWindowText] = useState('');
   const [problem, setProblem] = useState('');
   const [fe, setFe] = useState<Record<string, string>>({});
   const { busy, run } = useBusy();
   useEffect(() => {
-    if (data) setForm(data.settings);
+    if (data) {
+      setForm(data.settings);
+      setSaved(data.settings);
+      setWindowText(String(data.settings.unassign_window_days));
+    }
   }, [data]);
   const zones = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
 
   const save = (event: FormEvent) => {
     event.preventDefault();
     if (!form) return;
+    const unassign = form.give_up_mode === 'unassign';
+    const days = windowText.trim() === '' ? NaN : Number(windowText);
+    if (unassign && !(Number.isInteger(days) && days >= 0 && days <= 60)) {
+      setFe({ unassign_window_days: windowText.trim() === '' ? 'Required. Enter a whole number of days from 0 to 60.' : 'Use a whole number of days from 0 to 60.' });
+      return;
+    }
     void run(async () => {
       // Moving from Switch to Unassign cancels pending switch requests (BR-07), so ask first.
-      if (data?.settings.give_up_mode === 'switch' && form.give_up_mode === 'unassign'
+      if (saved?.give_up_mode === 'switch' && unassign
         && !(await confirm('Switch to Unassign?', ['Pending switch requests will be cancelled and their owners told.'], 'Switch to Unassign'))) return;
       try {
-        await api('PATCH', '/api/settings', {
+        const result = await api<{ settings: Settings }>('PATCH', '/api/settings', {
           country_code: form.country_code?.trim().toUpperCase() || null,
           region_code: form.region_code?.trim().toUpperCase() || null,
           timezone: form.timezone.trim(),
           give_up_mode: form.give_up_mode,
-          unassign_window_days: form.unassign_window_days,
+          unassign_window_days: unassign ? days : form.unassign_window_days,
         });
+        setSaved(result.settings);
+        setForm(result.settings);
+        setWindowText(String(result.settings.unassign_window_days));
         setProblem('');
         setFe({});
         toast('Settings saved.', undefined, 3000);
@@ -51,7 +66,7 @@ export function GeneralTab() {
   if (error) return <p className="form-error">{error}</p>;
   if (!form) return <p className="empty">Loading…</p>;
   return (
-    <form className="form-grid narrow" onSubmit={save}>
+    <form className="form-grid narrow" noValidate onSubmit={save}>
       <label>Country (ISO code)<input maxLength={2} placeholder="MY" value={form.country_code ?? ''} onChange={(e) => setForm({ ...form, country_code: e.target.value })} />
         {fe.country_code && <span className="field-error">{fe.country_code}</span>}</label>
       <label>State / region code<input maxLength={10} placeholder="MY-10" value={form.region_code ?? ''} onChange={(e) => setForm({ ...form, region_code: e.target.value })} />
@@ -60,7 +75,7 @@ export function GeneralTab() {
         {fe.timezone && <span className="field-error">{fe.timezone}</span>}</label>
       <datalist id="zones">{zones.map((z) => <option key={z} value={z} />)}</datalist>
       <fieldset className="wide">
-        <legend>Give-up mode</legend>
+        <legend aria-hidden="true">Give-up mode</legend>
         <Segmented label="Give-up mode" value={form.give_up_mode} segments={MODES} onChange={(give_up_mode) => setForm({ ...form, give_up_mode })} />
         <span className="muted">{form.give_up_mode === 'switch'
           ? 'Switch: the shift stays theirs until a colleague takes it.'
@@ -68,7 +83,7 @@ export function GeneralTab() {
         {fe.give_up_mode && <span className="field-error">{fe.give_up_mode}</span>}
       </fieldset>
       {form.give_up_mode === 'unassign' && (
-        <label>Unassign window (days)<input type="number" min={0} max={60} step={1} required value={form.unassign_window_days} onChange={(e) => setForm({ ...form, unassign_window_days: e.target.value === '' ? 0 : Number(e.target.value) })} />
+        <label>Unassign window (days)<input type="number" min={0} max={60} step={1} value={windowText} onChange={(e) => setWindowText(e.target.value)} />
           {fe.unassign_window_days && <span className="field-error">{fe.unassign_window_days}</span>}</label>
       )}
       <p className="wide muted">The country and region decide which public holidays are loaded. Employees without their own time zone use this one.</p>
