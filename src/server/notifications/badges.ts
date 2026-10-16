@@ -1,4 +1,4 @@
-﻿import type { Logger } from '../http/kernel';
+import type { Logger } from '../http/kernel';
 import type { HttpClient } from '../support/http';
 
 export interface BadgeCount {

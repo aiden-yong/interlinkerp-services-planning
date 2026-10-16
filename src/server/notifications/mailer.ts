@@ -1,4 +1,5 @@
-﻿import nodemailer, { type Transporter } from 'nodemailer';
+import nodemailer, { type Transporter } from 'nodemailer';
+import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import type { Logger } from '../http/kernel';
 
 export interface MailMessage {
@@ -23,16 +24,35 @@ export async function withTimeout(work: Promise<unknown>, ms: number): Promise<S
   return Promise.race([sent, timeout]).finally(() => clearTimeout(timer));
 }
 
+/** Throws (without echoing the URL) unless this is a well-formed smtp:// or smtps:// URL with decodable credentials. */
+function assertSmtpUrl(raw: string): void {
+  const url = new URL(raw);
+  if (url.protocol !== 'smtp:' && url.protocol !== 'smtps:') throw new Error('scheme');
+  if (!url.hostname) throw new Error('host');
+  decodeURIComponent(url.username);
+  decodeURIComponent(url.password);
+}
+
 /** D2: any SMTP provider, e.g. smtps://user:app-password@smtp.gmail.com:465. */
 export class SmtpMailer implements Mailer {
-  private readonly transport: Transporter;
+  private transport: Transporter | null = null;
 
-  constructor(url: string, private readonly from: string, private readonly timeoutMs = 10_000) {
-    this.transport = nodemailer.createTransport(url);
-  }
+  constructor(private readonly url: string, private readonly from: string, private readonly timeoutMs = 10_000) {}
 
-  send(message: MailMessage): Promise<SendResult> {
-    return withTimeout(this.transport.sendMail({ from: this.from, to: message.to, subject: message.subject, text: message.text }), this.timeoutMs);
+  /** Built on first send. A malformed URL makes nodemailer throw with the whole URL (and password) in the message, so that message is never kept. */
+  async send(message: MailMessage): Promise<SendResult> {
+    let transport: Transporter;
+    try {
+      if (!this.transport) {
+        assertSmtpUrl(this.url);
+        const options: SMTPTransport.Options = { url: this.url, connectionTimeout: this.timeoutMs, greetingTimeout: this.timeoutMs, socketTimeout: this.timeoutMs };
+        this.transport = nodemailer.createTransport(options);
+      }
+      transport = this.transport;
+    } catch {
+      return { ok: false, error: 'SMTP_URL is not a valid SMTP URL.' };
+    }
+    return withTimeout(transport.sendMail({ from: this.from, to: message.to, subject: message.subject, text: message.text }), this.timeoutMs);
   }
 }
 

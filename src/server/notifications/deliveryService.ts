@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lt, lte } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { MAX_EMAIL_ATTEMPTS, notificationOutbox, notifications } from '../db/schema';
 import type { Logger } from '../http/kernel';
@@ -81,7 +81,7 @@ export class DeliveryService {
           const attempts = row.attempts + 1;
           await tx.update(notificationOutbox).set({ attempts, lastError: scrubAddresses(String(error)), deliveredAt: attempts >= MAX_OUTBOX_ATTEMPTS ? now : null })
             .where(and(eq(notificationOutbox.organisationId, org), eq(notificationOutbox.id, row.id)));
-          this.d.log(`[delivery] notice ${row.id} (${row.kind}) failed: ${String(error)}`);
+          this.d.log(`[delivery] notice ${row.id} (${row.kind}) failed: ${scrubAddresses(String(error))}`);
           continue;
         }
         if (inbox.length > 0) await tx.insert(notifications).values(inbox);
@@ -104,10 +104,10 @@ export class DeliveryService {
     const now = clock.now();
     const leased = await db.transaction(async (tx) => {
       const due = await tx.select().from(notifications)
-        .where(and(eq(notifications.organisationId, org), isNull(notifications.emailedAt), lt(notifications.emailAttempts, MAX_EMAIL_ATTEMPTS), lte(notifications.emailNextAt, now)))
+        .where(and(eq(notifications.organisationId, org), isNull(notifications.emailedAt), sql`${notifications.emailAttempts} < ${sql.raw(String(MAX_EMAIL_ATTEMPTS))}`, lte(notifications.emailNextAt, now)))
         .orderBy(notifications.id).limit(EMAIL_BATCH).for('update', { skipLocked: true });
       if (due.length > 0) {
-        await tx.update(notifications).set({ emailNextAt: new Date(now.getTime() + LEASE_MS) })
+        await tx.update(notifications).set({ emailNextAt: new Date(now.getTime() + LEASE_MS), emailAttempts: sql`${notifications.emailAttempts} + 1` })
           .where(and(eq(notifications.organisationId, org), inArray(notifications.id, due.map((n) => n.id))));
       }
       return due;
@@ -127,9 +127,9 @@ export class DeliveryService {
         sent++;
         await db.update(notifications).set({ emailedAt: clock.now(), emailError: null }).where(byId(n.id));
       } else {
-        const attempts = n.emailAttempts + 1;
+        const attempts = n.emailAttempts + 1; // already counted when leased
         await db.update(notifications)
-          .set({ emailAttempts: attempts, emailError: scrubAddresses(result.error), emailNextAt: new Date(clock.now().getTime() + 2 ** attempts * 60_000) })
+          .set({ emailError: scrubAddresses(result.error), emailNextAt: new Date(clock.now().getTime() + 2 ** attempts * 60_000) })
           .where(byId(n.id));
       }
     }
@@ -147,20 +147,26 @@ export class DeliveryService {
       for (const email of emails) badges.push({ email, count: await this.d.inbox.unreadCount({ ref: refOf.get(email) ?? null, email }) });
       await this.d.badges.publish(badges);
     } catch (error) {
-      this.d.log(`[badges] could not compute counts: ${error instanceof Error ? error.message : String(error)}`);
+      this.d.log(`[badges] could not compute counts: ${scrubAddresses(error instanceof Error ? error.message : String(error))}`);
     }
   }
 
   /** The whole sweep. Never throws: delivery must not break the request that triggered it. */
   async deliverDue(): Promise<DeliveryReport> {
+    let touched: Touched;
     try {
-      const touched = await this.expandDue();
-      const emailed = await this.sendEmails();
-      await this.pushBadges(touched);
-      return { notified: touched.refs.size + touched.emails.size, emailed };
+      touched = await this.expandDue();
     } catch (error) {
-      this.d.log(`[delivery] sweep failed: ${error instanceof Error ? error.message : String(error)}`);
+      this.d.log(`[delivery] sweep failed: ${scrubAddresses(error instanceof Error ? error.message : String(error))}`);
       return { notified: 0, emailed: 0 };
     }
+    let emailed = 0;
+    try {
+      emailed = await this.sendEmails();
+    } catch (error) {
+      this.d.log(`[delivery] email step failed: ${scrubAddresses(error instanceof Error ? error.message : String(error))}`);
+    }
+    await this.pushBadges(touched);
+    return { notified: touched.refs.size + touched.emails.size, emailed };
   }
 }

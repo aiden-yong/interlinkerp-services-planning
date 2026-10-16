@@ -1,4 +1,4 @@
-﻿import { and, eq, inArray, max } from 'drizzle-orm';
+import { and, eq, inArray, max } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { employeeDirectory } from '../db/schema';
 

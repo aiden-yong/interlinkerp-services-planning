@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { FakeHttpClient, reply } from '../test/fakes';
 import { GatewayBadgePublisher } from './badges';
 

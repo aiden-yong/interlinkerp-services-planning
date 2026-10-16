@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { notificationOutbox, notifications } from '../db/schema';
 import { ManagerRepository } from '../repo/managers';
 import { Outbox } from '../repo/outbox';
+import { App } from '../app';
 import { ORG } from '../test/db';
 import { useApiHarness } from '../test/harness';
 
@@ -149,5 +150,53 @@ describe('delivery: email and badges', () => {
     h.mailer.error = '550 <ana@example.com>: Recipient address rejected';
     await h.app.delivery().deliverDue();
     expect((await inbox())[0]!.emailError).toBe('550 <[address]>: Recipient address rejected');
+  });
+});
+
+describe('delivery: failures stay contained', () => {
+  const capture = (overrides: Partial<ConstructorParameters<typeof App>[0]> = {}) => {
+    const lines: string[] = [];
+    const app = new App({ ...h.app.deps, logger: (l) => lines.push(l), ...overrides });
+    return { lines, app };
+  };
+
+  it('scrubs addresses from a badge failure log line (DR-02)', async () => {
+    await h.addEmployee('E1', 'Ana Lim', null, null, 'ana@example.com');
+    await publishedFor('E1');
+    const badges = { enabled: true, publish: async (): Promise<boolean> => { throw new Error('insert ... params: ana@example.com'); } };
+    const { lines, app } = capture({ badges });
+    const unread = app.notifications();
+    unread.unreadCount = async () => { throw new Error('query failed for ana@example.com'); };
+    const report = await app.delivery().deliverDue();
+    expect(report.notified).toBe(1);
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.join('\n')).not.toContain('@example.com');
+  });
+
+  it('swallows a badge publish that returns false or throws', async () => {
+    await h.addEmployee('E1', 'Ana Lim', null, null, 'ana@example.com');
+    await publishedFor('E1');
+    const { app } = capture({ badges: { enabled: true, publish: async () => false } });
+    expect(await app.delivery().deliverDue()).toEqual({ notified: 1, emailed: 1 });
+    await publishedFor('E1', 15);
+    const { app: throwing } = capture({ badges: { enabled: true, publish: async () => { throw new Error('boom'); } } });
+    expect(await throwing.delivery().deliverDue()).toEqual({ notified: 1, emailed: 1 });
+  });
+
+  it('makes no badge call when nothing was touched', async () => {
+    const report = await h.app.delivery().deliverDue();
+    expect(report).toEqual({ notified: 0, emailed: 0 });
+    expect(h.badges.published).toEqual([]);
+  });
+
+  it('still pushes badges and reports the inbox rows when the email step throws', async () => {
+    await h.addEmployee('E1', 'Ana Lim', null, null, 'ana@example.com');
+    await publishedFor('E1');
+    const mailer = { send: async (): Promise<never> => { throw new Error('db down for ana@example.com'); } };
+    const { lines, app } = capture({ mailer });
+    expect(await app.delivery().deliverDue()).toEqual({ notified: 1, emailed: 0 });
+    expect(h.badges.published).toHaveLength(1);
+    expect(lines.join('\n')).toContain('email step failed');
+    expect(lines.join('\n')).not.toContain('@example.com');
   });
 });
