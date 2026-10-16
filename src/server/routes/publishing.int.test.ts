@@ -19,13 +19,13 @@ describe('publishing (FR-PUB-01, FR-PUB-02) and My Planning (FR-MYP-01)', () => 
   it('publishes and queues one notice per employee', async () => {
     const ids = [await shift('E1', '2026-10-14'), await shift('E1', '2026-10-15'), await shift('E2', '2026-10-14'), await shift(null, '2026-10-16')];
     const { status, body } = await h.call('POST', '/api/publications', { shift_ids: ids });
-    expect([status, body]).toEqual([201, { published: 4, employees_notified: 2 }]);
+    expect([status, body]).toEqual([201, { published: 4, employees_notified: 2, open_shift_notices: 0 }]);
 
     const rows = await new Outbox(h.database.db, ORG).all();
     expect(rows.map((r) => r.employee_ref).sort()).toEqual(['E1', 'E2']);
     expect(rows.find((r) => r.employee_ref === 'E1')!.payload).toEqual({ shift_ids: [ids[0], ids[1]] });
     expect((await h.call('GET', `/api/shifts/${ids[0]}`)).body.shift.state).toBe('published');
-    expect((await h.call('POST', '/api/publications', { shift_ids: ids })).body).toEqual({ published: 0, employees_notified: 0 });
+    expect((await h.call('POST', '/api/publications', { shift_ids: ids })).body).toEqual({ published: 0, employees_notified: 0, open_shift_notices: 0 });
   });
 
   it('needs a non-empty list', async () => {
@@ -55,5 +55,45 @@ describe('publishing (FR-PUB-01, FR-PUB-02) and My Planning (FR-MYP-01)', () => 
     expect((await h.call('GET', '/api/my/shifts', undefined, { from: '2026-10-12', to: '2026-10-18' })).body.error.code).toBe('NOT_ON_ROSTER');
     h.asEmployee('E1');
     expect((await h.call('POST', '/api/publications', { shift_ids: ['x'] })).status).toBe(403);
+  });
+});
+
+describe('publishing open shifts (FR-PUB-03)', () => {
+  it('sends each eligible employee one notice listing their open shifts (Review Focus 5)', async () => {
+    await h.addEmployee('E3', 'Cy Ong');
+    const nurse = await h.addRole('Nurse');
+    await h.call('PATCH', '/api/employees/E1', { role_ids: [nurse] });
+    await h.call('PATCH', '/api/employees/E3', { role_ids: [nurse] });
+    await h.call('POST', '/api/unavailabilities', { employee_ref: 'E3', start_at: '2026-10-14T00:00:00+08:00', end_at: '2026-10-16T00:00:00+08:00' });
+    const ids: string[] = [];
+    for (const day of ['14', '15']) {
+      ids.push((await h.call('POST', '/api/shifts', { employee_ref: null, role_id: nurse, start_at: `2026-10-${day}T09:00:00+08:00`, end_at: `2026-10-${day}T17:00:00+08:00` })).body.shift.id);
+    }
+    const { status, body } = await h.call('POST', '/api/publications', { shift_ids: ids, notify_open_shifts: true });
+    expect(status).toBe(201);
+    expect(body).toEqual({ published: 2, employees_notified: 0, open_shift_notices: 1 });
+    const notices = (await new Outbox(h.database.db, ORG).all()).filter((r) => r.kind === 'open_shifts_available');
+    expect(notices.map((r) => [r.employee_ref, r.payload])).toEqual([['E1', { shift_ids: ids }]]); // E2 lacks the role, E3 is away
+  });
+
+  it('skips employees with an overlapping shift or time off, and open shifts that have started', async () => {
+    await h.addEmployee('E3', 'Cy Ong');
+    const nurse = await h.addRole('Nurse');
+    for (const ref of ['E1', 'E2', 'E3']) await h.call('PATCH', `/api/employees/${ref}`, { role_ids: [nurse] });
+    await shift('E1', '2026-10-14'); // E1 already works the 14th (left as a draft)
+    await h.call('POST', '/api/unavailabilities', { employee_ref: 'E2', start_at: '2026-10-14T00:00:00+08:00', end_at: '2026-10-15T00:00:00+08:00' });
+    const open = (await h.call('POST', '/api/shifts', { employee_ref: null, role_id: nurse, start_at: '2026-10-14T09:00:00+08:00', end_at: '2026-10-14T17:00:00+08:00' })).body.shift.id;
+    // The clock is 2026-10-13 10:00 +08:00, so this open shift has already started.
+    const started = (await h.call('POST', '/api/shifts', { employee_ref: null, role_id: nurse, start_at: '2026-10-13T08:00:00+08:00', end_at: '2026-10-13T16:00:00+08:00' })).body.shift.id;
+    const { body } = await h.call('POST', '/api/publications', { shift_ids: [open, started], notify_open_shifts: true });
+    expect(body).toEqual({ published: 2, employees_notified: 0, open_shift_notices: 1 });
+    const notices = (await new Outbox(h.database.db, ORG).all()).filter((r) => r.kind === 'open_shifts_available');
+    expect(notices.map((r) => [r.employee_ref, r.payload])).toEqual([['E3', { shift_ids: [open] }]]);
+  });
+
+  it('sends nothing about open shifts unless asked, and validates the flag', async () => {
+    const id = await shift(null, '2026-10-14');
+    expect((await h.call('POST', '/api/publications', { shift_ids: [id], notify_open_shifts: 'yes' })).status).toBe(422);
+    expect((await h.call('POST', '/api/publications', { shift_ids: [id] })).body.open_shift_notices).toBe(0);
   });
 });

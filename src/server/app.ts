@@ -238,7 +238,7 @@ export class App {
   }
 
   publishService(): PublishService {
-    return this.once('publishService', () => new PublishService(this.unitOfWork(), this.clock()));
+    return this.once('publishService', () => new PublishService(this.unitOfWork(), this.clock(), this.directory()));
   }
 
   scheduleService(): ScheduleService {
