@@ -14,7 +14,9 @@ import type { Router } from './http/router';
 import { HolidayProvider, nullHolidayProvider } from './holidays/provider';
 import { HolidayRepository } from './repo/holidays';
 import { DirectoryRepository } from './repo/directory';
+import { DeliveryService } from './notifications/deliveryService';
 import { ManagerRepository } from './repo/managers';
+import { NotificationRepository } from './repo/notifications';
 import { Outbox } from './repo/outbox';
 import { ProfileRepository } from './repo/profiles';
 import { RoleRepository } from './repo/roles';
@@ -57,6 +59,7 @@ export interface AppDeps {
   departments?: DepartmentNames;
   cronSecret?: string | null;
   holidayProvider?: HolidayProvider;
+  publicUrl?: string;
 }
 
 /**
@@ -106,7 +109,7 @@ export class App {
   }
 
   publicUrl(): string {
-    return requireEnv('PUBLIC_URL').replace(/\/+$/, '');
+    return (this.deps.publicUrl ?? requireEnv('PUBLIC_URL')).replace(/\/+$/, '');
   }
 
   secureCookies(): boolean {
@@ -168,6 +171,17 @@ export class App {
 
   outbox(): Outbox {
     return this.once('outbox', () => new Outbox(this.database().db, this.organisationId()));
+  }
+
+  notifications(): NotificationRepository {
+    return this.once('notifications', () => new NotificationRepository(this.database().db, this.organisationId()));
+  }
+
+  delivery(): DeliveryService {
+    return this.once('delivery', () => new DeliveryService({
+      db: this.database().db, org: this.organisationId(), shifts: this.shifts(), directory: this.directory(), profiles: this.profiles(),
+      managers: this.managers(), settings: this.settings(), clock: this.clock(), log: this.log, publicUrl: () => this.publicUrl(),
+    }));
   }
 
   conflictContext(): ConflictContext {

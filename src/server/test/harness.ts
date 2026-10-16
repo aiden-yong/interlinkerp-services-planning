@@ -93,7 +93,7 @@ export function useApiHarness(): Harness {
     h.holidays = new FakeHolidayProvider();
     h.app = new App({
       database, organisationId: ORG, defaultTimezone: 'Asia/Kuala_Lumpur', clock: h.clock, guard, devIdentity: null,
-      roster: h.roster, departments: h.departments, holidayProvider: h.holidays, logger: () => {},
+      roster: h.roster, departments: h.departments, holidayProvider: h.holidays, logger: () => {}, publicUrl: 'https://planning.test',
     });
     h.asManager();
   });

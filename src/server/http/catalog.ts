@@ -83,6 +83,14 @@ export const catalog = {
       best_for: 'Employees managing their own hours within the rules.',
       endpoints: ['GET /api/my/open-shifts', 'POST /api/shift-claims', 'POST /api/switch-requests', 'DELETE /api/switch-requests/{shift_id}', 'POST /api/switch-takeovers', 'POST /api/unassignments'],
     },
+    {
+      name: 'Stay Informed',
+      icon: '🔔',
+      description: 'Notices about published, changed, claimed and switched shifts.',
+      does: ['See my notifications', 'Mark notifications read'],
+      best_for: 'Showing people what changed without them checking the schedule.',
+      endpoints: ['GET /api/notifications', 'POST /api/notification-reads'],
+    },
   ] as Capability[],
   workflows: [
     { name: 'Plan and publish a week', steps: ['GET /api/schedule', 'POST /api/shifts', 'PATCH /api/shifts/{id}', 'POST /api/publications'] },
