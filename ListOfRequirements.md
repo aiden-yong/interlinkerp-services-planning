@@ -353,7 +353,7 @@ Open shifts are never in conflict. Over-allocation (BR-04) is shown as an indica
 
 Source: ODOO-DOC (allocated time and percentage), VENDOR (over-allocation), OWN (counting time outside working hours; Odoo derives allocated time from the working schedule only, which under-counts overtime).
 
-**BR-05 Eligibility to take a shift.** Applies to claiming an open shift and taking a shift up for switch. An employee is eligible when the shift has no role, or its role is one of their roles, and taking it would not create a conflict (BR-01). Source: ODOO-DOC.
+**BR-05 Eligibility to take a shift.** Applies to claiming an open shift and taking a shift up for switch. An employee is eligible when the shift has no role, or its role is one of their roles, and taking it would not create a conflict (BR-01). Public holidays do not count against eligibility: a manager who publishes a shift on a holiday has decided it should be worked. Source: ODOO-DOC; OWN (holidays).
 
 **BR-06 Unassign window.** An employee may unassign a shift only if it starts more than N days from now. N is set by a manager. Default N = 2. Source: ODOO-DOC (setting), OWN (default value).
 

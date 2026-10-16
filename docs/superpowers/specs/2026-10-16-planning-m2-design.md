@@ -27,14 +27,14 @@ This document records only the decisions the requirements leave open. It does no
 Each action is one transaction:
 
 1. `pg_advisory_xact_lock(hashtext(org || ':' || employee_ref))` for the acting employee. This stops one person claiming two overlapping shifts in parallel.
-2. Eligibility (BR-05): the shift has no role or one of the employee's roles, and taking it creates no BR-01 conflict, using the existing conflict check.
+2. Eligibility (BR-05 as amended in v0.4): the shift has no role or one of the employee's roles, and taking it creates no overlap or time-off conflict. Public holidays do not count. The check runs on the transaction's own connection, so concurrent claims cannot starve the connection pool.
 3. One conditional `UPDATE … RETURNING`, which also bumps `version`:
    - **claim** (`POST /api/shift-claims`): `employee_ref is null`, published, not deleted, `start_at > now`.
    - **request switch** (`POST /api/switch-requests`): my shift, published, `start_at > now`, mode is `switch`, no active request.
    - **cancel switch** (`DELETE /api/switch-requests/{shift_id}`): my shift with an active request.
    - **take over** (`POST /api/switch-takeovers`): the request is active, it is still the requester's shift, `start_at > now`. Clears the request.
    - **unassign** (`POST /api/unassignments`): my shift, published, mode is `unassign`, `start_at > now + window days` (BR-06). Sets `employee_ref` to null, so the shift becomes an open shift and stays published.
-4. No row → 409 with a specific code: `SHIFT_TAKEN`, `SHIFT_STARTED`, `OUTSIDE_UNASSIGN_WINDOW`, `MODE_NOT_ACTIVE`, or `NOT_UP_FOR_SWITCH`. An eligibility failure is 409 `NOT_ELIGIBLE` with the reasons in `details`.
+4. A refusal is a 409 with a specific code: `SHIFT_TAKEN`, `SHIFT_STARTED`, `SHIFT_CHANGED`, `OUTSIDE_UNASSIGN_WINDOW`, `MODE_NOT_ACTIVE`, `NOT_UP_FOR_SWITCH`, `ALREADY_UP_FOR_SWITCH` or `OWN_SHIFT`. Take-overs and the up-for-switch list also require the mode to be `switch`, so a request that slips past a mode change is never acted on. An eligibility failure is 409 `NOT_ELIGIBLE` with the reasons in `details`.
 5. Queue the notices in the same transaction (FR-NTF-03, FR-OPN-03 AC1).
 
 Only an employee on the roster (`employee_ref` set) can claim, switch or unassign. FR-OPN-05 is covered by `start_at > now` in every condition.
@@ -67,7 +67,7 @@ Adapters each have a "not configured" version, so local development and tests ne
 - `GET /api/my/open-shifts` returns `{ open: [...], up_for_switch: [...] }`: published shifts in the future that I am eligible for. The range is up to 62 days, as for My Planning.
 - `GET /api/notifications?unread=` returns my inbox, newest first, 50 per page. `POST /api/notification-reads` accepts `{ ids }` or `{ all: true }` and returns 201 with the number of rows marked.
 - `PATCH /api/settings` adds `give_up_mode` and `unassign_window_days`. `GET /api/settings` returns them.
-- `POST /api/publications` adds `notify_open_shifts` (boolean). It queues one "open shifts available" notice for each employee who is eligible for at least one of the open shifts being published (FR-PUB-03).
+- `POST /api/publications` adds `notify_open_shifts` (boolean). It queues one "open shifts available" notice for each employee who is eligible for at least one of the open shifts being published (FR-PUB-03). Eligibility for all employees is computed from a handful of bulk reads, not one query per employee and shift.
 - The schedule payload shows `switch_requested` on a shift.
 - UI changes:
   - a bell with the unread count and an inbox panel in `AppShell`, for everyone;
