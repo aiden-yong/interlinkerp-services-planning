@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Version | 0.3 (draft, reviewed) |
-| Date | 2026-10-13 |
+| Version | 0.4 (draft, reviewed) |
+| Date | 2026-10-16 |
 | Department | Services |
 | Status | For review |
 
@@ -285,7 +285,7 @@ The system shall notify each employee of their shifts when the shifts are publis
 The system shall notify affected employees when a published shift's time, assignee, role or note changes, or when it is deleted. Deletion notices are sent only after the undo window closes (FR-SHF-07).
 
 **FR-NTF-03** · Must · OWN
-The system shall notify Planning Managers when an open shift is claimed, switched or unassigned.
+The system shall notify Planning Managers when an open shift is claimed, switched or unassigned. Recipients are the people on the Planning Manager list (FR-ACC-03); gateway admins who are not on the list do not receive these notices.
 
 **FR-NTF-04** · Must · INTERLINK
 The system shall deliver notifications in-app through the InterlinkERP notification standard (gateway badge sync), and by email.
@@ -413,7 +413,7 @@ No entity shall assume a single organisation. Organisation-wide values (country,
 | IF-01 | InterlinkERP gateway | Sign-in, token verification (JWKS), per-request session check, role claims | Must |
 | IF-02 | Employee roster service (intern-database for release 1, OI-03) | List of plannable employees, names, photos, matching sign-in email to `employee_ref` | Must |
 | IF-03 | Department service | Department names for grouping and filtering | Should |
-| IF-04 | Notifications: InterlinkERP notification standard + email provider | Delivery for FR-NTF-* | Must |
+| IF-04 | Notifications: InterlinkERP gateway badge API (unread counts) + email over SMTP | Delivery for FR-NTF-* | Must |
 | IF-05 | HR leave service (future) | Approved leave, replacing FR-CFG-03 | Won't (release 1) |
 | IF-06 | Public holiday provider | Holidays by country and state/region | Must |
 | IF-07 | `/health` and `/openapi.json` | Discovery by the gateway, per the InterlinkERP service contract | Must |
@@ -478,6 +478,7 @@ Server-to-server calls (IF-02, IF-03, IF-05) use the app's own client credential
 | OI-04 | Auto Plan tie-break: spread load evenly, or fill one person first. | Before FR-AUT-01 | Spread evenly |
 | OI-05 | Whether employees without a gateway account need any access. | Post-release 1 | No access |
 | OI-06 | **Resolved 2026-10-13:** the gateway has no per-app roles (only `admin`/`hr`/`supervisor`/`user`). Planning Managers are gateway admins plus a local manager list (BR-12, FR-ACC-03). | — | — |
+| OI-07 | The gateway is being updated; its notification standard (badges and pop-ups) may change. Planning implements the badge API the recruitment app uses, behind an adapter that is off until the gateway is connected. | Before connecting to the gateway | Badges off; in-app inbox and email only |
 
 ---
 
