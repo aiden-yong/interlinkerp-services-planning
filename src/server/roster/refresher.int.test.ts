@@ -55,9 +55,20 @@ describe('DirectoryRefresher', () => {
     expect(await refresher.refreshIfEmpty()).toBe(false);
   });
 
+  it('replaces a stored email on the next refresh when the roster email changes', async () => {
+    const { roster, directory, refresher } = setup();
+    roster.add('u1', 'Ana Lim', 'ana@x.test');
+    await refresher.refresh();
+    roster.people.clear();
+    roster.add('u1', 'Ana Lim', 'ana.lim@x.test');
+    expect(await refresher.refresh()).toBe(true);
+    expect((await directory.find('u1'))!.email).toBe('ana.lim@x.test');
+  });
+
   it('keeps the roster email in lower case, and drops one too long for the column', () => {
     const person = { ref: 'u1', name: 'Ana Lim', photoUrl: null, departmentId: null, status: 'Active' };
     expect(toDirectoryRows([{ ...person, email: 'Ana.Lim@Example.COM' }], new Map()).rows[0]!.email).toBe('ana.lim@example.com');
+    expect(toDirectoryRows([{ ...person, email: ' Ana@Example.COM ' }], new Map()).rows[0]!.email).toBe('ana@example.com');
     expect(toDirectoryRows([{ ...person, email: `${'a'.repeat(250)}@x.test` }], new Map()).rows[0]!.email).toBeNull();
   });
 

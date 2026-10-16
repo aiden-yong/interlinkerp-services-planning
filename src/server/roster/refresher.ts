@@ -28,6 +28,8 @@ export function toDirectoryRows(people: RosterPerson[], names: Map<string, strin
       continue;
     }
     const departmentName = p.departmentId ? names.get(p.departmentId) ?? null : null;
+    // Trim and lower-case first: lower-casing can lengthen some strings, so the length check comes last.
+    const email = p.email?.trim().toLowerCase() ?? '';
     rows.push({
       employeeRef: p.ref,
       displayName: p.name.slice(0, LIMITS.displayName),
@@ -35,7 +37,7 @@ export function toDirectoryRows(people: RosterPerson[], names: Map<string, strin
       departmentId: p.departmentId,
       departmentName: departmentName === null ? null : departmentName.slice(0, LIMITS.departmentName),
       status: p.status,
-      email: p.email && p.email.length <= 254 ? p.email.toLowerCase() : null,
+      email: email && email.length <= 254 ? email : null,
     });
   }
   return { rows, skipped };

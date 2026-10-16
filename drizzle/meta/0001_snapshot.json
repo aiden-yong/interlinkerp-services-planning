@@ -1,5 +1,5 @@
 {
-  "id": "1bfc82f7-e7df-4396-a328-18531d570df7",
+  "id": "77c19d94-42b9-4656-8f2f-c1bcbaeac357",
   "prevId": "debf2011-7bd6-4e10-8b46-dc0a3fa063e5",
   "version": "7",
   "dialect": "postgresql",
@@ -63,7 +63,29 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "employee_directory_email_idx": {
+          "name": "employee_directory_email_idx",
+          "columns": [
+            {
+              "expression": "organisation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "employee_directory_organisation_id_employee_ref_pk": {
@@ -514,7 +536,63 @@
             }
           ],
           "isUnique": false,
-          "where": "\"notifications\".\"emailed_at\" is null",
+          "where": "\"notifications\".\"emailed_at\" is null and \"notifications\".\"email_attempts\" < 5",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "notifications_outbox_ref_key": {
+          "name": "notifications_outbox_ref_key",
+          "columns": [
+            {
+              "expression": "organisation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "outbox_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "recipient_ref",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"notifications\".\"recipient_ref\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "notifications_outbox_email_key": {
+          "name": "notifications_outbox_email_key",
+          "columns": [
+            {
+              "expression": "organisation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "outbox_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "recipient_email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"notifications\".\"recipient_email\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}

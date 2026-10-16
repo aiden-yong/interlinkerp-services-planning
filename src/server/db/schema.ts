@@ -10,6 +10,9 @@ const instant = (name: string) => timestamp(name, { withTimezone: true, mode: 'd
 const organisationId = () => varchar('organisation_id', { length: 64 }).notNull();
 const email = (name: string) => varchar(name, { length: 254 });
 
+/** Email delivery gives up after this many failed attempts (FR-NTF-03). */
+export const MAX_EMAIL_ATTEMPTS = 5;
+
 export const roles = pgTable('roles', {
   id: uuid('id').primaryKey(),
   organisationId: organisationId(),
@@ -133,7 +136,10 @@ export const employeeDirectory = pgTable('employee_directory', {
   status: varchar('status', { length: 32 }).notNull(),
   email: email('email'),
   fetchedAt: instant('fetched_at').notNull(),
-}, (t) => [primaryKey({ columns: [t.organisationId, t.employeeRef] })]);
+}, (t) => [
+  primaryKey({ columns: [t.organisationId, t.employeeRef] }),
+  index('employee_directory_email_idx').on(t.organisationId, t.email),
+]);
 
 export const notificationOutbox = pgTable('notification_outbox', {
   id: bigserial('id', { mode: 'number' }).primaryKey(),
@@ -177,5 +183,8 @@ export const notifications = pgTable('notifications', {
   check('notifications_one_recipient', sql`(${t.recipientRef} is null) <> (${t.recipientEmail} is null)`),
   index('notifications_ref_idx').on(t.organisationId, t.recipientRef, t.createdAt),
   index('notifications_email_idx').on(t.organisationId, t.recipientEmail, t.createdAt),
-  index('notifications_email_due_idx').on(t.organisationId, t.emailNextAt).where(sql`${t.emailedAt} is null`),
+  index('notifications_email_due_idx').on(t.organisationId, t.emailNextAt)
+    .where(sql`${t.emailedAt} is null and ${t.emailAttempts} < ${sql.raw(String(MAX_EMAIL_ATTEMPTS))}`),
+  uniqueIndex('notifications_outbox_ref_key').on(t.organisationId, t.outboxId, t.recipientRef).where(sql`${t.recipientRef} is not null`),
+  uniqueIndex('notifications_outbox_email_key').on(t.organisationId, t.outboxId, t.recipientEmail).where(sql`${t.recipientEmail} is not null`),
 ]);

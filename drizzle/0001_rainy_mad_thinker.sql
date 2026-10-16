@@ -27,7 +27,10 @@ ALTER TABLE "organisation_settings" ADD COLUMN "unassign_window_days" smallint D
 ALTER TABLE "shifts" ADD COLUMN "switch_requested_at" timestamp with time zone;--> statement-breakpoint
 CREATE INDEX "notifications_ref_idx" ON "notifications" USING btree ("organisation_id","recipient_ref","created_at");--> statement-breakpoint
 CREATE INDEX "notifications_email_idx" ON "notifications" USING btree ("organisation_id","recipient_email","created_at");--> statement-breakpoint
-CREATE INDEX "notifications_email_due_idx" ON "notifications" USING btree ("organisation_id","email_next_at") WHERE "notifications"."emailed_at" is null;--> statement-breakpoint
+CREATE INDEX "notifications_email_due_idx" ON "notifications" USING btree ("organisation_id","email_next_at") WHERE "notifications"."emailed_at" is null and "notifications"."email_attempts" < 5;--> statement-breakpoint
+CREATE UNIQUE INDEX "notifications_outbox_ref_key" ON "notifications" USING btree ("organisation_id","outbox_id","recipient_ref") WHERE "notifications"."recipient_ref" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "notifications_outbox_email_key" ON "notifications" USING btree ("organisation_id","outbox_id","recipient_email") WHERE "notifications"."recipient_email" is not null;--> statement-breakpoint
+CREATE INDEX "employee_directory_email_idx" ON "employee_directory" USING btree ("organisation_id","email");--> statement-breakpoint
 ALTER TABLE "notification_outbox" ADD CONSTRAINT "notification_outbox_audience_valid" CHECK ("notification_outbox"."audience" in ('employee', 'managers'));--> statement-breakpoint
 ALTER TABLE "organisation_settings" ADD CONSTRAINT "organisation_settings_give_up_mode_valid" CHECK ("organisation_settings"."give_up_mode" in ('switch', 'unassign'));--> statement-breakpoint
 ALTER TABLE "organisation_settings" ADD CONSTRAINT "organisation_settings_window_range" CHECK ("organisation_settings"."unassign_window_days" between 0 and 60);

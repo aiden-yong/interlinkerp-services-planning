@@ -33,6 +33,25 @@ describe('settings API', () => {
     expect(Object.keys(body.error.details)).toEqual(['country_code', 'timezone']);
   });
 
+  it('keeps the saved give-up mode when a later save omits it', async () => {
+    await h.call('PATCH', '/api/settings', { give_up_mode: 'unassign', unassign_window_days: 3 });
+    const { status, body } = await h.call('PATCH', '/api/settings', { timezone: 'Asia/Singapore' });
+    expect(status).toBe(200);
+    expect(body.settings).toMatchObject({ give_up_mode: 'unassign', unassign_window_days: 3, timezone: 'Asia/Singapore' });
+  });
+
+  it('accepts a zero-day unassign window', async () => {
+    const { status, body } = await h.call('PATCH', '/api/settings', { unassign_window_days: 0 });
+    expect(status).toBe(200);
+    expect(body.settings.unassign_window_days).toBe(0);
+  });
+
+  it('names a fractional unassign window', async () => {
+    const { status, body } = await h.call('PATCH', '/api/settings', { unassign_window_days: 2.5 });
+    expect(status).toBe(422);
+    expect(body.error.details).toHaveProperty('unassign_window_days');
+  });
+
   it('is for managers only', async () => {
     h.asEmployee('E1');
     expect((await h.call('GET', '/api/settings')).status).toBe(403);
