@@ -16,8 +16,8 @@ import { render, scrubAddresses, shiftIdsOf } from './messages';
 
 export const MAX_OUTBOX_ATTEMPTS = 5;
 const BATCH = 100;
-/** At most 10 sends of at most 10 s each, so one sweep stays well inside a serverless function's time limit. */
-const EMAIL_BATCH = 10;
+/** At most 5 sends of at most 10 s each (50 s worst case), so a sweep run by after() fits the 60 s function limit. */
+const EMAIL_BATCH = 5;
 const LEASE_MS = 5 * 60_000;
 
 /**

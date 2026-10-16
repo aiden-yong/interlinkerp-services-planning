@@ -28,5 +28,15 @@ Edit `src/server/db/schema.ts`, run `npm run db:generate`, read the new SQL in `
 4. Turn off Vercel Deployment Protection for Production (or exempt `/health` and `/openapi.json`); the gateway must reach both.
 5. Deploy, then register the base URL with the gateway and run its `/conformance` check.
 
+## Upgrading to 0.2.0 (M2)
+Do these in order:
+1. Apply the new migration to the production database BEFORE deploying the new code: `DATABASE_URL='<pooled url>' npm run db:migrate`. After merging, also run `npm run db:migrate` on your local dev database.
+2. In Vercel set `SMTP_URL` and `MAIL_FROM` (leave them unset to only log mail). Keep `GATEWAY_BADGES=off` until the gateway exposes `/api/badges` (OI-07).
+3. Deploy.
+4. Immediately call `GET /internal/cron/directory` with `Authorization: Bearer $CRON_SECRET`, so the directory gets employee emails. Until then queued emails wait one hour at a time instead of being lost.
+5. Notices queued before the upgrade whose shifts are already over are dropped automatically (marked `expired`); later ones are delivered.
+6. A second cron, `/internal/cron/notifications` (daily at 18:30 UTC), now exists. Notices are mainly delivered shortly after each request.
+7. Known limitation: former Planning Managers can still read past manager notices addressed to their email.
+
 ## Version
 `/health` and `/openapi.json` report `SERVICE_VERSION` (`src/server/config/serviceInfo.ts`). Change it in the same commit as any API change.
