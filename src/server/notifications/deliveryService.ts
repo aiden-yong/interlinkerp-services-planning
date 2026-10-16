@@ -7,7 +7,7 @@ import type { ManagerRepository } from '../repo/managers';
 import type { NotificationRepository } from '../repo/notifications';
 import type { ProfileRepository } from '../repo/profiles';
 import type { SettingsRepository } from '../repo/settings';
-import { ShiftRepository } from '../repo/shifts';
+import { ShiftRepository, type ShiftRecord } from '../repo/shifts';
 import type { Clock } from '../support/clock';
 import { isUuid } from '../support/ids';
 import type { BadgePublisher } from './badges';
@@ -19,6 +19,22 @@ const BATCH = 100;
 /** At most 10 sends of at most 10 s each, so one sweep stays well inside a serverless function's time limit. */
 const EMAIL_BATCH = 10;
 const LEASE_MS = 5 * 60_000;
+
+/**
+ * True when every shift a notice mentions is over (already started, for open-shift notices). A shift that cannot be found
+ * is never "expired": rendering fails and the row is retried. Notices without a shift reference never expire.
+ */
+function isExpired(kind: string, payload: Record<string, unknown>, shifts: Map<string, ShiftRecord>, now: Date): boolean {
+  if (kind === 'shift_deleted') {
+    const end = new Date(String(payload.end_at));
+    return !Number.isNaN(end.getTime()) && end <= now;
+  }
+  const ids = shiftIdsOf(payload);
+  if (ids.length === 0) return false;
+  const found = ids.map((id) => shifts.get(id));
+  if (found.some((s) => !s)) return false;
+  return found.every((s) => ((kind === 'open_shifts_available' ? s!.start : s!.end) <= now));
+}
 
 /** Who a sweep wrote to, so their badge counts can be refreshed. */
 export interface Touched {
@@ -70,6 +86,12 @@ export class DeliveryService {
       const shifts = await new ShiftRepository(tx as unknown as Db, org).byIds([...new Set(rows.flatMap((r) => shiftIdsOf(r.payload)))]);
       const base = { shifts: new Map(shifts.map((s) => [s.id, s])), names, publicUrl: this.d.publicUrl() };
       for (const row of rows) {
+        // Notices queued long ago (for example before this feature existed) about shifts that are over are dropped, not delivered late.
+        if (isExpired(row.kind, row.payload, base.shifts, now)) {
+          await tx.update(notificationOutbox).set({ deliveredAt: now, lastError: 'expired' })
+            .where(and(eq(notificationOutbox.organisationId, org), eq(notificationOutbox.id, row.id)));
+          continue;
+        }
         let inbox: (typeof notifications.$inferInsert)[];
         try {
           const recipients = row.audience === 'managers'

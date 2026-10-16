@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { employeeDirectory, notificationOutbox, notifications } from '../db/schema';
@@ -88,6 +89,68 @@ describe('delivery: queue to inbox', () => {
     const [bad] = await h.database.db.select().from(notificationOutbox).where(eq(notificationOutbox.kind, 'mystery'));
     expect(bad).toMatchObject({ attempts: 5, lastError: expect.stringContaining('Unknown notification kind') });
     expect(bad!.deliveredAt).not.toBeNull();
+  });
+});
+
+describe('delivery: expired notices', () => {
+  const makeShift = async (ref: string, day: number) =>
+    (await h.call('POST', '/api/shifts', { employee_ref: ref, start_at: `2026-10-${day}T09:00:00+08:00`, end_at: `2026-10-${day}T17:00:00+08:00` })).body.shift.id as string;
+  const outboxRow = async (kind: string) => (await h.database.db.select().from(notificationOutbox).where(eq(notificationOutbox.kind, kind)))[0]!;
+
+  it('drops a notice whose shift has already ended: no inbox row, no email', async () => {
+    await h.addEmployee('E1', 'Ana Lim', null, null, 'ana@example.com');
+    await publishedFor('E1', 14);
+    h.clock.advance(3 * 86400);
+    const report = await h.app.delivery().deliverDue();
+    expect(await inbox()).toEqual([]);
+    expect(report).toEqual({ notified: 0, emailed: 0 });
+    expect(await outboxRow('schedule_published')).toMatchObject({ lastError: 'expired', attempts: 0 });
+    expect((await outboxRow('schedule_published')).deliveredAt).not.toBeNull();
+    expect(h.mailer.sent).toEqual([]);
+  });
+
+  it('still delivers a notice for a future shift', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    await publishedFor('E1', 20);
+    h.clock.advance(86400);
+    await h.app.delivery().deliverDue();
+    expect((await inbox()).map((r) => r.kind)).toEqual(['schedule_published']);
+    expect((await outboxRow('schedule_published')).lastError).toBeNull();
+  });
+
+  it('delivers when only some of the listed shifts have ended', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    const ended = await makeShift('E1', 14);
+    const future = await makeShift('E1', 25);
+    await new Outbox(h.database.db, ORG).add('schedule_published', 'E1', null, { shift_ids: [ended, future] }, h.clock.now(), h.clock.now());
+    h.clock.advance(3 * 86400);
+    await h.app.delivery().deliverDue();
+    expect((await inbox()).map((r) => r.kind)).toEqual(['schedule_published']);
+  });
+
+  it('expires open-shift notices once the shifts have started', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    const id = await makeShift('E1', 14);
+    await new Outbox(h.database.db, ORG).add('open_shifts_available', 'E1', null, { shift_ids: [id] }, h.clock.now(), h.clock.now());
+    h.clock.advance(36 * 3600); // 14 Oct 14:00 in Kuala Lumpur: started at 09:00, not yet ended
+    await h.app.delivery().deliverDue();
+    expect(await inbox()).toEqual([]);
+    expect(await outboxRow('open_shifts_available')).toMatchObject({ lastError: 'expired' });
+  });
+
+  it('expires a cancellation notice by its own end_at', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    await new Outbox(h.database.db, ORG).add('shift_deleted', 'E1', null, { shift_id: randomUUID(), start_at: '2026-10-12T01:00:00Z', end_at: '2026-10-12T09:00:00Z' }, h.clock.now(), h.clock.now());
+    await h.app.delivery().deliverDue();
+    expect(await inbox()).toEqual([]);
+    expect(await outboxRow('shift_deleted')).toMatchObject({ lastError: 'expired' });
+  });
+
+  it('does not mask a missing shift: it still retries', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    await new Outbox(h.database.db, ORG).add('shift_assigned', 'E1', null, { shift_id: randomUUID() }, h.clock.now(), h.clock.now());
+    await h.app.delivery().deliverDue();
+    expect(await outboxRow('shift_assigned')).toMatchObject({ attempts: 1, deliveredAt: null, lastError: expect.stringContaining('not found') });
   });
 });
 
