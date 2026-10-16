@@ -25,6 +25,7 @@ export function SchedulePage({ me }: { me: Me }) {
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [data, setData] = useState<SchedulePayload | null>(null);
   const [busy, setBusy] = useState(false);
+  const [notifyOpen, setNotifyOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ shift: Shift | null; initial: ShiftForm } | null>(null);
   const period = useMemo(() => periodFor(scale, anchor), [scale, anchor]);
@@ -92,8 +93,9 @@ export function SchedulePage({ me }: { me: Me }) {
     ];
     if (!(await confirm('Publish shifts?', lines, 'Publish'))) return;
     try {
-      const result = await api<{ published: number }>('POST', '/api/publications', { shift_ids: summary.ids });
-      toast(`Published ${result.published} shift${result.published === 1 ? '' : 's'}.`, undefined, 5000);
+      const result = await api<{ published: number; open_shift_notices?: number }>('POST', '/api/publications', { shift_ids: summary.ids, notify_open_shifts: notifyOpen });
+      const notices = result.open_shift_notices ?? 0;
+      toast(`Published ${result.published} shift${result.published === 1 ? '' : 's'}.${notices > 0 ? ` ${notices} employee${notices === 1 ? '' : 's'} told about open shifts.` : ''}`, undefined, 5000);
     } catch (e) {
       report(e);
     }
@@ -108,6 +110,7 @@ export function SchedulePage({ me }: { me: Me }) {
         <span className="spacer" />
         <Segmented label="Scale" value={scale} segments={SCALES} onChange={setScale} />
         <button type="button" onClick={() => openNew(null, null)}>Add shift</button>
+        <label className="check"><input type="checkbox" checked={notifyOpen} onChange={(e) => setNotifyOpen(e.target.checked)} /> Tell eligible employees about open shifts</label>
         <button type="button" className="primary" disabled={busy} onClick={publish}>Publish</button>
       </div>
       <div className="filters">

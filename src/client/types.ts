@@ -28,6 +28,7 @@ export interface Shift {
   version: number;
   conflicts: Conflict[];
   conflict_acknowledged: boolean;
+  switch_requested: boolean;
 }
 
 export interface TimeSpan { start_at: string; end_at: string }
@@ -84,7 +85,7 @@ export interface EmployeeProfile {
   working_hours: WorkingHoursMap | null;
 }
 
-export interface Settings { country_code: string | null; region_code: string | null; timezone: string }
+export interface Settings { country_code: string | null; region_code: string | null; timezone: string; give_up_mode: 'switch' | 'unassign'; unassign_window_days: number }
 export interface TimeOff { id: string; employee_ref: string; start_at: string; end_at: string; reason: string }
 export interface Holiday { id: string; date: string; name: string; source: 'manual' | 'provider'; hidden: boolean; edited: boolean }
 export interface ManagerGrant { email: string; granted_by: string; granted_at: string }

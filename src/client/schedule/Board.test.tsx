@@ -95,4 +95,19 @@ describe('Board', () => {
     const { container } = board(payload({ employees: [employee({ name: '<img src=x onerror=alert(1)>' })] }));
     expect(container.querySelector('img')).toBeNull();
   });
+
+  it('marks shifts that are up for switch (FR-OPN-03)', () => {
+    const { container } = board(payload({ employees: [employee()], shifts: [shift({ id: 'u', state: 'published', switch_requested: true })] }));
+    const bar = container.querySelector('[data-shift-id="u"]')!;
+    expect(bar.textContent).toContain('⇄');
+    expect(bar.getAttribute('aria-label')).toContain('up for switch');
+    expect(bar.getAttribute('title')).toContain('up for switch');
+  });
+
+  it('shows no switch marker on an ordinary shift', () => {
+    const { container } = board(payload({ employees: [employee()], shifts: [shift({ id: 'n', state: 'published' })] }));
+    const bar = container.querySelector('[data-shift-id="n"]')!;
+    expect(bar.textContent).not.toContain('⇄');
+    expect(bar.getAttribute('aria-label')).not.toContain('up for switch');
+  });
 });
