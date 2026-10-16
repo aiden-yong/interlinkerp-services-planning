@@ -157,4 +157,30 @@ export class ShiftRepository {
     return one(await this.db.update(shifts).set({ employeeRef: ref, version: sql`${shifts.version} + 1`, updatedAt: now })
       .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), isNull(shifts.employeeRef), eq(shifts.state, 'published'), gt(shifts.startAt, now))).returning());
   }
+
+  /** Every give-up update below is guarded by `expectedVersion`, so it only applies to the shift as the caller judged it. null = it changed (or no longer qualifies). */
+  async requestSwitch(id: string, ref: string, expectedVersion: number, now: Date): Promise<ShiftRecord | null> {
+    return one(await this.db.update(shifts).set({ switchRequestedAt: now, version: sql`${shifts.version} + 1`, updatedAt: now })
+      .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), eq(shifts.employeeRef, ref), eq(shifts.state, 'published'), gt(shifts.startAt, now), isNull(shifts.switchRequestedAt)))
+      .returning());
+  }
+
+  async cancelSwitch(id: string, ref: string, expectedVersion: number, now: Date): Promise<ShiftRecord | null> {
+    return one(await this.db.update(shifts).set({ switchRequestedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
+      .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), eq(shifts.employeeRef, ref), isNotNull(shifts.switchRequestedAt))).returning());
+  }
+
+  /** NFR-04: hands an up-for-switch shift from its owner to the taker. null = someone else took it, or it changed. */
+  async takeOver(id: string, ownerRef: string, takerRef: string, expectedVersion: number, now: Date): Promise<ShiftRecord | null> {
+    return one(await this.db.update(shifts).set({ employeeRef: takerRef, switchRequestedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
+      .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), eq(shifts.employeeRef, ownerRef), eq(shifts.state, 'published'), isNotNull(shifts.switchRequestedAt), gt(shifts.startAt, now)))
+      .returning());
+  }
+
+  /** BR-06: only shifts starting after `earliestStart` (now + window) can be given up. */
+  async unassign(id: string, ref: string, earliestStart: Date, expectedVersion: number, now: Date): Promise<ShiftRecord | null> {
+    return one(await this.db.update(shifts).set({ employeeRef: null, switchRequestedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
+      .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), eq(shifts.employeeRef, ref), eq(shifts.state, 'published'), gt(shifts.startAt, earliestStart)))
+      .returning());
+  }
 }

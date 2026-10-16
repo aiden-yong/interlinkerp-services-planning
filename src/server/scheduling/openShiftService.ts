@@ -14,6 +14,13 @@ import type { UnitOfWork, WriteScope } from './unitOfWork';
 
 export const taken = () => HttpError.conflict('SHIFT_TAKEN', 'Someone else took this shift first.');
 export const changed = () => HttpError.conflict('SHIFT_CHANGED', 'This shift changed while you were acting on it. Reload and try again.');
+const notUp = () => HttpError.conflict('NOT_UP_FOR_SWITCH', 'This shift is not up for switch.');
+const alreadyUp = () => HttpError.conflict('ALREADY_UP_FOR_SWITCH', 'This shift is already up for switch.');
+const notYours = () => HttpError.notFound('No published shift of yours with that id.');
+const outsideWindow = (days: number) => HttpError.conflict('OUTSIDE_UNASSIGN_WINDOW', `Shifts can only be given up more than ${days} days before they start.`);
+const modeOff = (mode: 'switch' | 'unassign') => HttpError.conflict('MODE_NOT_ACTIVE', mode === 'switch'
+  ? 'Shifts cannot be put up for switch right now. Give them up instead.'
+  : 'Shifts cannot be given up right now. Put them up for switch instead.');
 export const started = () => HttpError.conflict('SHIFT_STARTED', 'This shift has already started.');
 
 /** Only people on the roster plan their own shifts. */
@@ -90,6 +97,101 @@ export class OpenShiftService {
       return claimed;
     });
   }
+
+  /** FR-OPN-03: the shift stays mine until a colleague takes it. Judged on the shift as it is inside the transaction. */
+  async requestSwitch(body: Record<string, unknown>, by: Principal): Promise<ShiftRecord> {
+    const ref = rosterRef(by);
+    const id = shiftIdFrom(body);
+    const now = this.clock.now();
+    return this.unit.run(async (scope) => {
+      const shift = await ownFresh(scope, id, ref);
+      if (shift.start <= now) throw started();
+      if ((await scope.settings.get()).give_up_mode !== 'switch') throw modeOff('switch');
+      if (shift.switchRequestedAt) throw alreadyUp();
+      const row = await scope.shifts.requestSwitch(shift.id, ref, shift.version, now);
+      if (row) return row;
+      const fresh = await ownFresh(scope, id, ref);
+      if (fresh.start <= now) throw started();
+      if (fresh.switchRequestedAt) throw alreadyUp();
+      throw changed();
+    });
+  }
+
+  async cancelSwitch(id: string, by: Principal): Promise<void> {
+    const ref = rosterRef(by);
+    const now = this.clock.now();
+    await this.unit.run(async (scope) => {
+      const shift = await ownFresh(scope, id, ref);
+      if (!shift.switchRequestedAt) throw notUp();
+      if (await scope.shifts.cancelSwitch(shift.id, ref, shift.version, now)) return;
+      const fresh = await ownFresh(scope, id, ref);
+      if (!fresh.switchRequestedAt) throw notUp();
+      throw changed();
+    });
+  }
+
+  /** FR-OPN-03 AC1, NFR-04: same lock, in-transaction re-read and version-guarded update as claim. */
+  async takeOver(body: Record<string, unknown>, by: Principal): Promise<ShiftRecord> {
+    const ref = rosterRef(by);
+    const id = shiftIdFrom(body);
+    const now = this.clock.now();
+    return this.unit.run(async (scope) => {
+      await scope.lockEmployee(ref);
+      const shift = await scope.shifts.find(id);
+      if (!shift || shift.state !== 'published') throw HttpError.notFound('No published shift with that id.');
+      if (shift.employeeRef === ref) throw HttpError.conflict('OWN_SHIFT', 'This is already your shift.');
+      if (shift.start <= now) throw started();
+      // Checked before the request itself: a request that slipped past a change to Unassign is never acted on (BR-07).
+      if ((await scope.settings.get()).give_up_mode !== 'switch') throw modeOff('switch');
+      if (!shift.switchRequestedAt || !shift.employeeRef) throw notUp();
+      const owner = shift.employeeRef;
+      await requireEligible(scope.eligibility, shift, ref);
+      const row = await scope.shifts.takeOver(shift.id, owner, ref, shift.version, now);
+      if (!row) {
+        const fresh = await scope.shifts.find(id);
+        if (!fresh || fresh.state !== 'published') throw HttpError.notFound('No published shift with that id.');
+        if (fresh.start <= now) throw started();
+        if (fresh.employeeRef !== owner) throw taken();
+        if (!fresh.switchRequestedAt) throw notUp();
+        throw changed();
+      }
+      await scope.outbox.add('switch_taken', owner, shift.id, { shift_id: shift.id, taker_ref: ref }, now, now);
+      await scope.outbox.add('shift_assigned', ref, shift.id, { shift_id: shift.id }, now, now);
+      await scope.outbox.addForManagers('shift_switched', shift.id, { shift_id: shift.id, from_ref: owner, to_ref: ref }, now);
+      return row;
+    });
+  }
+
+  /** FR-OPN-04, BR-06: the shift becomes an open shift and stays published. */
+  async unassign(body: Record<string, unknown>, by: Principal): Promise<ShiftRecord> {
+    const ref = rosterRef(by);
+    const id = shiftIdFrom(body);
+    const now = this.clock.now();
+    return this.unit.run(async (scope) => {
+      const shift = await ownFresh(scope, id, ref);
+      if (shift.start <= now) throw started();
+      const settings = await scope.settings.get();
+      if (settings.give_up_mode !== 'unassign') throw modeOff('unassign');
+      const earliest = new Date(now.getTime() + settings.unassign_window_days * 86_400_000);
+      if (shift.start <= earliest) throw outsideWindow(settings.unassign_window_days);
+      const row = await scope.shifts.unassign(shift.id, ref, earliest, shift.version, now);
+      if (!row) {
+        const fresh = await ownFresh(scope, id, ref);
+        if (fresh.start <= now) throw started();
+        if (fresh.start <= earliest) throw outsideWindow(settings.unassign_window_days);
+        throw changed();
+      }
+      await scope.outbox.addForManagers('shift_given_up', shift.id, { shift_id: shift.id, employee_ref: ref }, now);
+      return row;
+    });
+  }
+}
+
+/** The caller's own published shift, read inside the transaction. */
+async function ownFresh(scope: Pick<WriteScope, 'shifts'>, id: string, ref: string): Promise<ShiftRecord> {
+  const shift = await scope.shifts.find(id);
+  if (!shift || shift.employeeRef !== ref || shift.state !== 'published') throw notYours();
+  return shift;
 }
 
 /** Refuses with every reason (FR-OPN-02 AC2). Pass `scope.eligibility` inside a transaction. */

@@ -79,9 +79,9 @@ export const catalog = {
       name: 'Swap and Pick Up Shifts',
       icon: '🔁',
       description: 'Let employees take open shifts and hand over shifts they cannot work.',
-      does: ['See open shifts I can take', 'Claim an open shift'],
+      does: ['See open shifts I can take', 'Claim an open shift', 'Put a shift up for switch', 'Take over a colleague\'s shift', 'Give up a shift'],
       best_for: 'Employees managing their own hours within the rules.',
-      endpoints: ['GET /api/my/open-shifts', 'POST /api/shift-claims'],
+      endpoints: ['GET /api/my/open-shifts', 'POST /api/shift-claims', 'POST /api/switch-requests', 'DELETE /api/switch-requests/{shift_id}', 'POST /api/switch-takeovers', 'POST /api/unassignments'],
     },
   ] as Capability[],
   workflows: [
