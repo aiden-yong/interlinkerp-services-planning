@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import type { Principal } from '../auth/principal';
+import { notificationOutbox } from '../db/schema';
 import { Outbox } from '../repo/outbox';
+import { OpenShiftService } from '../scheduling/openShiftService';
+import { UnitOfWork } from '../scheduling/unitOfWork';
 import { ORG } from '../test/db';
 import { useApiHarness } from '../test/harness';
 
@@ -43,6 +47,8 @@ describe('open shifts', () => {
     expect((await outbox()).filter((r) => r.kind === 'shift_claimed')).toEqual([
       expect.objectContaining({ employee_ref: null, subject_id: id, payload: { shift_id: id, employee_ref: 'E1' } }),
     ]);
+    const rows = await h.database.db.select().from(notificationOutbox);
+    expect(rows.filter((r) => r.kind === 'shift_claimed').map((r) => r.audience)).toEqual(['managers']);
   });
 
   it('refuses a claim that breaks BR-01, with the reason (FR-OPN-02 AC2)', async () => {
@@ -66,7 +72,7 @@ describe('open shifts', () => {
 
   it('lets employees claim an open shift on a public holiday (BR-05 v0.4)', async () => {
     await h.addEmployee('E1', 'Ana Lim');
-    await h.call('POST', '/api/holidays', { date: '2026-10-14', name: 'Company Day' });
+    expect((await h.call('POST', '/api/holidays', { date: '2026-10-14', name: 'Company Day' })).status).toBe(201);
     const id = await published(null, '2026-10-14T09:00:00+08:00', '2026-10-14T17:00:00+08:00');
     h.asEmployee('E1');
     expect((await h.call('GET', '/api/my/open-shifts', undefined, WEEK)).body.open.map((s: { id: string }) => s.id)).toEqual([id]);
@@ -121,5 +127,94 @@ describe('open shifts', () => {
     expect((await h.call('POST', '/api/shift-claims', {})).status).toBe(422);
     h.asEmployee(null);
     expect((await h.call('POST', '/api/shift-claims', { shift_id: soon })).body.error.code).toBe('NOT_ON_ROSTER');
+  });
+
+  it('allows a shift that only touches the employee\'s other shift, and two 50% shifts together', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    await published('E1', '2026-10-14T08:00:00+08:00', '2026-10-14T09:00:00+08:00');
+    const touching = await published(null, '2026-10-14T09:00:00+08:00', '2026-10-14T12:00:00+08:00');
+    h.asManager();
+    const half = async (ref: string | null) => {
+      const made = await h.call('POST', '/api/shifts', { employee_ref: ref, start_at: '2026-10-15T09:00:00+08:00', end_at: '2026-10-15T17:00:00+08:00', allocated_percent: 50, acknowledge_conflicts: true });
+      expect(made.status, JSON.stringify(made.body)).toBe(201);
+      expect((await h.call('POST', '/api/publications', { shift_ids: [made.body.shift.id] })).status).toBe(201);
+      return made.body.shift.id as string;
+    };
+    await half('E1');
+    const other = await half(null);
+    const records = await h.app.shifts().byIds([touching, other]);
+    for (const record of records) expect(await h.app.eligibility().check(record, 'E1')).toEqual([]);
+    expect([...(await h.app.eligibility().eligibleShifts(records, ['E1'])).get('E1')!].sort()).toEqual([touching, other].sort());
+    h.asEmployee('E1');
+    expect((await h.call('POST', '/api/shift-claims', { shift_id: touching })).status).toBe(201);
+    expect((await h.call('POST', '/api/shift-claims', { shift_id: other })).status).toBe(201);
+  });
+
+  it('turns away a listing request from someone off the roster', async () => {
+    h.asEmployee(null);
+    const { status, body } = await h.call('GET', '/api/my/open-shifts', undefined, WEEK);
+    expect([status, body.error.code]).toEqual([403, 'NOT_ON_ROSTER']);
+  });
+
+  it('does not show the owner\'s private note on shifts up for switch', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    await h.addEmployee('E2', 'Bo Tan');
+    const id = await published('E2', '2026-10-14T09:00:00+08:00', '2026-10-14T17:00:00+08:00');
+    await h.database.pool.query('update shifts set switch_requested_at = now(), note = $1 where id = $2', ['private', id]);
+    h.asEmployee('E1');
+    const { body } = await h.call('GET', '/api/my/open-shifts', undefined, WEEK);
+    expect(body.up_for_switch).toHaveLength(1);
+    expect(body.up_for_switch[0]).toMatchObject({ id, owner_ref: 'E2', note: null });
+  });
+
+  describe('a manager changing the shift while it is being claimed', () => {
+    const ana = { kind: 'person', subject: 's', email: 'ana@example.com', name: 'Ana', gatewayRole: 'user', employeeRef: 'E1', isManager: false, scopes: [] } as Principal;
+
+    /** A service whose transaction runs `interfere` at the chosen step, as another request would. */
+    function serviceInterfering(at: 'lock' | 'claim', interfere: () => Promise<void>) {
+      const real = new UnitOfWork(h.database.db, ORG, 'Asia/Kuala_Lumpur');
+      const unit = {
+        run: (work: Parameters<UnitOfWork['run']>[0]) => real.run(async (scope) => work({
+          ...scope,
+          lockEmployee: async (ref) => { await scope.lockEmployee(ref); if (at === 'lock') await interfere(); },
+          shifts: at === 'claim'
+            ? Object.assign(Object.create(scope.shifts), { claim: async (...args: Parameters<typeof scope.shifts.claim>) => { await interfere(); return scope.shifts.claim(...args); } })
+            : scope.shifts,
+        })),
+      } as unknown as UnitOfWork;
+      const a = h.app;
+      return new OpenShiftService(a.shifts(), a.profiles(), a.roles(), a.directory(), a.settings(), a.eligibility(), unit, a.clock());
+    }
+
+    it('is judged on the shift as it is now: a move onto the employee\'s other shift is refused', async () => {
+      await h.addEmployee('E1', 'Ana Lim');
+      await published('E1', '2026-10-15T09:00:00+08:00', '2026-10-15T17:00:00+08:00');
+      const id = await published(null, '2026-10-14T09:00:00+08:00', '2026-10-14T17:00:00+08:00');
+      const service = serviceInterfering('lock', async () => {
+        const record = (await h.app.shifts().find(id))!;
+        await h.app.shifts().update({ ...record, start: new Date('2026-10-15T10:00:00+08:00'), end: new Date('2026-10-15T12:00:00+08:00') }, record.version, h.clock.now());
+      });
+      await expect(service.claim({ shift_id: id }, ana)).rejects.toMatchObject({ code: 'NOT_ELIGIBLE' });
+      expect((await h.app.shifts().find(id))!.employeeRef).toBeNull();
+    });
+
+    it('does not assign a shift that changed after eligibility was checked (SHIFT_CHANGED)', async () => {
+      await h.addEmployee('E1', 'Ana Lim');
+      const id = await published(null, '2026-10-14T09:00:00+08:00', '2026-10-14T17:00:00+08:00');
+      const service = serviceInterfering('claim', async () => {
+        const record = (await h.app.shifts().find(id))!;
+        await h.app.shifts().update({ ...record, note: 'edited' }, record.version, h.clock.now());
+      });
+      await expect(service.claim({ shift_id: id }, ana)).rejects.toMatchObject({ code: 'SHIFT_CHANGED' });
+      expect((await h.app.shifts().find(id))!.employeeRef).toBeNull();
+    });
+  });
+
+  it('claim() refuses a stale version', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    const id = await published(null, '2026-10-14T09:00:00+08:00', '2026-10-14T17:00:00+08:00');
+    const record = (await h.app.shifts().find(id))!;
+    expect(await h.app.shifts().claim(id, 'E1', record.version - 1, h.clock.now())).toBeNull();
+    expect((await h.app.shifts().claim(id, 'E1', record.version, h.clock.now()))!.employeeRef).toBe('E1');
   });
 });

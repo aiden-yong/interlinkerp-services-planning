@@ -10,9 +10,10 @@ import type { Clock } from '../support/clock';
 import { localMidnight, nextDay } from '../support/time';
 import type { Eligibility } from './eligibility';
 import { MAX_RANGE_DAYS } from './scheduleService';
-import type { UnitOfWork } from './unitOfWork';
+import type { UnitOfWork, WriteScope } from './unitOfWork';
 
 export const taken = () => HttpError.conflict('SHIFT_TAKEN', 'Someone else took this shift first.');
+export const changed = () => HttpError.conflict('SHIFT_CHANGED', 'This shift changed while you were acting on it. Reload and try again.');
 export const started = () => HttpError.conflict('SHIFT_STARTED', 'This shift has already started.');
 
 /** Only people on the roster plan their own shifts. */
@@ -64,7 +65,7 @@ export class OpenShiftService {
       roles,
       open: open.filter((s) => allowed.has(s.id)).map(shiftToMyApi),
       up_for_switch: takeable.filter((s) => allowed.has(s.id)).map((s) => ({
-        ...shiftToMyApi(s), owner_ref: s.employeeRef, owner_name: names.get(s.employeeRef!) ?? 'Unknown employee',
+        ...shiftToMyApi(s), note: null, owner_ref: s.employeeRef, owner_name: names.get(s.employeeRef!) ?? 'Unknown employee',
       })),
     };
   }
@@ -74,14 +75,17 @@ export class OpenShiftService {
     const ref = rosterRef(by);
     const id = shiftIdFrom(body);
     const now = this.clock.now();
-    const shift = await this.shifts.find(id);
-    if (!shift || shift.state !== 'published') throw HttpError.notFound('No published shift with that id.');
-    if (shift.start <= now) throw started();
-    if (shift.employeeRef) throw taken();
+    const early = await this.shifts.find(id);
+    if (!early || early.state !== 'published') throw HttpError.notFound('No published shift with that id.');
+    if (early.start <= now) throw started();
+    if (early.employeeRef) throw taken();
     return this.unit.run(async (scope) => {
       await scope.lockEmployee(ref);
+      // Re-read inside the transaction: eligibility is judged on the shift as it is now, and the update is guarded by its version.
+      const shift = await scope.shifts.find(id);
+      if (!shift || shift.state !== 'published') throw HttpError.notFound('No published shift with that id.');
       await requireEligible(scope.eligibility, shift, ref);
-      const claimed = (await scope.shifts.claim(shift.id, ref, now)) ?? (() => { throw taken(); })();
+      const claimed = (await scope.shifts.claim(shift.id, ref, shift.version, now)) ?? (await whyNotClaimed(scope, shift.id, now));
       await scope.outbox.addForManagers('shift_claimed', shift.id, { shift_id: shift.id, employee_ref: ref }, now);
       return claimed;
     });
@@ -92,4 +96,13 @@ export class OpenShiftService {
 export async function requireEligible(eligibility: Eligibility, shift: ShiftRecord, ref: string): Promise<void> {
   const reasons = await eligibility.check(shift, ref);
   if (reasons.length > 0) throw HttpError.conflict('NOT_ELIGIBLE', 'You cannot take this shift.', { reasons });
+}
+
+/** Explains a failed conditional update, from the shift as it is now. Always throws. */
+export async function whyNotClaimed(scope: Pick<WriteScope, 'shifts'>, id: string, now: Date): Promise<never> {
+  const fresh = await scope.shifts.find(id);
+  if (!fresh || fresh.state !== 'published') throw HttpError.notFound('No published shift with that id.');
+  if (fresh.employeeRef) throw taken();
+  if (fresh.start <= now) throw started();
+  throw changed();
 }

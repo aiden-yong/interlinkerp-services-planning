@@ -41,9 +41,10 @@ export class UnitOfWork {
         settings,
         eligibility: new Eligibility(shifts, profiles, timeOff, context),
         lockEmployee: async (ref) => {
+          // hashtext is 32-bit, so two employees can share a key; the only effect is a little extra serialisation.
           await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`${this.org}:${ref}`}))`);
         },
       });
-    });
+    }, { isolationLevel: 'read committed' });
   }
 }

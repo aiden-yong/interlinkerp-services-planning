@@ -152,9 +152,9 @@ export class ShiftRepository {
     return rows.map(toRecord);
   }
 
-  /** NFR-04: takes an open published shift that has not started. null = someone else got it first. */
-  async claim(id: string, ref: string, now: Date): Promise<ShiftRecord | null> {
+  /** NFR-04: takes an open published shift that has not started and is still at `expectedVersion`. null = someone else got it first, or it changed. */
+  async claim(id: string, ref: string, expectedVersion: number, now: Date): Promise<ShiftRecord | null> {
     return one(await this.db.update(shifts).set({ employeeRef: ref, version: sql`${shifts.version} + 1`, updatedAt: now })
-      .where(and(this.live(), eq(shifts.id, id), isNull(shifts.employeeRef), eq(shifts.state, 'published'), gt(shifts.startAt, now))).returning());
+      .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), isNull(shifts.employeeRef), eq(shifts.state, 'published'), gt(shifts.startAt, now))).returning());
   }
 }
