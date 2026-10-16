@@ -60,7 +60,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
       {children}
       {question && (
         <Modal title={question.title} onClose={() => answer(false)}>
-          {question.lines.length > 0 && <ul>{question.lines.map((line) => <li key={line}>{line}</li>)}</ul>}
+          {question.lines.length > 0 && <ul className="lines">{question.lines.map((line) => <li key={line}>{line}</li>)}</ul>}
           <div className="actions">
             <button type="button" onClick={() => answer(false)}>Cancel</button>
             <button type="button" className="primary" autoFocus onClick={() => answer(true)}>{question.confirmLabel}</button>

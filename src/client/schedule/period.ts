@@ -34,6 +34,8 @@ export function step(scale: Scale, anchor: string, direction: -1 | 1): string {
   return format(Date.UTC(y, m - 1 + direction, 1));
 }
 
+export const weekdayOf = (date: string) => WEEKDAYS[new Date(parse(date)).getUTCDay()];
+
 export function dayLabel(date: string, scale: Scale): string {
   const d = new Date(parse(date));
   return scale === 'month' ? String(d.getUTCDate()) : `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()}`;

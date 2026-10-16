@@ -4,6 +4,7 @@ import { type CSSProperties, useEffect, useMemo, useState } from 'react';
 import { ApiError, api, query } from '../api';
 import { dayLabel, periodFor, periodLabel, step } from '../schedule/period';
 import { formatTime, todayIn } from '../schedule/tz';
+import { Stepper } from '../Stepper';
 import type { Me, MyShiftsPayload } from '../types';
 import { groupByDay } from './days';
 
@@ -37,10 +38,8 @@ export function MyPlanningPage({ me }: { me: Me }) {
   return (
     <section className="my">
       <div className="toolbar">
-        <button type="button" aria-label="Previous week" onClick={() => setAnchor(step('week', anchor, -1))}>‹</button>
-        <button type="button" onClick={() => setAnchor(todayIn(zone))}>This week</button>
-        <button type="button" aria-label="Next week" onClick={() => setAnchor(step('week', anchor, 1))}>›</button>
-        <span className="period">{periodLabel(week)}</span>
+        <Stepper unit="week" nowLabel="This week" onStep={(d) => setAnchor(step('week', anchor, d))} onNow={() => setAnchor(todayIn(zone))} />
+        <h1 className="period">{periodLabel(week)}</h1>
       </div>
       {error && <p className="form-error">{error}</p>}
       {data && data.shifts.length === 0 && <p className="empty">No published shifts this week.</p>}
@@ -63,7 +62,7 @@ export function MyPlanningPage({ me }: { me: Me }) {
               </div>
             ))}
           </div>
-          <p className="empty">Times are shown in {zone}.</p>
+          <p className="footnote">Times are shown in {zone}.</p>
         </>
       )}
     </section>

@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 import { api, setUnauthorizedHandler } from './api';
 import { FeedbackProvider } from './feedback';
+import { PlanningMark } from './icons';
 import { access, notOnRosterMessage, type Screen } from './router';
+import { ThemeSwitch } from './ThemeSwitch';
 import type { Me } from './types';
 
 function NavLink({ href, active, children }: { href: string; active: boolean; children: ReactNode }) {
@@ -38,15 +40,16 @@ export function AppShell({ screen, children }: { screen: Screen; children?: (me:
   return (
     <FeedbackProvider>
       <header className="top">
-        <strong>Planning</strong>
-        <nav>
+        <span className="brand"><span className="brand-mark"><PlanningMark /></span>Planning</span>
+        <nav aria-label="Planning">
           {me?.is_manager && <NavLink href="/schedule" active={screen === 'schedule'}>Schedule</NavLink>}
           {me?.employee_ref && <NavLink href="/my" active={screen === 'my'}>My Planning</NavLink>}
           {me?.is_manager && <NavLink href="/settings" active={screen === 'settings'}>Settings</NavLink>}
         </nav>
         <span className="spacer" />
+        <ThemeSwitch />
         {/* No sign-out button: the InterlinkERP gateway is the only place to sign out. */}
-        <span className="who">{me?.name ?? me?.email ?? ''}</span>
+        <span className="who" title={me?.email ?? undefined}>{me?.name ?? me?.email ?? ''}</span>
       </header>
       <main>{content}</main>
     </FeedbackProvider>

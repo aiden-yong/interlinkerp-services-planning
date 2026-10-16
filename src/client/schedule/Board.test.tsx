@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Board } from './Board';
 import { periodFor } from './period';
 import { buildRows, NO_FILTERS } from './rows';
@@ -49,6 +49,46 @@ describe('Board', () => {
     const { container } = board(payload({ employees: [employee()], shifts: [shift()] }), onOpen);
     container.querySelector<HTMLElement>('[data-shift-id="s1"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 's1' }));
+  });
+
+  it('labels a shift in a colour that stays readable on its role colour, time first', () => {
+    const role = { id: 'r1', name: 'Technician', color: '#FACC15', archived: false };
+    const { container } = board(payload({ roles: [role], employees: [employee()], shifts: [shift({ role_id: 'r1', state: 'published' })] }));
+    const bar = container.querySelector<HTMLElement>('[data-shift-id="s1"]')!;
+    expect(bar.style.getPropertyValue('--role-ink')).toBe('#000000');
+    expect(bar.querySelector('.time')!.textContent).toBe('09:00–17:00');
+    expect(bar.querySelector('.role')!.textContent).toBe('Technician');
+    expect(bar.style.getPropertyValue('--lane')).toBe('0');
+  });
+
+  it('marks a conflict with an icon as well as the outline', () => {
+    const { container } = board(payload({ employees: [employee()], shifts: [shift({ conflicts: [{ rule: 'overlap', message: 'Overlaps.' }] })] }));
+    expect(container.querySelector('[data-shift-id="s1"] svg.icon')).not.toBeNull();
+  });
+
+  it('heads each day with its weekday and date as separate parts', () => {
+    const { container } = board(payload());
+    const head = container.querySelectorAll('.row.head .track.cols > div');
+    expect(head).toHaveLength(7);
+    expect(head[2].querySelector('.weekday')!.textContent).toBe('Wed');
+    expect(head[2].querySelector('.date')!.textContent).toBe('14');
+  });
+
+  describe('on the current day', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-14T04:00:00Z')); // Wed 12:00 in Kuala Lumpur
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it("marks today's column and the current time", () => {
+      const { container } = board(payload());
+      const today = container.querySelector('.row.head [aria-current="date"]')!;
+      expect(today.querySelector('.date')!.textContent).toBe('14');
+      const root = container.querySelector<HTMLElement>('.board')!;
+      expect(root.classList.contains('has-now')).toBe(true);
+      expect(parseFloat(root.style.getPropertyValue('--now'))).toBeCloseTo((2.5 / 7) * 100, 3);
+    });
   });
 
   it('escapes names', () => {
