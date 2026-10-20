@@ -46,6 +46,14 @@ describe('email preferences', () => {
     expect((await h.call('PATCH', PATH, {})).status).toBe(422);
   });
 
+  it('still emails everyone when preferences cannot be read (before migration 0003)', async () => {
+    await h.addEmployee('E1', 'Ana Lim', null, null, 'ana@example.com');
+    await publishedFor('E1');
+    h.app.emailPreferences().optedOut = async () => { throw new Error('relation "email_opt_outs" does not exist'); };
+    await h.app.delivery().deliverDue();
+    expect(h.mailer.sent.map((m) => m.to)).toEqual(['ana@example.com']);
+  });
+
   it('keeps the in-app notice but skips the email for a muted type', async () => {
     await h.addEmployee('E1', 'Ana Lim', null, null, 'ana@example.com');
     h.asEmployee('E1', 'ana@example.com', false);

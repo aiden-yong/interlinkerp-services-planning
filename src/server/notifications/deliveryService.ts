@@ -146,7 +146,11 @@ export class DeliveryService {
     if (leased.length === 0) return 0;
     const byId = (id: number) => and(eq(notifications.organisationId, org), eq(notifications.id, id));
     const addressOf = (n: (typeof leased)[number]) => (n.recipientRef ? `ref:${n.recipientRef}` : `email:${n.recipientEmail}`);
-    const muted = await this.d.preferences.optedOut(leased.map(addressOf));
+    // Fail open: if preferences cannot be read (for example before migration 0003 runs), email everyone as before.
+    const muted = await this.d.preferences.optedOut(leased.map(addressOf)).catch((error: unknown) => {
+      this.d.log(`[delivery] email preferences unavailable: ${scrubAddresses(error instanceof Error ? error.message : String(error))}`);
+      return new Set<string>();
+    });
     const refs = leased.flatMap((n) => (n.recipientRef ? [n.recipientRef] : []));
     const [addresses, onRoster] = await Promise.all([this.d.directory.emailsFor(refs), this.d.directory.present(refs)]);
     let sent = 0;
