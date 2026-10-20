@@ -24,10 +24,12 @@ export function register(r: Router, app: App): void {
     return json(200, { refreshed: await app.directoryRefresher().refresh() });
   });
 
-  // D1 backstop: delivers anything the after-response sweeps left behind, then removes finished rows (backlog item 23).
-  r.add('GET', '/internal/cron/notifications', 'internal', 'Deliver due notifications and prune old ones.', async ({ request }) => {
+  // D1 backstop: delivers anything the after-response sweeps left behind, removes finished rows (backlog item 23)
+  // and raises [alert] log lines for failures nobody would otherwise see (backlog item 9).
+  r.add('GET', '/internal/cron/notifications', 'internal', 'Deliver due notifications, prune old ones and check for failures.', async ({ request }) => {
     requireCronSecret(app, request);
     const report = await app.delivery().deliverDue();
-    return json(200, { ...report, pruned: await app.retention().run(app.clock().now()) });
+    const now = app.clock().now();
+    return json(200, { ...report, pruned: await app.retention().run(now), alerts: await app.opsCheck().run(now) });
   });
 }

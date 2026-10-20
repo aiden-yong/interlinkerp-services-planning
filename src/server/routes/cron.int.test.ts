@@ -32,7 +32,9 @@ describe('GET /internal/cron/notifications', () => {
   it('runs a delivery sweep with the right secret only (D1 backstop)', async () => {
     const ok = await callPath(app('right'), '/internal/cron/notifications', 'Bearer right');
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ notified: 0, emailed: 0, pruned: { notifications: 0, outbox: 0, rate_limits: 0 } });
+    expect(await ok.json()).toEqual({
+      notified: 0, emailed: 0, pruned: { notifications: 0, outbox: 0, rate_limits: 0 }, alerts: ['The employee directory has never been refreshed.'],
+    });
     expect((await callPath(app('right'), '/internal/cron/notifications', 'Bearer wrong')).status).toBe(401);
     expect((await callPath(app(null), '/internal/cron/notifications', 'Bearer x')).status).toBe(401);
   });

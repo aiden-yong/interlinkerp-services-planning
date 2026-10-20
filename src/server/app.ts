@@ -43,6 +43,7 @@ import { type Clock, systemClock } from './support/clock';
 import { FetchHttpClient, type HttpClient } from './support/http';
 import { isTimezone } from './support/time';
 import { JobRuns } from './repo/jobRuns';
+import { OpsCheck } from './notifications/opsCheck';
 import { Retention } from './notifications/retention';
 import { EmailPreferences } from './repo/emailPreferences';
 import { RateLimiter, type RateLimitPolicy, WRITE_LIMIT } from './repo/rateLimits';
@@ -221,6 +222,10 @@ export class App {
 
   emailPreferences(): EmailPreferences {
     return this.once('emailPreferences', () => new EmailPreferences(this.database().db, this.organisationId()));
+  }
+
+  opsCheck(): OpsCheck {
+    return this.once('opsCheck', () => new OpsCheck(this.database().db, this.organisationId(), this.directory(), this.log));
   }
 
   retention(): Retention {
