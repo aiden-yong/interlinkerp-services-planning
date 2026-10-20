@@ -68,6 +68,14 @@ export const catalog = {
       endpoints: ['GET /api/schedule', 'POST /api/shifts', 'GET /api/shifts/{id}', 'PATCH /api/shifts/{id}', 'DELETE /api/shifts/{id}', 'POST /api/shift-restorations'],
     },
     {
+      name: 'Reuse Shift Patterns',
+      icon: '📋',
+      description: 'Save common shift shapes and prefill new shifts from them.',
+      does: ['Save a name, role, start time, duration and break as a template', 'Save an existing shift as a template', 'List, edit and delete templates'],
+      best_for: 'Managers who plan the same kind of shift often.',
+      endpoints: ['GET /api/shift-templates', 'POST /api/shift-templates', 'PATCH /api/shift-templates/{id}', 'DELETE /api/shift-templates/{id}'],
+    },
+    {
       name: 'Share Schedules',
       icon: '📣',
       description: 'Publish planned shifts and let employees see their own.',

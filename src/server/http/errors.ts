@@ -9,6 +9,7 @@ export const ERROR_CODES = [
   'NOT_ELIGIBLE', 'OWN_SHIFT', 'MODE_NOT_ACTIVE', 'ALREADY_UP_FOR_SWITCH', 'NOT_UP_FOR_SWITCH', 'OUTSIDE_UNASSIGN_WINDOW',
   'COUNTRY_NOT_SET', 'HOLIDAY_PROVIDER_NOT_CONFIGURED', 'PROVIDER_HOLIDAY',
   'RECURRENCE_PATTERN_SCOPE',
+  'TEMPLATE_NAME_TAKEN',
 ] as const;
 
 /** An expected failure that becomes a non-2xx response with the error envelope (contract SS-5). */

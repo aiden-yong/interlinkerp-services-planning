@@ -26,6 +26,7 @@ import { RecurrenceRepository } from './repo/recurrences';
 import { RoleRepository } from './repo/roles';
 import { SettingsRepository } from './repo/settings';
 import { ShiftRepository } from './repo/shifts';
+import { TemplateRepository } from './repo/templates';
 import { TimeOffRepository } from './repo/timeOff';
 import { buildRouter } from './routes';
 import { ConflictContext } from './scheduling/conflictContext';
@@ -181,6 +182,10 @@ export class App {
 
   shifts(): ShiftRepository {
     return this.once('shifts', () => new ShiftRepository(this.database().db, this.organisationId()));
+  }
+
+  templates(): TemplateRepository {
+    return this.once('templates', () => new TemplateRepository(this.database().db, this.organisationId()));
   }
 
   outbox(): Outbox {
