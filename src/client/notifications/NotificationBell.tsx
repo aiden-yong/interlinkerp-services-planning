@@ -2,9 +2,11 @@
 
 import './notifications.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../api';
 import { BellIcon } from '../icons';
 import type { NotificationItem, NotificationsPayload } from '../types';
+import { EmailSettings } from './EmailSettings';
 import { unreadLabel } from './inbox';
 
 const POLL_MS = 60_000;
@@ -18,6 +20,7 @@ export function NotificationBell() {
   const [older, setOlder] = useState<NotificationItem[]>([]);
   const [olderDone, setOlderDone] = useState(false);
   const [open, setOpen] = useState(false);
+  const [settings, setSettings] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -101,7 +104,10 @@ export function NotificationBell() {
         <div className="bell-panel" role="dialog" aria-label="Notifications" tabIndex={-1} ref={panelRef}>
           <div className="bell-head">
             <strong>Notifications</strong>
-            {unread > 0 && <button type="button" onClick={() => void markRead({ all: true })}>Mark all read</button>}
+            <span>
+              {unread > 0 && <button type="button" onClick={() => void markRead({ all: true })}>Mark all read</button>}
+              <button type="button" onClick={() => { setOpen(false); setSettings(true); }}>Email settings</button>
+            </span>
           </div>
           {data && shown.length === 0 && <p className="muted">Nothing yet.</p>}
           <ul>
@@ -119,6 +125,8 @@ export function NotificationBell() {
           )}
         </div>
       )}
+      {/* Portalled: the top bar's backdrop-filter would otherwise trap the fixed-position dialog inside the bar. */}
+      {settings && createPortal(<EmailSettings onClose={() => { setSettings(false); buttonRef.current?.focus(); }} />, document.body)}
     </div>
   );
 }

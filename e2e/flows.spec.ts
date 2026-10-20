@@ -62,4 +62,13 @@ test('an employee reads a notice and marks everything read', async ({ page, requ
   await panel.getByRole('button', { name: 'Mark all read' }).click();
   await expect(page.getByRole('button', { name: 'Notifications', exact: true })).toBeVisible();
   expect((await call(request, ANA, 'GET', '/api/notifications')).unread_count).toBe(0);
+
+  // Backlog item 29: email can be turned off per notice type from the bell (its panel is still open).
+  await page.getByRole('dialog', { name: 'Notifications' }).getByRole('button', { name: 'Email settings' }).click();
+  const settings = page.getByRole('dialog', { name: 'Email settings' });
+  await settings.getByRole('checkbox', { name: 'My shifts are published' }).uncheck();
+  await settings.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Email settings saved.' })).toBeVisible();
+  const { preferences } = await call(request, ANA, 'GET', '/api/my/notification-preferences');
+  expect(preferences.find((p: { kind: string }) => p.kind === 'schedule_published').email).toBe(false);
 });

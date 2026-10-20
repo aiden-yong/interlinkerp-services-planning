@@ -44,6 +44,7 @@ import { FetchHttpClient, type HttpClient } from './support/http';
 import { isTimezone } from './support/time';
 import { JobRuns } from './repo/jobRuns';
 import { Retention } from './notifications/retention';
+import { EmailPreferences } from './repo/emailPreferences';
 import { RateLimiter, type RateLimitPolicy, WRITE_LIMIT } from './repo/rateLimits';
 import { PageGate } from './web/pageGate';
 
@@ -209,13 +210,17 @@ export class App {
     return this.once('delivery', () => new DeliveryService({
       db: this.database().db, org: this.organisationId(), directory: this.directory(), profiles: this.profiles(),
       managers: this.managers(), settings: this.settings(), clock: this.clock(), log: this.log, publicUrl: () => this.publicUrl(),
-      mailer: this.mailer(), badges: this.badges(), inbox: this.notifications(),
+      mailer: this.mailer(), badges: this.badges(), inbox: this.notifications(), preferences: this.emailPreferences(),
     }));
   }
 
   deliveryTrigger(): DeliveryTrigger {
     return this.once('deliveryTrigger', () => new DeliveryTrigger(this.delivery(), this.clock(), this.log, MIN_GAP_MS,
       (now, gap) => this.jobRuns().claim('delivery', now, gap)));
+  }
+
+  emailPreferences(): EmailPreferences {
+    return this.once('emailPreferences', () => new EmailPreferences(this.database().db, this.organisationId()));
   }
 
   retention(): Retention {

@@ -87,9 +87,9 @@ export const catalog = {
       name: 'Stay Informed',
       icon: '🔔',
       description: 'Notices about published, changed, claimed and switched shifts.',
-      does: ['See my notifications', 'Mark notifications read'],
+      does: ['See my notifications', 'Mark notifications read', 'Choose which notices are also emailed'],
       best_for: 'Showing people what changed without them checking the schedule.',
-      endpoints: ['GET /api/notifications', 'POST /api/notification-reads'],
+      endpoints: ['GET /api/notifications', 'POST /api/notification-reads', 'GET /api/my/notification-preferences', 'PATCH /api/my/notification-preferences'],
     },
   ] as Capability[],
   workflows: [

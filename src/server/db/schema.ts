@@ -203,3 +203,14 @@ export const jobRuns = pgTable('job_runs', {
   job: varchar('job', { length: 40 }).notNull(),
   startedAt: instant('started_at').notNull(),
 }, (t) => [primaryKey({ columns: [t.organisationId, t.job] })]);
+
+/**
+ * Backlog item 29: notice types a person does not want by email (they still get them in the app). `recipient` is
+ * `ref:<employee_ref>` for employee notices and `email:<address>` for manager notices, matching how the inbox addresses them.
+ */
+export const emailOptOuts = pgTable('email_opt_outs', {
+  organisationId: organisationId(),
+  recipient: varchar('recipient', { length: 260 }).notNull(),
+  kind: varchar('kind', { length: 40 }).notNull(),
+  createdAt: instant('created_at').notNull(),
+}, (t) => [primaryKey({ columns: [t.organisationId, t.recipient, t.kind] })]);
