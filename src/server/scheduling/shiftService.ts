@@ -122,7 +122,12 @@ export class ShiftService {
     const deletedAt = shift.deletedAt;
     return this.unit.run(async ({ shifts, outbox }) => {
       const restored = (await shifts.restore(id, deletedAt, now)) ?? (() => { throw HttpError.notFound('No deleted shift with that id.'); })();
-      await outbox.cancelPending('shift_deleted', id, now);
+      // Backlog item 31: a sweep may deliver the deletion notice at the same moment. cancelPending then waits for that
+      // sweep's row lock and cancels nothing; undoing anyway would leave the employee told about a deletion that never
+      // happened, so the whole restore is rolled back instead.
+      if ((await outbox.cancelPending('shift_deleted', id, now)) === 0 && (await outbox.deliveredSince('shift_deleted', id, deletedAt))) {
+        throw HttpError.conflict('UNDO_EXPIRED', 'The employee has already been told about this deletion, so it can no longer be undone.');
+      }
       return restored;
     });
   }
