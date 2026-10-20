@@ -14,7 +14,7 @@ export default defineConfig({
           name: 'integration',
           environment: 'node',
           include: ['src/server/**/*.int.test.ts'],
-          poolOptions: { forks: { singleFork: true } }, // one shared test database
+          fileParallelism: false, // one shared test database: files run one at a time
           globalSetup: ['src/server/test/globalSetup.ts'],
           testTimeout: 15_000,
         },
