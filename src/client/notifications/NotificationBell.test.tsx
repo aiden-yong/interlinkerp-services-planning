@@ -103,4 +103,19 @@ describe('NotificationBell', () => {
     await screen.findByRole('button', { name: 'Notifications, 150 unread' });
     expect(document.querySelector('.bell-count')?.textContent).toBe('99+');
   });
+
+  it('loads older notices page by page, then hides the button (backlog item 27)', async () => {
+    const item = (id: number) => ({ ...payload(0).notifications[0], id, title: `Notice ${id}`, read_at: '2026-10-13T03:00:00Z' });
+    const first = Array.from({ length: 50 }, (_, i) => item(200 - i));
+    const second = [item(150), item(149)];
+    const fetchMock = vi.fn(async (path: string) =>
+      new Response(JSON.stringify({ notifications: path.includes('before=151') ? second : first, unread_count: 0 }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<NotificationBell />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Load older' }));
+    await waitFor(() => expect(screen.getByText('Notice 149')).toBeTruthy());
+    expect(fetchMock.mock.calls.map(([path]) => path)).toContain('/api/notifications?before=151');
+    expect(screen.queryByRole('button', { name: 'Load older' })).toBeNull();
+  });
 });

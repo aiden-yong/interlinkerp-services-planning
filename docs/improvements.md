@@ -172,17 +172,9 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Done:** Each email carries a stable `Message-ID` (`<notice-{id}@{public host}>`), so a resend after a crash shows up as the same message. Moving to a transactional provider (SES, Postmark, Resend) is your decision; it needs only a new `SMTP_URL`.
 - **Effort:** S
 
-### 27. Accessibility
+### 27. Accessibility (done 2026-10-20)
 - **Area:** UX (WCAG 2.2 AA)
-- **Why:**
-  - Field error messages are not linked to their inputs: there is no `aria-invalid` or `aria-describedby`.
-  - The bell panel has no focus management and no "load more".
-  - `GeneralTab` uses `noValidate` but does not announce its own errors.
-- **Fix:**
-  - Link each error to its input.
-  - Move focus into the bell panel when it opens and back to the bell when it closes, and close it on Esc.
-  - Add a "load more" button that uses `before`.
-  - Announce form errors in a live region.
+- **Done:** Every form field with an error gets `aria-invalid` and `aria-describedby`, pointing at its message. Field and form errors use `role="alert"`, so they are announced when they appear (`src/client/fields.tsx`). The bell already moved focus into the panel, returned it on Esc and closed on Esc; it now also has a "Load older" button that pages with `before`.
 - **Effort:** M
 
 ### 28. Development tooling advisories

@@ -6,6 +6,7 @@ import { useFeedback } from '../feedback';
 import { Segmented } from '../Segmented';
 import type { Settings } from '../types';
 import { describeError, useBusy, useLoad } from './common';
+import { FieldError, FormError, invalid } from '../fields';
 
 const FIELDS = ['country_code', 'region_code', 'timezone', 'give_up_mode', 'unassign_window_days'];
 const MODES = [{ value: 'switch', label: 'Switch' }, { value: 'unassign', label: 'Unassign' }] as const;
@@ -63,16 +64,16 @@ export function GeneralTab() {
     });
   };
 
-  if (error) return <p className="form-error">{error}</p>;
+  if (error) return <p role="alert" className="form-error">{error}</p>;
   if (!form) return <p className="empty">Loading…</p>;
   return (
     <form className="form-grid narrow" noValidate onSubmit={save}>
-      <label>Country (ISO code)<input maxLength={2} placeholder="MY" value={form.country_code ?? ''} onChange={(e) => setForm({ ...form, country_code: e.target.value })} />
-        {fe.country_code && <span className="field-error">{fe.country_code}</span>}</label>
-      <label>State / region code<input maxLength={10} placeholder="MY-10" value={form.region_code ?? ''} onChange={(e) => setForm({ ...form, region_code: e.target.value })} />
-        {fe.region_code && <span className="field-error">{fe.region_code}</span>}</label>
-      <label className="wide">Organisation time zone<input list="zones" required value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
-        {fe.timezone && <span className="field-error">{fe.timezone}</span>}</label>
+      <label>Country (ISO code)<input {...invalid(fe.country_code, 'general-country_code-error')} maxLength={2} placeholder="MY" value={form.country_code ?? ''} onChange={(e) => setForm({ ...form, country_code: e.target.value })} />
+        <FieldError id="general-country_code-error" message={fe.country_code} /></label>
+      <label>State / region code<input {...invalid(fe.region_code, 'general-region_code-error')} maxLength={10} placeholder="MY-10" value={form.region_code ?? ''} onChange={(e) => setForm({ ...form, region_code: e.target.value })} />
+        <FieldError id="general-region_code-error" message={fe.region_code} /></label>
+      <label className="wide">Organisation time zone<input {...invalid(fe.timezone, 'general-timezone-error')} list="zones" required value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
+        <FieldError id="general-timezone-error" message={fe.timezone} /></label>
       <datalist id="zones">{zones.map((z) => <option key={z} value={z} />)}</datalist>
       <fieldset className="wide">
         <legend aria-hidden="true">Give-up mode</legend>
@@ -80,14 +81,14 @@ export function GeneralTab() {
         <span className="muted">{form.give_up_mode === 'switch'
           ? 'Switch: the shift stays theirs until a colleague takes it.'
           : 'Unassign: it becomes an open shift.'}</span>
-        {fe.give_up_mode && <span className="field-error">{fe.give_up_mode}</span>}
+        <FieldError id="general-give_up_mode-error" message={fe.give_up_mode} />
       </fieldset>
       {form.give_up_mode === 'unassign' && (
-        <label>Unassign window (days)<input type="number" min={0} max={60} step={1} value={windowText} onChange={(e) => setWindowText(e.target.value)} />
-          {fe.unassign_window_days && <span className="field-error">{fe.unassign_window_days}</span>}</label>
+        <label>Unassign window (days)<input {...invalid(fe.unassign_window_days, 'general-unassign_window_days-error')} type="number" min={0} max={60} step={1} value={windowText} onChange={(e) => setWindowText(e.target.value)} />
+          <FieldError id="general-unassign_window_days-error" message={fe.unassign_window_days} /></label>
       )}
       <p className="wide muted">The country and region decide which public holidays are loaded. Employees without their own time zone use this one.</p>
-      {problem && <p className="wide form-error">{problem}</p>}
+      <FormError message={problem} className="wide" />
       <div className="wide actions"><button className="primary" disabled={busy}>Save</button></div>
     </form>
   );

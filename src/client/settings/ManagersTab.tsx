@@ -5,6 +5,7 @@ import { api, ApiError } from '../api';
 import { useFeedback } from '../feedback';
 import type { ManagerGrant } from '../types';
 import { describeError, errorText, useBusy, useLoad } from './common';
+import { FieldError, FormError, invalid } from '../fields';
 
 export function ManagersTab() {
   const { confirm, toast } = useFeedback();
@@ -57,11 +58,11 @@ export function ManagersTab() {
     <>
       {data && <p className="muted">{data.note}</p>}
       <form className="panel-head" onSubmit={grant}>
-        <label>Email of someone on the roster<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          {emailError && <span className="field-error">{emailError}</span>}</label>
+        <label>Email of someone on the roster<input {...invalid(emailError, 'manager-email-error')} type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          <FieldError id="manager-email-error" message={emailError} /></label>
         <button className="primary" disabled={busy}>Grant manager access</button>
       </form>
-      {(problem || error) && <p className="form-error">{problem || error}</p>}
+      <FormError message={problem || error} />
       <div className="table-wrap">
         <table>
           <thead><tr><th>Email</th><th>Granted by</th><th>Since</th><th /></tr></thead>

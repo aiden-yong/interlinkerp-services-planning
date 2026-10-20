@@ -7,6 +7,7 @@ import { addDays, periodFor } from '../schedule/period';
 import { isoToWall, todayIn, wallToIso } from '../schedule/tz';
 import type { EmployeeProfile, Me, TimeOff } from '../types';
 import { describeError, errorText, useBusy, useLoad } from './common';
+import { FieldError, FormError, invalid } from '../fields';
 
 const FIELDS = ['employee_ref', 'start_at', 'end_at', 'reason'];
 
@@ -79,7 +80,7 @@ export function TimeOffTab({ me }: { me: Me }) {
         <span className="spacer" />
         <button type="button" className="primary" onClick={() => open(null)}>Record time off</button>
       </div>
-      {(error || problem) && !draft && <p className="form-error">{problem || error}</p>}
+      {(error || problem) && !draft && <p role="alert" className="form-error">{problem || error}</p>}
       <div className="table-wrap">
         <table>
           <thead><tr><th>Employee</th><th>From</th><th>To</th><th>Reason</th><th /></tr></thead>
@@ -99,21 +100,21 @@ export function TimeOffTab({ me }: { me: Me }) {
         <Modal title={draft.record ? 'Edit time off' : 'Record time off'} onClose={() => setDraft(null)}>
           <form className="form-grid" onSubmit={save}>
             <label className="wide">Employee
-              <select required disabled={!!draft.record} value={draft.employee_ref} onChange={(e) => setDraft({ ...draft, employee_ref: e.target.value })}>
+              <select {...invalid(fe.employee_ref, 'time-off-employee_ref-error')} required disabled={!!draft.record} value={draft.employee_ref} onChange={(e) => setDraft({ ...draft, employee_ref: e.target.value })}>
                 <option value="">Choose…</option>
                 {employees.map((e) => <option key={e.employee_ref} value={e.employee_ref}>{e.name}</option>)}
               </select>
-              {fe.employee_ref && <span className="field-error">{fe.employee_ref}</span>}
+              <FieldError id="time-off-employee_ref-error" message={fe.employee_ref} />
             </label>
             <label>From date<input type="date" required value={draft.start_date} onChange={(e) => setDraft({ ...draft, start_date: e.target.value })} /></label>
-            <label>From time<input type="time" required value={draft.start_time} onChange={(e) => setDraft({ ...draft, start_time: e.target.value })} />
-              {fe.start_at && <span className="field-error">{fe.start_at}</span>}</label>
+            <label>From time<input {...invalid(fe.start_at, 'time-off-start_at-error')} type="time" required value={draft.start_time} onChange={(e) => setDraft({ ...draft, start_time: e.target.value })} />
+              <FieldError id="time-off-start_at-error" message={fe.start_at} /></label>
             <label>To date<input type="date" required value={draft.end_date} onChange={(e) => setDraft({ ...draft, end_date: e.target.value })} /></label>
-            <label>To time<input type="time" required value={draft.end_time} onChange={(e) => setDraft({ ...draft, end_time: e.target.value })} />
-              {fe.end_at && <span className="field-error">{fe.end_at}</span>}</label>
-            <label className="wide">Reason<input maxLength={200} placeholder="Annual leave" value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} />
-              {fe.reason && <span className="field-error">{fe.reason}</span>}</label>
-            {problem && <p className="wide form-error">{problem}</p>}
+            <label>To time<input {...invalid(fe.end_at, 'time-off-end_at-error')} type="time" required value={draft.end_time} onChange={(e) => setDraft({ ...draft, end_time: e.target.value })} />
+              <FieldError id="time-off-end_at-error" message={fe.end_at} /></label>
+            <label className="wide">Reason<input {...invalid(fe.reason, 'time-off-reason-error')} maxLength={200} placeholder="Annual leave" value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} />
+              <FieldError id="time-off-reason-error" message={fe.reason} /></label>
+            <FormError message={problem} className="wide" />
             <div className="wide actions"><button type="button" onClick={() => setDraft(null)}>Cancel</button><button className="primary" disabled={busy}>Save</button></div>
           </form>
         </Modal>
