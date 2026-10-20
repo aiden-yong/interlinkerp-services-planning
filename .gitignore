@@ -7,3 +7,6 @@ out/
 next-env.d.ts
 .vercel
 .superpowers/
+.next-e2e/
+test-results/
+playwright-report/
