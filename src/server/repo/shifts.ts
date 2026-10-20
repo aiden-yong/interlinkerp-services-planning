@@ -24,6 +24,10 @@ export interface ShiftRecord {
   createdBy: string;
   deletedAt: Date | null;
   switchRequestedAt: Date | null;
+  recurrenceId: string | null;
+  recurrenceIndex: number | null;
+  recurrenceDetached: boolean;
+  copiedFrom: string | null;
 }
 
 const toRecord = (r: typeof shifts.$inferSelect): ShiftRecord => ({
@@ -31,6 +35,7 @@ const toRecord = (r: typeof shifts.$inferSelect): ShiftRecord => ({
   note: r.note, state: r.state as ShiftRecord['state'], publishedAt: r.publishedAt, ackBy: r.conflictAcknowledgedBy, ackAt: r.conflictAcknowledgedAt,
   version: r.version, createdBy: r.createdBy, deletedAt: r.deletedAt,
   switchRequestedAt: r.switchRequestedAt,
+  recurrenceId: r.recurrenceId, recurrenceIndex: r.recurrenceIndex, recurrenceDetached: r.recurrenceDetached, copiedFrom: r.copiedFrom,
 });
 
 const one = (rows: (typeof shifts.$inferSelect)[]): ShiftRecord | null => (rows.length === 1 ? toRecord(rows[0]!) : null);
@@ -84,6 +89,7 @@ export class ShiftRepository {
       id: s.id, organisationId: this.org, employeeRef: s.employeeRef, roleId: s.roleId, startAt: s.start, endAt: s.end,
       breakMinutes: s.breakMinutes, allocatedPercent: s.percent, note: s.note, state: s.state, publishedAt: s.publishedAt,
       conflictAcknowledgedBy: s.ackBy, conflictAcknowledgedAt: s.ackAt, version: s.version, createdBy: s.createdBy, switchRequestedAt: s.switchRequestedAt, createdAt: now, updatedAt: now,
+      recurrenceId: s.recurrenceId, recurrenceIndex: s.recurrenceIndex, recurrenceDetached: s.recurrenceDetached, copiedFrom: s.copiedFrom,
     });
   }
 
@@ -92,6 +98,7 @@ export class ShiftRepository {
     const updated = await this.db.update(shifts).set({
       employeeRef: s.employeeRef, roleId: s.roleId, startAt: s.start, endAt: s.end, breakMinutes: s.breakMinutes, allocatedPercent: s.percent,
       note: s.note, conflictAcknowledgedBy: s.ackBy, conflictAcknowledgedAt: s.ackAt, switchRequestedAt: s.switchRequestedAt, version: expectedVersion + 1, updatedAt: now,
+      recurrenceDetached: s.recurrenceDetached,
     }).where(and(this.live(), eq(shifts.id, s.id), eq(shifts.version, expectedVersion))).returning();
     return updated.length === 1 ? toRecord(updated[0]!) : null;
   }

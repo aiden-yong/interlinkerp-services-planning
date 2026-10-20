@@ -10,6 +10,7 @@ export interface OrgSettings {
   timezone: string;
   give_up_mode: GiveUpMode;
   unassign_window_days: number;
+  recurrence_horizon_months: number;
 }
 
 export class SettingsRepository {
@@ -18,8 +19,11 @@ export class SettingsRepository {
   async get(): Promise<OrgSettings> {
     const [row] = await this.db.select().from(organisationSettings).where(eq(organisationSettings.organisationId, this.org)).limit(1);
     return row
-      ? { country_code: row.countryCode, region_code: row.regionCode, timezone: row.timezone, give_up_mode: row.giveUpMode as GiveUpMode, unassign_window_days: row.unassignWindowDays }
-      : { country_code: null, region_code: null, timezone: this.defaultTimezone, give_up_mode: 'switch', unassign_window_days: 2 };
+      ? {
+        country_code: row.countryCode, region_code: row.regionCode, timezone: row.timezone, give_up_mode: row.giveUpMode as GiveUpMode,
+        unassign_window_days: row.unassignWindowDays, recurrence_horizon_months: row.recurrenceHorizonMonths,
+      }
+      : { country_code: null, region_code: null, timezone: this.defaultTimezone, give_up_mode: 'switch', unassign_window_days: 2, recurrence_horizon_months: 6 };
   }
 
   async timezone(): Promise<string> {
@@ -33,6 +37,7 @@ export class SettingsRepository {
       timezone: settings.timezone,
       giveUpMode: settings.give_up_mode,
       unassignWindowDays: settings.unassign_window_days,
+      recurrenceHorizonMonths: settings.recurrence_horizon_months,
       updatedAt: now,
     };
     await this.db.insert(organisationSettings).values({ organisationId: this.org, ...values })

@@ -64,6 +64,10 @@ export const shifts = pgTable('shifts', {
   deletedAt: instant('deleted_at'),
   deletedBy: email('deleted_by'),
   switchRequestedAt: instant('switch_requested_at'),
+  recurrenceId: uuid('recurrence_id'),
+  recurrenceIndex: integer('recurrence_index'),
+  recurrenceDetached: boolean('recurrence_detached').notNull().default(false),
+  copiedFrom: uuid('copied_from'),
 }, (t) => [
   check('shifts_end_after_start', sql`${t.endAt} > ${t.startAt}`),
   check('shifts_percent_range', sql`${t.allocatedPercent} between 1 and 100`),
@@ -71,6 +75,56 @@ export const shifts = pgTable('shifts', {
   check('shifts_state_valid', sql`${t.state} in ('draft', 'published')`),
   index('shifts_live_time_idx').on(t.organisationId, t.startAt, t.endAt).where(sql`${t.deletedAt} is null`),
   index('shifts_live_employee_idx').on(t.organisationId, t.employeeRef, t.startAt).where(sql`${t.deletedAt} is null`),
+  // D4: includes soft-deleted rows (no deleted_at condition) so a deleted occurrence is never regenerated.
+  uniqueIndex('shifts_recurrence_step_key').on(t.organisationId, t.recurrenceId, t.recurrenceIndex).where(sql`${t.recurrenceId} is not null`),
+]);
+
+export const recurrences = pgTable('recurrences', {
+  id: uuid('id').primaryKey(),
+  organisationId: organisationId(),
+  interval: smallint('interval').notNull(),
+  unit: varchar('unit', { length: 8 }).notNull(),
+  ends: varchar('ends', { length: 8 }).notNull(),
+  untilDate: date('until_date', { mode: 'string' }),
+  occurrenceCount: smallint('occurrence_count'),
+  timezone: varchar('timezone', { length: 64 }).notNull(),
+  firstStartLocal: timestamp('first_start_local', { mode: 'string' }).notNull(),
+  durationMinutes: integer('duration_minutes').notNull(),
+  employeeRef: varchar('employee_ref', { length: 64 }),
+  roleId: uuid('role_id'),
+  breakMinutes: smallint('break_minutes').notNull().default(0),
+  allocatedPercent: smallint('allocated_percent').notNull().default(100),
+  note: text('note'),
+  lastIndex: integer('last_index'),
+  generatedUntil: instant('generated_until').notNull(),
+  createdBy: email('created_by').notNull(),
+  createdAt: instant('created_at').notNull(),
+  updatedAt: instant('updated_at').notNull(),
+}, (t) => [
+  check('recurrences_interval_range', sql`${t.interval} between 1 and 99`),
+  check('recurrences_unit_valid', sql`${t.unit} in ('day', 'week', 'month')`),
+  check('recurrences_ends_valid', sql`${t.ends} in ('never', 'on', 'after')`),
+  check('recurrences_occurrence_count_range', sql`${t.occurrenceCount} between 1 and 999`),
+  check('recurrences_duration_range', sql`${t.durationMinutes} between 1 and 10080`),
+  check('recurrences_break_non_negative', sql`${t.breakMinutes} >= 0`),
+  check('recurrences_percent_range', sql`${t.allocatedPercent} between 1 and 100`),
+  index('recurrences_org_idx').on(t.organisationId),
+]);
+
+export const shiftTemplates = pgTable('shift_templates', {
+  id: uuid('id').primaryKey(),
+  organisationId: organisationId(),
+  name: varchar('name', { length: 80 }).notNull(),
+  roleId: uuid('role_id'),
+  startTime: char('start_time', { length: 5 }).notNull(),
+  durationMinutes: integer('duration_minutes').notNull(),
+  breakMinutes: smallint('break_minutes').notNull().default(0),
+  createdAt: instant('created_at').notNull(),
+  updatedAt: instant('updated_at').notNull(),
+}, (t) => [
+  check('shift_templates_duration_range', sql`${t.durationMinutes} between 1 and 10080`),
+  check('shift_templates_break_non_negative', sql`${t.breakMinutes} >= 0`),
+  uniqueIndex('shift_templates_org_lower_name_key').on(t.organisationId, sql`lower(${t.name})`),
 ]);
 
 export const unavailabilities = pgTable('unavailabilities', {
@@ -113,10 +167,12 @@ export const organisationSettings = pgTable('organisation_settings', {
   timezone: varchar('timezone', { length: 64 }).notNull(),
   giveUpMode: varchar('give_up_mode', { length: 16 }).notNull().default('switch'),
   unassignWindowDays: smallint('unassign_window_days').notNull().default(2),
+  recurrenceHorizonMonths: smallint('recurrence_horizon_months').notNull().default(6),
   updatedAt: instant('updated_at').notNull(),
 }, (t) => [
   check('organisation_settings_give_up_mode_valid', sql`${t.giveUpMode} in ('switch', 'unassign')`),
   check('organisation_settings_window_range', sql`${t.unassignWindowDays} between 0 and 60`),
+  check('organisation_settings_recurrence_horizon_range', sql`${t.recurrenceHorizonMonths} between 1 and 24`),
 ]);
 
 export const planningManagers = pgTable('planning_managers', {

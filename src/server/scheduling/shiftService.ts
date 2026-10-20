@@ -59,6 +59,7 @@ export class ShiftService {
     const draft: ShiftRecord = {
       id: randomUUID(), employeeRef, roleId, start: start!, end: end!, breakMinutes, percent, note, state: 'draft', publishedAt: null,
       ackBy: null, ackAt: null, version: 1, createdBy: actorId(by), deletedAt: null, switchRequestedAt: null,
+      recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null,
     };
     const { shift, conflicts } = await this.guardConflicts(draft, acknowledged, by, now);
     await this.unit.run(({ shifts }) => shifts.insert(shift, now));
@@ -154,6 +155,7 @@ export class ShiftService {
     const copy: ShiftRecord = {
       ...source, id: randomUUID(), start: copyStart, end: copyEnd,
       state: 'draft', publishedAt: null, version: 1, createdBy: actorId(by), deletedAt: null, switchRequestedAt: null,
+      recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null,
     };
     const result = await this.guardConflicts(copy, acknowledged, by, now);
     await this.unit.run(({ shifts }) => shifts.insert(result.shift, now));
