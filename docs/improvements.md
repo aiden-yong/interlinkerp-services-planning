@@ -93,26 +93,19 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Fix:** Add an `instrumentation.ts` `onRequestError` hook that runs `redactAddresses` before logging.
 - **Effort:** S
 
-### 12. Fix cookie and cache headers on error responses
+### 12. Fix cookie and cache headers on error responses (done 2026-10-20)
 - **Area:** Security
-- **Why:**
-  - When a session was refreshed during a request that then fails, the new cookie is not sent, so the user is signed out early.
-  - When `proxy()` fails while building the app, the response is sent without `no-store`.
-- **Fix:** Set these headers in one shared place that every response passes through, error responses included.
+- **Done:** The kernel adds a refreshed session cookie to error responses as well, unless the error clears the session. Every API answer is `Cache-Control: no-store` unless a successful route sets its own caching. If the page gate fails in `src/proxy.ts`, the 500 page is no-store and its log line has email addresses removed.
 - **Effort:** S
 
-### 13. Former managers can still read manager notices
+### 13. Former managers can no longer read manager notices (done 2026-10-20)
 - **Area:** Security
-- **Why:** Manager notices are addressed by email. Someone removed from the manager list can still read the past notices sent to them. This is a known limitation in the README.
-- **Fix:** When listing notices with `audience = managers`, check that the reader is currently a manager.
+- **Done:** Manager notices, which are addressed by email, are listed, counted and marked read only while the reader is a Planning Manager. Badge counts use the current manager list. The README limitation is removed.
 - **Effort:** S
 
-### 14. Stop emailing people who have left
+### 14. Stop emailing people who have left (done 2026-10-20)
 - **Area:** Correctness
-- **Why:** The directory keeps a `status` for each employee, but `sendEmails` does not check it.
-- **Fix:**
-  - Skip rows whose directory status is not active and mark them `skipped`.
-  - Keep their in-app notices.
+- **Done:** The directory refresh already drops anyone who is not Onboarding, Active or Offboarding. When a notice is due for someone no longer on the roster, the email is now marked `Skipped: no longer on the roster.` and not retried. The in-app notice stays.
 - **Effort:** S
 
 ### 15. Measure performance in production

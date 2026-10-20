@@ -4,13 +4,17 @@ import type { Db } from '../db/client';
 import { notifications } from '../db/schema';
 import { iso } from '../support/time';
 
-/** A signed-in person's inbox address: their employee_ref and their email (DR-02). */
+/**
+ * A signed-in person's inbox address: their employee_ref and their email (DR-02). Manager notices are addressed by
+ * email, so they are readable only while the person is still a Planning Manager (backlog item 13).
+ */
 export interface Recipient {
   ref: string | null;
   email: string | null;
+  isManager: boolean;
 }
 
-export const recipientOf = (p: Principal): Recipient => ({ ref: p.employeeRef, email: p.email ? p.email.trim().toLowerCase() : null });
+export const recipientOf = (p: Principal): Recipient => ({ ref: p.employeeRef, email: p.email ? p.email.trim().toLowerCase() : null, isManager: p.isManager });
 
 export function notificationToApi(n: typeof notifications.$inferSelect) {
   return { id: n.id, kind: n.kind, title: n.title, body: n.body, link: n.link, shift_id: n.shiftId, created_at: iso(n.createdAt), read_at: n.readAt ? iso(n.readAt) : null };
@@ -22,7 +26,7 @@ export class NotificationRepository {
   private mine(who: Recipient): SQL {
     const parts: SQL[] = [];
     if (who.ref) parts.push(eq(notifications.recipientRef, who.ref));
-    if (who.email) parts.push(eq(notifications.recipientEmail, who.email));
+    if (who.email && who.isManager) parts.push(eq(notifications.recipientEmail, who.email));
     return and(eq(notifications.organisationId, this.org), parts.length > 0 ? or(...parts) : sql`false`)!;
   }
 

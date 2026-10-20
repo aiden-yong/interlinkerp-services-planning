@@ -78,6 +78,39 @@ describe('Kernel', () => {
     expect(bad.status).toBe(422);
     expect((await bad.json()).error.details).toEqual({ body: 'Request body must be a JSON object.' });
   });
+  describe('headers on every response (backlog item 12)', () => {
+    const refreshing: AccessGuard = { check: async () => ({ principal: null, cookies: ['planning_session=new; Path=/'] }) };
+
+    it('keeps a refreshed session cookie when the handler fails', async () => {
+      const r = new Router();
+      r.add('GET', '/bad', 'public', 'Bad', () => {
+        throw HttpError.validation({ x: 'wrong' });
+      });
+      r.add('GET', '/boom', 'public', 'Boom', () => {
+        throw new Error('kaput');
+      });
+      expect((await kernel(r, refreshing).handle(req('/bad'))).headers.get('Set-Cookie')).toBe('planning_session=new; Path=/');
+      expect((await kernel(r, refreshing).handle(req('/boom'))).headers.get('Set-Cookie')).toBe('planning_session=new; Path=/');
+    });
+
+    it('lets an error that clears the session win over the refresh', async () => {
+      const r = new Router();
+      r.add('GET', '/out', 'public', 'Out', () => {
+        throw new HttpError(401, 'UNAUTHORIZED', 'Signed out.', null, { 'Set-Cookie': 'planning_session=; Max-Age=0' });
+      });
+      expect((await kernel(r, refreshing).handle(req('/out'))).headers.get('Set-Cookie')).toBe('planning_session=; Max-Age=0');
+    });
+
+    it('marks answers no-store unless a successful route chose its own caching', async () => {
+      const r = new Router();
+      r.add('GET', '/ok', 'public', 'Ok', () => json(200, {}));
+      r.add('GET', '/cached', 'public', 'Cached', () => json(200, {}, { 'Cache-Control': 'public, max-age=60' }));
+      expect((await kernel(r).handle(req('/ok'))).headers.get('Cache-Control')).toBe('no-store');
+      expect((await kernel(r).handle(req('/cached'))).headers.get('Cache-Control')).toBe('public, max-age=60');
+      expect((await kernel(r).handle(req('/missing'))).headers.get('Cache-Control')).toBe('no-store');
+    });
+  });
+
   describe('request body cap', () => {
     const echo = () => {
       const r = new Router();

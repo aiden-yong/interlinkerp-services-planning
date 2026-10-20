@@ -4,6 +4,7 @@ import { requireAll } from '@/server/config/env';
 import { getApp } from '@/server/entry';
 import { correlationIdFor } from '@/server/http/kernel';
 import { envelope } from '@/server/http/responses';
+import { redactAddresses } from '@/server/support/scrub';
 import { isApiPath, isPagePath } from '@/server/web/pageGate';
 import { API_SECURITY_HEADERS, pageContentSecurityPolicy } from '@/server/web/securityHeaders';
 
@@ -27,7 +28,14 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return new NextResponse('<!doctype html><p>Planning is misconfigured. See the server log.</p>', { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8', ...NO_STORE } });
   }
 
-  const result = await getApp().pageGate().handle(request);
+  let result;
+  try {
+    result = await getApp().pageGate().handle(request);
+  } catch (error) {
+    // Backlog item 12: a failure here must still be no-store, and its log line must not carry email addresses (DR-02).
+    console.error(`[planning-web] ${correlationIdFor(request)} ${redactAddresses(error instanceof Error ? `${error.name}: ${error.message}` : String(error))}`);
+    return new NextResponse('<!doctype html><p>Planning could not check your sign-in. Try again in a moment.</p>', { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8', ...NO_STORE } });
+  }
   // Next.js tags its own scripts with the nonce it finds in the request's CSP header (backlog item 4).
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
   const policy = pageContentSecurityPolicy(nonce, process.env.NODE_ENV === 'development');

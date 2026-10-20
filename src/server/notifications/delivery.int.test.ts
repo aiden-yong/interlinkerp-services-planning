@@ -166,6 +166,17 @@ describe('delivery: email and badges', () => {
     expect(h.mailer.sent[0]!.text).toContain('https://');
   });
 
+  it('skips email, but keeps the in-app notice, for someone who has left the roster (backlog item 14)', async () => {
+    await h.addEmployee('E1', 'Ana Lim', null, null, 'ana@example.com');
+    await h.addEmployee('E2', 'Bo Tan', null, null, 'bo@example.com');
+    await publishedFor('E1');
+    await h.database.db.delete(employeeDirectory).where(eq(employeeDirectory.employeeRef, 'E1')); // the next refresh no longer lists Ana
+    await h.app.delivery().deliverDue();
+    expect(h.mailer.sent).toEqual([]);
+    const [row] = await inbox();
+    expect(row).toMatchObject({ recipientRef: 'E1', emailedAt: null, emailAttempts: 5, emailError: 'Skipped: no longer on the roster.' });
+  });
+
   it('records why an email cannot be sent and does not retry it (Review Focus 2)', async () => {
     await h.addEmployee('E1', 'Ana Lim'); // no email on the roster, while a colleague has one
     await h.addEmployee('E2', 'Bo Tan', null, null, 'bo@example.com');
