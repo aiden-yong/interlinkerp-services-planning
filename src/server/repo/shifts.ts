@@ -173,6 +173,14 @@ export class ShiftRepository {
     return count;
   }
 
+  /** Soft-deletes every not-started, not-already-deleted shift of a series from `fromIndex` on (any state, detached included). Returns the deleted rows. */
+  async softDeleteSeriesShiftsFrom(seriesId: string, fromIndex: number, by: string, now: Date): Promise<ShiftRecord[]> {
+    const rows = await this.db.update(shifts).set({ deletedAt: now, deletedBy: by, updatedAt: now })
+      .where(and(eq(shifts.organisationId, this.org), eq(shifts.recurrenceId, seriesId), gte(shifts.recurrenceIndex, fromIndex), isNull(shifts.deletedAt), gt(shifts.startAt, now)))
+      .returning();
+    return rows.map(toRecord);
+  }
+
   /** D6: hard-deletes the untouched future drafts of a series from fromIndex on (except `exceptId`, which moves to the new series instead). */
   async hardDeleteSeriesShiftsFrom(seriesId: string, fromIndex: number, now: Date, exceptId: string): Promise<number> {
     const deleted = await this.db.delete(shifts).where(and(

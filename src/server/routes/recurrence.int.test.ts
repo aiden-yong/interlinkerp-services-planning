@@ -1,6 +1,8 @@
 import { DateTime } from 'luxon';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { shifts } from '../db/schema';
+import { Outbox } from '../repo/outbox';
+import { ORG } from '../test/db';
 import { useApiHarness } from '../test/harness';
 
 const h = useApiHarness();
@@ -27,6 +29,8 @@ const atIndex = async (seriesId: string, idx: number) => {
   const { body } = await h.call('GET', `/api/shifts/${row.id}`);
   return body.shift;
 };
+
+const outbox = () => new Outbox(h.database.db, ORG).all();
 
 describe('recurring shifts', () => {
   beforeEach(() => advanceTo('2026-01-01T02:00:00Z'));
@@ -277,5 +281,50 @@ describe('recurring shifts', () => {
     });
     expect(res.status, JSON.stringify(res.body)).toBe(422);
     expect(res.body.error.code).toBe('RECURRENCE_PATTERN_SCOPE');
+  });
+
+  it('deletes this and following, and ends the series', async () => {
+    const { body } = await createRepeating();
+    const shift10 = await atIndex(body.recurrence.id, 10);
+    const res = await h.call('DELETE', `/api/shifts/${shift10.id}`, undefined, { scope: 'following' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.deleted).toBe(16);
+
+    h.clock.advance(31 * 24 * 3600);
+    await h.app.recurrences().extendAll(h.clock.now());
+    const after = await seriesRows(body.recurrence.id);
+    const newest = after.filter((r) => r.recurrenceIndex! >= 10 && r.deletedAt === null);
+    expect(newest.length).toBe(0);
+  });
+
+  it('deletes all not-started shifts, published ones with a notice', async () => {
+    const { body } = await createRepeating();
+    const shift1 = await atIndex(body.recurrence.id, 1);
+    expect((await h.call('POST', '/api/publications', { shift_ids: [shift1.id] })).status).toBe(201);
+    const shift0 = await atIndex(body.recurrence.id, 0); // already started at creation time (see START/clock fixture), so scope 'all' naturally excludes it
+
+    const res = await h.call('DELETE', `/api/shifts/${shift1.id}`, undefined, { scope: 'all' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.deleted).toBe(25);
+
+    const rows = await seriesRows(body.recurrence.id);
+    const row0 = rows.find((r) => r.id === shift0.id)!;
+    expect(row0.deletedAt).toBeNull();
+
+    const notices = (await outbox()).filter((n) => n.kind === 'shift_deleted');
+    expect(notices.length).toBe(1);
+    expect(notices[0]!.subject_id).toBe(shift1.id);
+    const deliverAfter = Date.parse(notices[0]!.deliver_after);
+    expect(deliverAfter - h.clock.now().getTime()).toBe(30_000);
+  });
+
+  it('keeps the single delete and its undo', async () => {
+    const { body } = await createRepeating();
+    const shift3 = await atIndex(body.recurrence.id, 3);
+    const del = await h.call('DELETE', `/api/shifts/${shift3.id}`);
+    expect(del.status, JSON.stringify(del.body)).toBe(204);
+
+    const restore = await h.call('POST', '/api/shift-restorations', { shift_id: shift3.id });
+    expect(restore.status, JSON.stringify(restore.body)).toBe(201);
   });
 });

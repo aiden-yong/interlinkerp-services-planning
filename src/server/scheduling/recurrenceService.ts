@@ -6,7 +6,7 @@ import type { Logger } from '../http/kernel';
 import type { Input } from '../http/input';
 import { RecurrenceRepository, type SeriesRecord } from '../repo/recurrences';
 import type { ShiftRecord } from '../repo/shifts';
-import { localDate } from '../support/time';
+import { iso, localDate } from '../support/time';
 import type { Clock } from '../support/clock';
 import type { ConflictContext } from './conflictContext';
 import type { UnitOfWork, WriteScope } from './unitOfWork';
@@ -221,6 +221,21 @@ export class RecurrenceService {
     }));
     const insertedIds = await scope.shifts.insertMany(rows, now);
     return { newSeriesId, removed, created: insertedIds.length };
+  }
+
+  /** D7: soft-deletes every not-started shift of a series from `fromIndex` on, queues a deletion notice (after UNDO_MS) for each published one with an employee, and ends the series there. Series deletes have no undo. */
+  async deleteFrom(scope: WriteScope, seriesId: string, fromIndex: number, by: string, now: Date, undoMs: number): Promise<number> {
+    const series = await scope.recurrences.find(seriesId);
+    if (!series) return 0;
+    const deleted = await scope.shifts.softDeleteSeriesShiftsFrom(seriesId, fromIndex, by, now);
+    for (const shift of deleted) {
+      if (shift.state === 'published' && shift.employeeRef) {
+        // eslint-disable-next-line no-await-in-loop -- sequential on the transaction's own connection, same pattern used elsewhere in this file
+        await scope.outbox.add('shift_deleted', shift.employeeRef, shift.id, { shift_id: shift.id, start_at: iso(shift.start), end_at: iso(shift.end) }, new Date(now.getTime() + undoMs), now);
+      }
+    }
+    await scope.recurrences.update({ ...series, lastIndex: fromIndex - 1 }, now);
+    return deleted.length;
   }
 
   /** Generates missing shifts for one series up to now + horizon; one transaction, lockSeries first (so two extensions never double-create, Review Focus 4). */

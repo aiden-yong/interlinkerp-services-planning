@@ -179,16 +179,30 @@ export class ShiftService {
     return { shift: saved.shift, conflicts, updated: saved.updated };
   }
 
-  async delete(id: string, by: Principal): Promise<void> {
+  async delete(id: string, by: Principal, scope?: 'following' | 'all'): Promise<{ deleted: number } | null> {
     const now = this.clock.now();
-    await this.unit.run(async ({ shifts, outbox }) => {
-      const shift = (await shifts.softDelete(id, actorId(by), now)) ?? (() => { throw HttpError.notFound('No shift with that id.'); })();
-      if (shift.state === 'published' && shift.employeeRef) {
-        // Sent only after the undo window, so an undone deletion never reaches the employee (FR-NTF-02).
-        await outbox.add('shift_deleted', shift.employeeRef, shift.id, { shift_id: shift.id, start_at: iso(shift.start), end_at: iso(shift.end) },
-          new Date(now.getTime() + UNDO_MS), now);
-      }
+    if (!scope) {
+      await this.unit.run(async ({ shifts, outbox }) => {
+        const shift = (await shifts.softDelete(id, actorId(by), now)) ?? (() => { throw HttpError.notFound('No shift with that id.'); })();
+        if (shift.state === 'published' && shift.employeeRef) {
+          // Sent only after the undo window, so an undone deletion never reaches the employee (FR-NTF-02).
+          await outbox.add('shift_deleted', shift.employeeRef, shift.id, { shift_id: shift.id, start_at: iso(shift.start), end_at: iso(shift.end) },
+            new Date(now.getTime() + UNDO_MS), now);
+        }
+      });
+      return null;
+    }
+
+    const current = (await this.shifts.find(id)) ?? (() => { throw HttpError.notFound('No shift with that id.'); })();
+    if (current.recurrenceId === null) {
+      const message = 'This shift is not part of a repeating series.';
+      throw new HttpError(422, 'RECURRENCE_PATTERN_SCOPE', message, { scope: message });
+    }
+    const deleted = await this.unit.run(async (scopeCtx) => {
+      const fromIndex = scope === 'following' ? current.recurrenceIndex! : (await scopeCtx.shifts.firstNotStartedIndex(current.recurrenceId!, now)) ?? current.recurrenceIndex!;
+      return this.recurrences.deleteFrom(scopeCtx, current.recurrenceId!, fromIndex, actorId(by), now, UNDO_MS);
     });
+    return { deleted };
   }
 
   async restore(id: string, _by: Principal): Promise<ShiftRecord> {
