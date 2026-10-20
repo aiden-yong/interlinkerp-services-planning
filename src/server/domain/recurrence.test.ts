@@ -84,6 +84,12 @@ describe('occurrences', () => {
     expect(result).toHaveLength(MAX_PER_RUN);
   });
 
+  it('returns an empty list when fromIndex is past an exhausted count budget', () => {
+    const rule: RepeatRule = { ...base, interval: 1, unit: 'day', ends: 'after', count: 10 };
+    const result = occurrences(rule, 50, new Date('2027-01-01T00:00:00Z'));
+    expect(result).toEqual([]);
+  });
+
   it('uses the duration in real time', () => {
     const rule: RepeatRule = {
       ...base,

@@ -31,7 +31,10 @@ export function occurrences(rule: RepeatRule, fromIndex: number, until: Date): O
   const first = DateTime.fromISO(rule.firstStartLocal, { zone });
   const firstDay = first.day;
   const untilMs = until.getTime();
-  const safetyCap = 10 * (rule.count ?? 1) + 10_000;
+  // Sized to outlast month-skip inflation (10x the 'after' budget) AND to reach
+  // fromIndex/lastIndex even when there's no count at all (a 'never'/'on' series),
+  // since the loop always starts walking at k = 0.
+  const safetyCap = 10 * (rule.count ?? Math.max(fromIndex, rule.lastIndex ?? 0, 1)) + 10_000;
   const result: Occurrence[] = [];
   let remaining = rule.ends === 'after' ? (rule.count ?? 0) : Infinity;
 
