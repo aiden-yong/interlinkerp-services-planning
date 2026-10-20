@@ -83,7 +83,9 @@ export class Kernel {
       try {
         const url = new URL(request.url);
         const path = url.pathname.replace(/\/+$/, '') || '/';
-        const { route, params } = this.router.match(request.method.toUpperCase(), path);
+        const method = request.method.toUpperCase();
+        if (method === 'OPTIONS') return this.finish(new Response(null, { status: 204, headers: { Allow: this.router.allowed(path).join(', ') } }), [], cid, false);
+        const { route, params } = this.router.match(method, path);
         const access = await this.guard.check(route, request);
         refreshed = access.cookies;
         let body: Promise<Record<string, unknown>> | null = null;
@@ -106,11 +108,16 @@ export class Kernel {
           response = json(500, envelope('INTERNAL_ERROR', 'An unexpected error occurred.', cid, null));
         }
       }
-      for (const cookie of refreshed) response.headers.append('Set-Cookie', cookie);
-      // Auth guide §7: API answers are per caller, so nothing may cache them unless a route says otherwise.
-      if (!response.ok || !response.headers.has('Cache-Control')) response.headers.set('Cache-Control', 'no-store');
-      response.headers.set('X-Correlation-ID', cid);
-      return response;
+      return this.finish(response, refreshed, cid, request.method.toUpperCase() === 'HEAD');
     });
+  }
+
+  /** The headers every response gets, in one place, errors included. HEAD keeps the GET headers and drops the body. */
+  private finish(response: Response, cookies: string[], cid: string, head: boolean): Response {
+    for (const cookie of cookies) response.headers.append('Set-Cookie', cookie);
+    // Auth guide §7: API answers are per caller, so nothing may cache them unless a route says otherwise.
+    if (!response.ok || !response.headers.has('Cache-Control')) response.headers.set('Cache-Control', 'no-store');
+    response.headers.set('X-Correlation-ID', cid);
+    return head ? new Response(null, { status: response.status, headers: response.headers }) : response;
   }
 }

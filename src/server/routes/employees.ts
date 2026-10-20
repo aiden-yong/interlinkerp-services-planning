@@ -2,7 +2,7 @@ import type { App } from '../app';
 import { parseWorkingHours, WorkingHoursError } from '../domain/workingHours';
 import { op } from '../http/doc';
 import { HttpError } from '../http/errors';
-import { Input } from '../http/input';
+import { Input, LIST_MAX, slicePage } from '../http/input';
 import { json } from '../http/responses';
 import type { Router } from '../http/router';
 import type { DirectoryRow } from '../repo/directory';
@@ -26,12 +26,16 @@ function shape(row: DirectoryRow, profile: Profile, orgTimezone: string) {
 }
 
 export function register(r: Router, app: App): void {
-  r.add('GET', '/api/employees', 'manager', 'List plannable employees with their roles and working hours.', async () => {
+  r.add('GET', '/api/employees', 'manager', 'List plannable employees with their roles and working hours.', async ({ query }) => {
+    const input = new Input(query);
+    const page = input.page(LIST_MAX, LIST_MAX);
+    input.check();
     await app.directoryRefresher().refreshIfEmpty();
     const [rows, profiles, orgTimezone] = await Promise.all([app.directory().all(), app.profiles().all(), app.settings().timezone()]);
-    return json(200, { employees: rows.map((row) => shape(row, profiles.get(row.employeeRef) ?? blankProfile(row.employeeRef), orgTimezone)) });
+    const { items, pagination } = slicePage(rows, page);
+    return json(200, { employees: items.map((row) => shape(row, profiles.get(row.employeeRef) ?? blankProfile(row.employeeRef), orgTimezone)), pagination });
   }, op('List Employees', 'See who can be planned and how', ['Choosing who to put on a shift', 'Reviewing roles and working hours'], ['Reading shifts', 'Looking up personal details'],
-    [], ['employees[].employee_ref', 'employees[].name', 'employees[].role_ids', 'employees[].working_hours'], ['Planning Manager'], ['PATCH /api/employees/{ref}', 'GET /api/schedule'],
+    ['limit', 'offset'], ['employees[].employee_ref', 'employees[].name', 'employees[].role_ids', 'employees[].working_hours', 'pagination'], ['Planning Manager'], ['PATCH /api/employees/{ref}', 'GET /api/schedule'],
     ['employees', 'staff', 'roster', 'team', 'people']));
 
   r.add('PATCH', '/api/employees/{ref}', 'manager', "Set an employee's planning roles, default role, time zone and working hours.", async ({ params, body }) => {

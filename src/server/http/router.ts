@@ -68,17 +68,22 @@ export class Router {
     return [...this.routes];
   }
 
+  /** Methods a path answers, HEAD and OPTIONS included (HTTP semantics, backlog item 19). Throws 404 for an unknown path. */
+  allowed(path: string): string[] {
+    const methods: string[] = [];
+    for (const route of this.routes) if (matchPath(route.path, path) && !methods.includes(route.method)) methods.push(route.method);
+    if (methods.length === 0) throw HttpError.notFound(`No route for ${path}.`);
+    return [...methods, ...(methods.includes('GET') ? ['HEAD'] : []), 'OPTIONS'];
+  }
+
+  /** HEAD runs the GET route (the kernel drops the body). OPTIONS is answered by the kernel from allowed(). */
   match(method: string, path: string): { route: Route; params: Record<string, string> } {
-    const allowed: string[] = [];
+    const wanted = method === 'HEAD' ? 'GET' : method;
     for (const route of this.routes) {
       const params = matchPath(route.path, path);
-      if (!params) continue;
-      if (route.method === method) return { route, params };
-      if (!allowed.includes(route.method)) allowed.push(route.method);
+      if (params && route.method === wanted) return { route, params };
     }
-    if (allowed.length > 0) {
-      throw new HttpError(405, 'METHOD_NOT_ALLOWED', `${method} is not allowed on ${path}.`, { allowed }, { Allow: allowed.join(', ') });
-    }
-    throw HttpError.notFound(`No route for ${path}.`);
+    const allowed = this.allowed(path);
+    throw new HttpError(405, 'METHOD_NOT_ALLOWED', `${method} is not allowed on ${path}.`, { allowed }, { Allow: allowed.join(', ') });
   }
 }

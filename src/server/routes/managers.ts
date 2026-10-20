@@ -2,7 +2,7 @@ import type { App } from '../app';
 import { actorId } from '../auth/principal';
 import { op } from '../http/doc';
 import { HttpError } from '../http/errors';
-import { Input } from '../http/input';
+import { Input, LIST_MAX, slicePage } from '../http/input';
 import { json, noContent } from '../http/responses';
 import type { Router } from '../http/router';
 import { RosterUnavailable } from '../roster/roster';
@@ -10,10 +10,15 @@ import { RosterUnavailable } from '../roster/roster';
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function register(r: Router, app: App): void {
-  r.add('GET', '/api/managers', 'manager', 'List people granted Planning Manager access.', async () =>
-    json(200, { managers: await app.managers().all(), note: 'InterlinkERP gateway admins are always Planning Managers and are not listed here.' }),
+  r.add('GET', '/api/managers', 'manager', 'List people granted Planning Manager access.', async ({ query }) => {
+    const input = new Input(query);
+    const page = input.page(LIST_MAX, LIST_MAX);
+    input.check();
+    const { items, pagination } = slicePage(await app.managers().all(), page);
+    return json(200, { managers: items, pagination, note: 'InterlinkERP gateway admins are always Planning Managers and are not listed here.' });
+  },
   op('List Planning Managers', 'See who can manage planning', ['Reviewing who has manager access'], ['Listing employees'],
-    [], ['managers[].email', 'managers[].granted_by', 'managers[].granted_at'], ['Planning Manager'], ['POST /api/managers', 'DELETE /api/managers/{email}'],
+    ['limit', 'offset'], ['managers[].email', 'managers[].granted_by', 'managers[].granted_at', 'pagination'], ['Planning Manager'], ['POST /api/managers', 'DELETE /api/managers/{email}'],
     ['managers', 'permissions', 'access', 'admins']));
 
   r.add('POST', '/api/managers', 'person-manager', 'Grant Planning Manager access to someone on the roster.', async ({ body, principal }) => {

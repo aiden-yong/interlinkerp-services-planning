@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { App } from '../app';
 import { catalog } from './catalog';
-import { buildOpenApi } from './openapi';
+import { buildOpenApi, securityFor } from './openapi';
 import { type Route, scopeOf } from './router';
 
 /**
@@ -61,7 +61,9 @@ describe('openapi.json', () => {
       }
       const operation = doc.paths[route.path][route.method.toLowerCase()];
       if (route.access === 'public') expect(operation.security).toBeUndefined();
-      else expect(operation.security).toEqual([{ bearerAuth: [scopeOf(route)] }]);
+      else expect(operation.security).toEqual(securityFor(route.access, scopeOf(route)));
+      if (route.access === 'manager') expect(operation.security[0]).toEqual({ bearerAuth: [scopeOf(route)] });
+      if (route.access === 'person' || route.access === 'person-manager') expect(operation.security).toEqual([{ cookieAuth: [] }]);
     }
   });
 

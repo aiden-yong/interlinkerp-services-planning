@@ -113,13 +113,9 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Fix:** Run `scripts/time-schedule.sh` against production with 50 employees for a week and for a month. Record p50 and p95, both with Neon warm and after Neon has scaled to zero.
 - **Effort:** S
 
-### 16. Reduce gateway introspection calls
+### 16. Reduce gateway introspection calls (won't do)
 - **Area:** Performance
-- **Why:** Every request introspects the token with the gateway, including each React Server Component prefetch. One page navigation can therefore cost several gateway round-trips.
-- **Fix:**
-  - Read SS-25 first, to see whether the gateway allows a short cache.
-  - If it does, cache successful introspection results for 30–60 seconds, keyed by a hash of the token, in memory per instance.
-  - Otherwise, skip introspection for prefetch requests that only reuse an already-verified session.
+- **Decision:** The auth guide (§5, "check the gateway on every request, no cache") forbids both options. A cache, or skipping prefetches, opens a window in which Planning and the gateway disagree about whether someone is signed out. Revisit only if the gateway owners change that rule.
 - **Effort:** M
 
 ### 17. Stop running background work for health probes (done 2026-10-20)
@@ -127,25 +123,14 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Done:** `handleApi` starts the delivery sweep only after `/api/` requests. `/health`, `/openapi.json` and the crons never start it.
 - **Effort:** S
 
-### 18. Bring list endpoints in line with the gateway's paging rule
+### 18. Bring list endpoints in line with the gateway's paging rule (done 2026-10-20)
 - **Area:** Conformance (SS-12)
-- **Why:** SS-12 says lists accept `?limit=` and `?offset=`, clamp oversized limits, and return `422` for `limit=0`. No list endpoint in Planning supports these. `/api/notifications` pages with `before` instead.
-- **Fix:**
-  - Add `limit` and `offset` to the unbounded lists: `/api/employees`, `/api/managers`, `/api/roles` and `/api/notifications`. Keep `before` as an extra option.
-  - Ask the gateway owners whether lists bounded by a date range (`/api/schedule`, `/api/unavailabilities`, `/api/holidays`) are exempt.
+- **Done:** `/api/employees`, `/api/managers` and `/api/roles` accept `limit` and `offset`, defaulting to and clamped at 1,000. They return `pagination: { limit, offset, total }`. `/api/notifications` accepts them too: the default is 50, clamped at 100, and `before` still works. `limit=0` or `offset=-1` returns `422`. Still open: ask the gateway owners whether the date-range lists (`/api/schedule`, `/api/unavailabilities`, `/api/holidays`) are exempt.
 - **Effort:** M
 
-### 19. Fix small OpenAPI and HTTP differences
+### 19. Fix small OpenAPI and HTTP differences (done 2026-10-20)
 - **Area:** Conformance
-- **Why:**
-  - Person-only routes list `bearerAuth` in the OpenAPI document, but people sign in with the cookie.
-  - `HEAD` and `OPTIONS` requests return `405`.
-  - Error codes that the contract does not reserve are not documented.
-- **Fix:**
-  - Correct the security schemes for each access level.
-  - Answer `HEAD` the same as `GET`, without a body.
-  - Answer `OPTIONS` with an `Allow` header.
-  - List the error codes in the OpenAPI document.
+- **Done:** OpenAPI declares `cookieAuth` (the `planning_session` cookie). Manager routes list `bearerAuth` with their scope or the cookie. Person-only routes list only the cookie. `HEAD` answers like `GET` without a body, `OPTIONS` returns `204` with `Allow`, and a 405 `Allow` lists both. Every error code is listed in `components.schemas.ErrorEnvelope`, and `errors.test.ts` keeps that list complete. Check the security change when the gateway conformance run (item 7) happens.
 - **Effort:** S
 
 ### 20. Narrow the proxy matcher (done 2026-10-20)
