@@ -78,11 +78,14 @@ export class Kernel {
     const cid = correlationIdFor(request);
     return requestContext.run({ correlationId: cid }, async () => {
       let response: Response;
+      // Kept outside the try so an error response still carries a session the guard just refreshed (backlog item 12).
+      let refreshed: string[] = [];
       try {
         const url = new URL(request.url);
         const path = url.pathname.replace(/\/+$/, '') || '/';
         const { route, params } = this.router.match(request.method.toUpperCase(), path);
         const access = await this.guard.check(route, request);
+        refreshed = access.cookies;
         let body: Promise<Record<string, unknown>> | null = null;
         response = await route.handler({
           request,
@@ -92,16 +95,20 @@ export class Kernel {
           principal: access.principal,
           body: () => (body ??= readJsonObject(request)),
         });
-        for (const cookie of access.cookies) response.headers.append('Set-Cookie', cookie);
       } catch (error) {
         if (error instanceof HttpError) {
           response = json(error.status, envelope(error.code, error.message, cid, error.details), error.headers);
+          // An error that sets its own cookie (signing out) wins over the refresh.
+          if (response.headers.has('Set-Cookie')) refreshed = [];
         } else {
           const detail = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error);
           this.log(`[planning-api] ${cid} ${redactAddresses(detail)}`);
           response = json(500, envelope('INTERNAL_ERROR', 'An unexpected error occurred.', cid, null));
         }
       }
+      for (const cookie of refreshed) response.headers.append('Set-Cookie', cookie);
+      // Auth guide §7: API answers are per caller, so nothing may cache them unless a route says otherwise.
+      if (!response.ok || !response.headers.has('Cache-Control')) response.headers.set('Cache-Control', 'no-store');
       response.headers.set('X-Correlation-ID', cid);
       return response;
     });

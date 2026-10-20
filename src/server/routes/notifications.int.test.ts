@@ -19,11 +19,21 @@ describe('inbox API', () => {
     await seed('E1', null, 'as employee');
     await seed(null, 'ana@example.com', 'as manager');
     await seed('E2', null, 'someone else');
-    h.asEmployee('E1', 'Ana@Example.com');
+    h.asEmployee('E1', 'Ana@Example.com', true);
     const { status, body } = await h.call('GET', '/api/notifications');
     expect(status).toBe(200);
     expect(body.notifications.map((n: { title: string }) => n.title)).toEqual(['as manager', 'as employee']);
     expect(body.unread_count).toBe(2);
+  });
+
+  it('hides manager notices from someone no longer on the manager list (backlog item 13)', async () => {
+    await seed('E1', null, 'as employee');
+    const managerNotice = await seed(null, 'ana@example.com', 'as manager');
+    h.asEmployee('E1', 'ana@example.com', false);
+    const { body } = await h.call('GET', '/api/notifications');
+    expect(body.notifications.map((n: { title: string }) => n.title)).toEqual(['as employee']);
+    expect(body.unread_count).toBe(1);
+    expect((await h.call('POST', '/api/notification-reads', { ids: [managerNotice] })).body).toEqual({ marked: 0 });
   });
 
   it('marks chosen or all notices read, and never other people\'s', async () => {

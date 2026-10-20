@@ -18,7 +18,7 @@ export interface Harness {
   mailer: FakeMailer;
   badges: FakeBadges;
   asManager(email?: string): void;
-  asEmployee(ref: string | null, email?: string): void;
+  asEmployee(ref: string | null, email?: string, isManager?: boolean): void;
   asNobody(): void;
   call(method: string, path: string, body?: unknown, query?: Record<string, string | number>): Promise<{ status: number; body: any }>;
   callAs(ref: string, email: string, method: string, path: string, body?: unknown): Promise<{ status: number; body: any }>;
@@ -52,8 +52,8 @@ export function useApiHarness(): Harness {
     asManager: (email = 'mona@example.com') => {
       principal = person(email, true, null);
     },
-    asEmployee: (ref: string | null, email = 'ana@example.com') => {
-      principal = person(email, false, ref);
+    asEmployee: (ref: string | null, email = 'ana@example.com', isManager = false) => {
+      principal = person(email, isManager, ref);
     },
     asNobody: () => {
       principal = null;

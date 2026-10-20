@@ -142,11 +142,17 @@ export class DeliveryService {
     });
     if (leased.length === 0) return 0;
     const byId = (id: number) => and(eq(notifications.organisationId, org), eq(notifications.id, id));
-    const addresses = await this.d.directory.emailsFor(leased.flatMap((n) => (n.recipientRef ? [n.recipientRef] : [])));
+    const refs = leased.flatMap((n) => (n.recipientRef ? [n.recipientRef] : []));
+    const [addresses, onRoster] = await Promise.all([this.d.directory.emailsFor(refs), this.d.directory.present(refs)]);
     let sent = 0;
     let directoryHasEmails: boolean | undefined;
     for (const n of leased) {
       const to = n.recipientEmail ?? (n.recipientRef ? addresses.get(n.recipientRef) : undefined);
+      if (!to && n.recipientRef && !onRoster.has(n.recipientRef) && !(await this.d.directory.isEmpty())) {
+        // Backlog item 14: someone who has left (no longer Onboarding, Active or Offboarding) keeps the in-app notice but gets no email.
+        await db.update(notifications).set({ emailAttempts: MAX_EMAIL_ATTEMPTS, emailError: 'Skipped: no longer on the roster.' }).where(byId(n.id));
+        continue;
+      }
       if (!to) {
         // Right after the email column was added no address is known yet: wait for the next directory refresh instead of giving up.
         directoryHasEmails ??= await this.d.directory.hasAnyEmail();
@@ -178,8 +184,9 @@ export class DeliveryService {
       const refEmails = await this.d.directory.emailsFor([...touched.refs]);
       const emails = [...new Set([...touched.emails, ...refEmails.values()])];
       const refOf = await this.d.directory.refsFor(emails);
+      const managers = new Set((await this.d.managers.all()).map((m) => m.email));
       const badges = [];
-      for (const email of emails) badges.push({ email, count: await this.d.inbox.unreadCount({ ref: refOf.get(email) ?? null, email }) });
+      for (const email of emails) badges.push({ email, count: await this.d.inbox.unreadCount({ ref: refOf.get(email) ?? null, email, isManager: managers.has(email) }) });
       return await this.d.badges.publish(badges);
     } catch (error) {
       this.d.log(`[badges] could not compute counts: ${scrubAddresses(error instanceof Error ? error.message : String(error))}`);

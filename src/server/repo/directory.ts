@@ -75,6 +75,14 @@ export class DirectoryRepository {
     return new Map(rows.flatMap((r) => (r.email ? [[r.ref, r.email] as [string, string]] : [])));
   }
 
+  /** The refs among these that are still on the roster (the refresh keeps plannable statuses only). */
+  async present(refs: string[]): Promise<Set<string>> {
+    if (refs.length === 0) return new Set();
+    const rows = await this.db.select({ ref: employeeDirectory.employeeRef }).from(employeeDirectory)
+      .where(and(eq(employeeDirectory.organisationId, this.org), inArray(employeeDirectory.employeeRef, refs)));
+    return new Set(rows.map((r) => r.ref));
+  }
+
   /** email -> employee_ref, so a person's badge counts both their employee and manager notices. */
   async refsFor(emails: string[]): Promise<Map<string, string>> {
     if (emails.length === 0) return new Map();
