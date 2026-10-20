@@ -177,13 +177,10 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Done:** Every form field with an error gets `aria-invalid` and `aria-describedby`, pointing at its message. Field and form errors use `role="alert"`, so they are announced when they appear (`src/client/fields.tsx`). The bell already moved focus into the panel, returned it on Esc and closed on Esc; it now also has a "Load older" button that pages with `before`.
 - **Effort:** M
 
-### 28. Development tooling advisories
+### 28. Development tooling advisories (mostly done 2026-10-20)
 - **Area:** Security (development only)
-- **Why:** `npm audit --omit=dev` reports nothing. The full audit reports 7 advisories (2 critical), all in test or build tools that never ship: `tinypool` and `@vitest/mocker` (from Vitest 3), and `esbuild` (from `drizzle-kit`).
-- **Fix:**
-  - Upgrade to Vitest 4 when convenient.
-  - Upgrade `drizzle-kit` when a release bundles a patched esbuild.
-  - Keep `pg` on `^8`, because pg 9 rejects parallel queries on one connection.
+- **Done:** Vitest is upgraded to 5, which removes both critical `tinypool` advisories and the `@vitest/mocker` one. Integration files now run one at a time through `fileParallelism: false`, because Vitest 4 dropped `poolOptions`. `next` (16.4.2), `nodemailer` (10.1.7) and `jsdom` have patch updates. `npm audit --omit=dev` reports 0. `pg` stays on `^8`.
+- **Still open:** 4 moderate advisories in the esbuild copy that `drizzle-kit` 0.31.11 (its latest release) bundles through `@esbuild-kit`. They are development-only. Upgrade `drizzle-kit` once a release drops `@esbuild-kit`.
 - **Effort:** S–M
 
 ---
