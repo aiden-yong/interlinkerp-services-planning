@@ -1,3 +1,15 @@
+/**
+ * Every error code Planning can return, documented in /openapi.json (backlog item 19). The contract reserves the
+ * generic ones; the rest name a business rule. errors.test.ts fails when code uses a code missing from this list.
+ */
+export const ERROR_CODES = [
+  'VALIDATION_ERROR', 'UNAUTHORIZED', 'FORBIDDEN', 'PERSON_REQUIRED', 'RESOURCE_NOT_FOUND', 'METHOD_NOT_ALLOWED', 'PAYLOAD_TOO_LARGE', 'INTERNAL_ERROR',
+  'NOT_ON_ROSTER', 'ROSTER_UNAVAILABLE', 'LAST_MANAGER', 'ROLE_NAME_TAKEN',
+  'SHIFT_CONFLICT', 'STALE_SHIFT', 'SHIFT_CHANGED', 'SHIFT_STARTED', 'SHIFT_TAKEN', 'UNDO_EXPIRED',
+  'NOT_ELIGIBLE', 'OWN_SHIFT', 'MODE_NOT_ACTIVE', 'ALREADY_UP_FOR_SWITCH', 'NOT_UP_FOR_SWITCH', 'OUTSIDE_UNASSIGN_WINDOW',
+  'COUNTRY_NOT_SET', 'HOLIDAY_PROVIDER_NOT_CONFIGURED', 'PROVIDER_HOLIDAY',
+] as const;
+
 /** An expected failure that becomes a non-2xx response with the error envelope (contract SS-5). */
 export class HttpError extends Error {
   constructor(

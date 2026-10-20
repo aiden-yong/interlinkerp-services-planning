@@ -1,7 +1,7 @@
 import type { App } from '../app';
 import { op } from '../http/doc';
 import { HttpError } from '../http/errors';
-import { Input } from '../http/input';
+import { Input, LIST_MAX, slicePage } from '../http/input';
 import { json } from '../http/responses';
 import type { Router } from '../http/router';
 import { isUniqueViolation } from '../support/ids';
@@ -20,10 +20,15 @@ async function saveNamed<T>(name: string, save: () => Promise<T>): Promise<T> {
 }
 
 export function register(r: Router, app: App): void {
-  r.add('GET', '/api/roles', 'person', 'List the roles shifts can require.', async ({ query }) =>
-    json(200, { roles: await app.roles().all(query.include_archived === 'true') }),
+  r.add('GET', '/api/roles', 'person', 'List the roles shifts can require.', async ({ query }) => {
+    const input = new Input(query);
+    const page = input.page(LIST_MAX, LIST_MAX);
+    input.check();
+    const { items, pagination } = slicePage(await app.roles().all(query.include_archived === 'true'), page);
+    return json(200, { roles: items, pagination });
+  },
   op('List Roles', 'See the job roles shifts are planned for', ['Filling a role picker', 'Showing role names and colours on a schedule'], ['Finding which employees hold a role'],
-    ['include_archived'], ['roles[].id', 'roles[].name', 'roles[].color', 'roles[].archived'], ['Signed-in person'], ['POST /api/roles', 'GET /api/employees'],
+    ['include_archived', 'limit', 'offset'], ['roles[].id', 'roles[].name', 'roles[].color', 'roles[].archived', 'pagination'], ['Signed-in person'], ['POST /api/roles', 'GET /api/employees'],
     ['roles', 'job roles', 'positions', 'skills']));
 
   r.add('POST', '/api/roles', 'manager', 'Create a role.', async ({ body }) => {

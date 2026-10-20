@@ -11,11 +11,12 @@ export function register(r: Router, app: App): void {
     const before = query.before === undefined ? null : Number(query.before);
     if (before !== null && (!Number.isSafeInteger(before) || before < 1)) input.error('before', 'Use the id of the oldest notification you have.');
     if (query.unread !== undefined && query.unread !== 'true' && query.unread !== 'false') input.error('unread', 'Use true or false.');
+    const page = input.page(50, 100);
     input.check();
     const who = recipientOf(principal!);
-    return json(200, { notifications: await app.notifications().list(who, query.unread === 'true', before), unread_count: await app.notifications().unreadCount(who) });
+    return json(200, { notifications: await app.notifications().list(who, query.unread === 'true', before, page), unread_count: await app.notifications().unreadCount(who), pagination: page });
   }, op('My Notifications', 'See what changed in my planning', ['Showing the notification bell'], ['Reading the schedule itself'],
-    ['unread', 'before'], ['notifications[]', 'unread_count'], ['Signed-in person'], ['POST /api/notification-reads'],
+    ['unread', 'before', 'limit', 'offset'], ['notifications[]', 'unread_count', 'pagination'], ['Signed-in person'], ['POST /api/notification-reads'],
     ['notifications', 'inbox', 'alerts', 'messages']));
 
   r.add('POST', '/api/notification-reads', 'person', 'Mark my notifications as read.', async ({ body, principal }) => {

@@ -111,6 +111,38 @@ describe('Kernel', () => {
     });
   });
 
+  describe('HEAD and OPTIONS (backlog item 19)', () => {
+    const routes = () => {
+      const r = new Router();
+      r.add('GET', '/things', 'public', 'List', () => json(200, { things: [1] }));
+      r.add('POST', '/things', 'public', 'Add', () => json(201, {}));
+      r.add('DELETE', '/things/{id}', 'public', 'Remove', () => new Response(null, { status: 204 }));
+      return r;
+    };
+
+    it('answers HEAD like GET, without a body', async () => {
+      const response = await kernel(routes()).handle(req('/things', { method: 'HEAD' }));
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Content-Type')).toContain('application/json');
+      expect(response.headers.get('X-Correlation-ID')).toBeTruthy();
+      expect(await response.text()).toBe('');
+    });
+
+    it('answers OPTIONS with the allowed methods', async () => {
+      const response = await kernel(routes()).handle(req('/things', { method: 'OPTIONS' }));
+      expect(response.status).toBe(204);
+      expect(response.headers.get('Allow')).toBe('GET, POST, HEAD, OPTIONS');
+      expect((await kernel(routes()).handle(req('/things/1', { method: 'OPTIONS' }))).headers.get('Allow')).toBe('DELETE, OPTIONS');
+      expect((await kernel(routes()).handle(req('/nope', { method: 'OPTIONS' }))).status).toBe(404);
+    });
+
+    it('still refuses a wrong method with 405 and lists HEAD and OPTIONS', async () => {
+      const response = await kernel(routes()).handle(req('/things/1', { method: 'HEAD' }));
+      expect(response.status).toBe(405);
+      expect(response.headers.get('Allow')).toBe('DELETE, OPTIONS');
+    });
+  });
+
   describe('request body cap', () => {
     const echo = () => {
       const r = new Router();

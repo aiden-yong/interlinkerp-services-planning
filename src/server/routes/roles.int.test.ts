@@ -13,6 +13,17 @@ describe('roles API (FR-CFG-01)', () => {
     expect((await h.call('GET', '/api/roles')).body.roles.map((r: { name: string }) => r.name)).toEqual(['Technician']);
   });
 
+  it('pages the list with limit and offset (contract SS-12)', async () => {
+    for (const name of ['A', 'B', 'C']) await h.addRole(name);
+    const page = await h.call('GET', '/api/roles', undefined, { limit: 2, offset: 1 });
+    expect(page.body.roles.map((r: { name: string }) => r.name)).toEqual(['B', 'C']);
+    expect(page.body.pagination).toEqual({ limit: 2, offset: 1, total: 3 });
+    expect((await h.call('GET', '/api/roles', undefined, { limit: 100000 })).body.pagination.limit).toBe(1000);
+    expect((await h.call('GET', '/api/roles', undefined, { limit: 0 })).status).toBe(422);
+    expect((await h.call('GET', '/api/roles', undefined, { offset: -1 })).status).toBe(422);
+    for (const path of ['/api/employees', '/api/managers', '/api/notifications']) expect((await h.call('GET', path, undefined, { limit: 0 })).status, path).toBe(422);
+  });
+
   it('refuses a duplicate name regardless of case', async () => {
     await h.addRole('Technician');
     const { status, body } = await h.call('POST', '/api/roles', { name: 'technician', color: '#000000' });

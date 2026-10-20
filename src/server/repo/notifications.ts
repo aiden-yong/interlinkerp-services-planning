@@ -30,10 +30,10 @@ export class NotificationRepository {
     return and(eq(notifications.organisationId, this.org), parts.length > 0 ? or(...parts) : sql`false`)!;
   }
 
-  async list(who: Recipient, unreadOnly: boolean, before: number | null, limit = 50) {
+  async list(who: Recipient, unreadOnly: boolean, before: number | null, page = { limit: 50, offset: 0 }) {
     const rows = await this.db.select().from(notifications)
       .where(and(this.mine(who), unreadOnly ? isNull(notifications.readAt) : undefined, before !== null ? lt(notifications.id, before) : undefined))
-      .orderBy(desc(notifications.id)).limit(limit);
+      .orderBy(desc(notifications.id)).limit(page.limit).offset(page.offset);
     return rows.map(notificationToApi);
   }
 

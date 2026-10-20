@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HttpError } from './errors';
-import { Input } from './input';
+import { Input, slicePage } from './input';
 
 function errors(input: Input): Record<string, string> {
   try {
@@ -61,5 +61,21 @@ describe('Input', () => {
     expect(input.stringList('bad', 10)).toBeNull();
     expect(input.stringList('obj', 10)).toBeNull();
     expect(Object.keys(errors(input))).toEqual(['bad', 'obj']);
+  });
+
+  it('pages by the contract: clamps an oversized limit and rejects limit 0 or a negative offset (SS-12)', () => {
+    expect(new Input({}).page(50, 100)).toEqual({ limit: 50, offset: 0 });
+    expect(new Input({ limit: '20', offset: '40' }).page(50, 100)).toEqual({ limit: 20, offset: 40 });
+    expect(new Input({ limit: '5000' }).page(50, 100)).toEqual({ limit: 100, offset: 0 });
+    const bad = new Input({ limit: '0', offset: '-1' });
+    bad.page(50, 100);
+    expect(errors(bad)).toEqual({ limit: 'Must be at least 1.', offset: 'Must be at least 0.' });
+    const junk = new Input({ limit: 'ten', offset: '1.5' });
+    junk.page(50, 100);
+    expect(Object.keys(errors(junk))).toEqual(['limit', 'offset']);
+  });
+
+  it('slices an in-memory list and reports the total', () => {
+    expect(slicePage([1, 2, 3, 4, 5], { limit: 2, offset: 1 })).toEqual({ items: [2, 3], pagination: { limit: 2, offset: 1, total: 5 } });
   });
 });

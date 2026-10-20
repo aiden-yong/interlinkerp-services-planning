@@ -4,6 +4,19 @@ import { HttpError } from './errors';
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Largest page of a short list (employees, managers, roles); also the default, so callers that never page get everything. */
+export const LIST_MAX = 1000;
+
+export interface Page {
+  limit: number;
+  offset: number;
+}
+
+/** One page of an in-memory list, with the paging that produced it (contract SS-12). */
+export function slicePage<T>(items: T[], page: Page): { items: T[]; pagination: Page & { total: number } } {
+  return { items: items.slice(page.offset, page.offset + page.limit), pagination: { ...page, total: items.length } };
+}
+
 /**
  * Reads and validates one request body or query string, collecting every
  * problem so the caller gets all field errors in one 422 (contract SS-11).
@@ -127,6 +140,28 @@ export class Input {
       return null;
     }
     return [...new Set(value as string[])];
+  }
+
+  /**
+   * Contract SS-12 paging from a query string: `limit` defaults to `defaultLimit`, an oversized limit is clamped to
+   * `maxLimit` (not rejected), and `limit` below 1 or `offset` below 0 is a validation error.
+   */
+  page(defaultLimit: number, maxLimit: number): Page {
+    const read = (key: string, fallback: number, min: number): number => {
+      const value = this.data[key];
+      if (value === undefined || value === '') return fallback;
+      const n = Number(value);
+      if (typeof value !== 'string' || !/^-?\d+$/.test(value) || !Number.isSafeInteger(n)) {
+        this.error(key, 'Must be a whole number.');
+        return fallback;
+      }
+      if (n < min) {
+        this.error(key, `Must be at least ${min}.`);
+        return fallback;
+      }
+      return n;
+    };
+    return { limit: Math.min(read('limit', defaultLimit, 1), maxLimit), offset: read('offset', 0, 0) };
   }
 
   error(key: string, message: string): void {

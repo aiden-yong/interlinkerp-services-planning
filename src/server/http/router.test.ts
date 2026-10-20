@@ -35,7 +35,7 @@ describe('Router', () => {
 
   it('answers a wrong method on a known path with 405 and Allow', () => {
     const e = caught(() => router().match('DELETE', '/api/shifts/abc'));
-    expect([e.status, e.code, e.headers.Allow]).toEqual([405, 'METHOD_NOT_ALLOWED', 'GET, PATCH']);
+    expect([e.status, e.code, e.headers.Allow]).toEqual([405, 'METHOD_NOT_ALLOWED', 'GET, PATCH, HEAD, OPTIONS']);
   });
 
   it('derives scopes from the method; public routes have none', () => {
