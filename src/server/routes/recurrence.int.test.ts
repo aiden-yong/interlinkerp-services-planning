@@ -144,4 +144,21 @@ describe('recurring shifts', () => {
     // Existing shifts beyond the shrunk horizon are not deleted by a later horizon change (D3).
     for (const r of before) expect(after.some((a) => a.id === r.id)).toBe(true);
   });
+
+  it('shows the series on the schedule list, batch-loaded for both a series shift and a plain one', async () => {
+    const { body } = await createRepeating();
+    const plain = await h.call('POST', '/api/shifts', {
+      employee_ref: 'E1', start_at: '2026-01-02T09:00:00+08:00', end_at: '2026-01-02T17:00:00+08:00', break_minutes: 60,
+    });
+    expect(plain.status, JSON.stringify(plain.body)).toBe(201);
+
+    const { status, body: scheduleBody } = await h.call('GET', '/api/schedule', undefined, { from: '2026-01-01', to: '2026-01-02' });
+    expect(status).toBe(200);
+    const seriesShift = scheduleBody.shifts.find((s: { id: string }) => s.id === body.shift.id);
+    const plainShift = scheduleBody.shifts.find((s: { id: string }) => s.id === plain.body.shift.id);
+    expect(seriesShift.recurrence).toEqual({
+      id: body.recurrence.id, interval: 1, unit: 'week', ends: 'never', until_date: null, count: null, index: 0, detached: false,
+    });
+    expect(plainShift.recurrence).toBeNull();
+  });
 });

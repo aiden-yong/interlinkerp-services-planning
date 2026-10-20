@@ -5,6 +5,7 @@ import { workingIntervals } from '../domain/workingHours';
 import type { DirectoryRepository, DirectoryRow } from '../repo/directory';
 import type { HolidayRepository } from '../repo/holidays';
 import { blankProfile, type ProfileRepository } from '../repo/profiles';
+import { seriesToApi, type SeriesRecord } from '../repo/recurrences';
 import type { RoleRepository } from '../repo/roles';
 import type { SettingsRepository } from '../repo/settings';
 import { factsOf, type ShiftRecord, type ShiftRepository, shiftToApi } from '../repo/shifts';
@@ -62,6 +63,8 @@ export class ScheduleService {
 
     const directory = new Map<string, DirectoryRow>(directoryRows.map((d) => [d.employeeRef, d]));
     const visible = allShifts.filter((s) => s.start.getTime() < to && s.end.getTime() > from);
+    const seriesIds = [...new Set(visible.flatMap((s) => (s.recurrenceId ? [s.recurrenceId] : [])))];
+    const seriesById = new Map<string, SeriesRecord>((await this.recurrences.findMany(seriesIds)).map((s) => [s.id, s]));
     const byEmployee = groupBy(allShifts.filter((s) => s.employeeRef), (s) => s.employeeRef!);
     const awayByEmployee = groupBy(timeOffRows, (t: TimeOff) => t.employeeRef);
     const refs = [...new Set([...directory.keys(), ...visible.flatMap((s) => (s.employeeRef ? [s.employeeRef] : []))])];
@@ -109,7 +112,10 @@ export class ScheduleService {
       directory_stale: !lastFetched || this.clock.now().getTime() - lastFetched.getTime() > DIRECTORY_MAX_AGE_SECONDS * 1000,
       roles,
       employees,
-      shifts: visible.map((s: ShiftRecord) => shiftToApi(s, conflicts.get(s.id) ?? [])),
+      shifts: visible.map((s: ShiftRecord) => {
+        const series = s.recurrenceId ? seriesById.get(s.recurrenceId) ?? null : null;
+        return shiftToApi(s, conflicts.get(s.id) ?? [], series ? seriesToApi(series, s.recurrenceIndex, s.recurrenceDetached) : null);
+      }),
     };
   }
 }

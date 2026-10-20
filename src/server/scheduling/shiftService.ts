@@ -77,8 +77,11 @@ export class ShiftService {
         });
       }
       const ack = flagged.length > 0 && acknowledged ? { by: actorId(by), at: now } : null;
+      // Computed here, before the transaction opens, from previewConflicts's own pool-backed read — createSeries
+      // must not touch ConflictContext/the pool again once scope's transaction is open (see its own doc comment).
+      const conflictingDates = new Set(flagged.map((p) => p.date));
       const { shift, seriesId, created } = await this.unit.run(async (scope) => {
-        const result = await this.recurrences.createSeries(scope, draft, repeat, zone, horizonMonths, ack, now);
+        const result = await this.recurrences.createSeries(scope, draft, repeat, zone, horizonMonths, ack, conflictingDates, now);
         const inserted = (await scope.shifts.find(draft.id)) ?? (() => { throw new Error('The first shift of a new series was not found right after being saved.'); })();
         return { shift: inserted, ...result };
       });

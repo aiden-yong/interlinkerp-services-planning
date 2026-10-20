@@ -110,10 +110,17 @@ export class RecurrenceService {
     return out;
   }
 
-  /** In the caller's transaction: insert the series row from `first`, then `first` + its occurrences up to now + horizon. Trusts the caller already resolved conflicts via previewConflicts. */
+  /**
+   * In the caller's transaction: insert the series row from `first`, then `first` + its occurrences up to now + horizon.
+   * Trusts the caller already resolved conflicts via `previewConflicts` — `conflictingDates` is that call's result
+   * (the set of occurrence dates it flagged), reused here only to decide which rows get the acknowledgement stamped
+   * on them. This never touches `ConflictContext`/the connection pool itself: a transaction must only read through its
+   * own `scope`-bound repositories, never await the pool, so recomputing conflicts in here would risk pool starvation
+   * or deadlock under load.
+   */
   async createSeries(
     scope: WriteScope, first: ShiftRecord, repeat: RepeatFields, zone: string, horizonMonths: number,
-    ack: { by: string; at: Date } | null, now: Date,
+    ack: { by: string; at: Date } | null, conflictingDates: ReadonlySet<string>, now: Date,
   ): Promise<{ seriesId: string; created: number }> {
     const rule = ruleFrom(repeat, zone, first);
     const until = DateTime.fromJSDate(now, { zone }).plus({ months: horizonMonths }).toJSDate();
@@ -128,21 +135,15 @@ export class RecurrenceService {
     };
     await scope.recurrences.insert(series, now);
 
-    const rows: ShiftRecord[] = [];
-    for (const step of steps) {
-      const candidate: ShiftRecord = { ...first, id: step.index === 0 ? first.id : randomUUID(), start: step.start, end: step.end, recurrenceId: seriesId, recurrenceIndex: step.index };
-      let ackBy: string | null = null;
-      let ackAt: Date | null = null;
-      if (ack) {
-        // eslint-disable-next-line no-await-in-loop -- bookkeeping only (which occurrences to flag as acknowledged); never gates the write, see class doc.
-        const conflicts = await this.context.conflictsFor(candidate);
-        if (conflicts.length > 0) {
-          ackBy = ack.by;
-          ackAt = ack.at;
-        }
-      }
-      rows.push({ ...candidate, ackBy, ackAt });
-    }
+    const rows: ShiftRecord[] = steps.map((step) => {
+      const date = localDate(step.start.getTime(), zone);
+      const flagged = ack !== null && conflictingDates.has(date);
+      return {
+        ...first, id: step.index === 0 ? first.id : randomUUID(), start: step.start, end: step.end,
+        recurrenceId: seriesId, recurrenceIndex: step.index,
+        ackBy: flagged ? ack!.by : null, ackAt: flagged ? ack!.at : null,
+      };
+    });
     const insertedIds = await scope.shifts.insertMany(rows, now);
     return { seriesId, created: insertedIds.length };
   }
@@ -171,6 +172,10 @@ export class RecurrenceService {
         recurrenceId: id, recurrenceIndex: step.index, recurrenceDetached: false, copiedFrom: null,
       }));
       const insertedIds = await scope.shifts.insertMany(rows, now);
+      // generatedUntil always advances to `until` here, even for a bounded (ends: 'on'/'after') series that has
+      // already produced every occurrence it ever will (occurrences() then returns an empty `steps`, so nothing is
+      // actually inserted). That means generatedUntil can drift to mean "the last time a sweep touched this series",
+      // not "real occurrences exist up to here" — do not read it as a signal that the series is still active/generating.
       await scope.recurrences.update({ ...series, generatedUntil: until }, now);
       return insertedIds.length;
     });
@@ -202,5 +207,10 @@ export class RecurrenceService {
   /** Used by GET /api/shifts/{id} to show the series on a shift. */
   async find(id: string): Promise<SeriesRecord | null> {
     return this.recurrences.find(id);
+  }
+
+  /** Used by ScheduleService.build() to show the series on every shift in a period, in one query. */
+  async findMany(ids: string[]): Promise<SeriesRecord[]> {
+    return this.recurrences.findMany(ids);
   }
 }

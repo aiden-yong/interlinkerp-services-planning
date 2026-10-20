@@ -1,4 +1,4 @@
-import { and, eq, lt } from 'drizzle-orm';
+import { and, eq, inArray, lt } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { recurrences } from '../db/schema';
 import type { RepeatEnds, RepeatRule, RepeatUnit } from '../domain/recurrence';
@@ -11,6 +11,12 @@ export interface SeriesRecord extends RepeatRule {
   breakMinutes: number;
   percent: number;
   note: string | null;
+  /**
+   * How far occurrences have been generated so far. Always advances to the horizon cutoff on every `extendOne` sweep,
+   * even for a bounded (`ends: 'on'`/`'after'`) series that had already produced every occurrence it ever will (that
+   * sweep inserts nothing, but still bumps this). So this means "a sweep last ran up to here", not "real occurrences
+   * exist up to here, and the series is still generating" — do not use it to infer whether a series is still active.
+   */
   generatedUntil: Date;
   createdBy: string;
 }
@@ -50,6 +56,14 @@ export class RecurrenceRepository {
     if (!isUuid(id)) return null;
     const [row] = await this.db.select().from(recurrences).where(and(eq(recurrences.organisationId, this.org), eq(recurrences.id, id))).limit(1);
     return row ? toRecord(row) : null;
+  }
+
+  /** Several series in one query (e.g. for a schedule's list of shifts), so a page of shifts never costs one query per series. */
+  async findMany(ids: string[]): Promise<SeriesRecord[]> {
+    const valid = [...new Set(ids)].filter(isUuid);
+    if (valid.length === 0) return [];
+    const rows = await this.db.select().from(recurrences).where(and(eq(recurrences.organisationId, this.org), inArray(recurrences.id, valid)));
+    return rows.map(toRecord);
   }
 
   async insert(s: SeriesRecord, now: Date): Promise<void> {

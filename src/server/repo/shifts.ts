@@ -103,7 +103,11 @@ export class ShiftRepository {
       breakMinutes: s.breakMinutes, allocatedPercent: s.percent, note: s.note, state: s.state, publishedAt: s.publishedAt,
       conflictAcknowledgedBy: s.ackBy, conflictAcknowledgedAt: s.ackAt, version: s.version, createdBy: s.createdBy, switchRequestedAt: s.switchRequestedAt, createdAt: now, updatedAt: now,
       recurrenceId: s.recurrenceId, recurrenceIndex: s.recurrenceIndex, recurrenceDetached: s.recurrenceDetached, copiedFrom: s.copiedFrom,
-    }))).onConflictDoNothing().returning({ id: shifts.id });
+    }))).onConflictDoNothing({
+      // Targets the D4 partial unique index specifically (shifts_recurrence_step_key), not just any constraint on the table.
+      target: [shifts.organisationId, shifts.recurrenceId, shifts.recurrenceIndex],
+      where: sql`${shifts.recurrenceId} is not null`,
+    }).returning({ id: shifts.id });
     return inserted.map((r) => r.id);
   }
 
