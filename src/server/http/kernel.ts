@@ -25,8 +25,35 @@ export function correlationIdFor(request: Request): string {
   return supplied.length > 0 && supplied.length <= 128 && /^[A-Za-z0-9._:-]+$/.test(supplied) ? supplied : randomUUID();
 }
 
+/** The largest JSON body a route will read; anything bigger gets 413 before it is buffered. */
+export const MAX_BODY_BYTES = 64 * 1024;
+
+function tooLarge(): HttpError {
+  return new HttpError(413, 'PAYLOAD_TOO_LARGE', `The request body must be at most ${MAX_BODY_BYTES / 1024} KB.`);
+}
+
+/** Reads the body as text, refusing a declared or streamed size over MAX_BODY_BYTES. */
+async function readCappedText(request: Request): Promise<string> {
+  if (Number(request.headers.get('content-length') ?? 0) > MAX_BODY_BYTES) throw tooLarge();
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let text = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return text + decoder.decode();
+    size += value.byteLength;
+    if (size > MAX_BODY_BYTES) {
+      await reader.cancel();
+      throw tooLarge();
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+}
+
 async function readJsonObject(request: Request): Promise<Record<string, unknown>> {
-  const text = await request.text();
+  const text = await readCappedText(request);
   if (text.trim() === '') return {};
   let data: unknown;
   try {

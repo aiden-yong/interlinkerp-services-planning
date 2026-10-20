@@ -28,22 +28,14 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Fix:** Work through the five-round walkthrough in the README section "Trying the screens as different people", in both light and dark themes.
 - **Effort:** S
 
-### 4. Add security headers
+### 4. Add security headers (done 2026-10-20)
 - **Area:** Security
-- **Why:** `next.config.ts` sets only the no-store cache headers. Without the headers below, the app can be framed (clickjacking), browsers may guess content types, and nothing limits where scripts load from.
-- **Fix:** Add these headers to every route:
-  - `Strict-Transport-Security: max-age=63072000; includeSubDomains`
-  - `X-Content-Type-Options: nosniff`
-  - `Referrer-Policy: strict-origin-when-cross-origin`
-  - `Content-Security-Policy` with at least `frame-ancestors 'none'`, plus a nonce-based script policy that works with Next.js
-- **Effort:** S (M if the full script policy is included)
+- **Done:** Every response sends HSTS, `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin` (`src/server/web/securityHeaders.ts`). JSON responses send `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`. Pages get a per-request nonce policy from `src/proxy.ts`: only nonce-tagged scripts run, and framing is blocked. Inline styles stay allowed because the schedule board positions shifts with them, and employee photos may load from any HTTPS host.
+- **Effort:** S
 
-### 5. Cap request body size
+### 5. Cap request body size (done 2026-10-20)
 - **Area:** Security
-- **Why:** `src/server/http/kernel.ts` calls `request.text()` with no size limit. A single large POST is read fully into memory before validation runs.
-- **Fix:**
-  - Check `Content-Length` and reject anything over 64 KB with `413`.
-  - Stop reading the stream once that size is reached, for requests sent in chunks.
+- **Done:** `src/server/http/kernel.ts` rejects a body over 64 KB with `413 PAYLOAD_TOO_LARGE`, whether its size is declared in `Content-Length` or only becomes clear as the chunks arrive. It stops reading at the limit.
 - **Effort:** S
 
 ### 6. Tie the sign-in `state` to the browser
