@@ -9,6 +9,8 @@ const noStore = [
 ];
 
 const config: NextConfig = {
+  // The browser tests (e2e/) build into their own folder, so they never clash with a dev server you have running.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   poweredByHeader: false,
   serverExternalPackages: ['pg'],
   async headers() {

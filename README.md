@@ -21,6 +21,8 @@ Edit `src/server/db/schema.ts`, run `npm run db:generate`, read the new SQL in `
 ## Tests
 `npm test` runs everything. `npm run test:unit` needs nothing; `npm run test:integration` needs the local `planning_test` database. `npm run typecheck` for types.
 
+Browser tests (Playwright) cover four flows: publish a week, claim an open shift, ask for cover and take it over, and read notices. Run `npx playwright install chromium` once, then `npm run test:e2e`. They start their own `next dev` on port 3200 (building into `.next-e2e`, so your dev server on 3000 is untouched), use `TEST_DATABASE_URL`, and fail if the browser logs a Content-Security-Policy violation.
+
 ## Deploying
 1. Neon project in `aws-ap-southeast-1`; apply migrations with its pooled URL (`DATABASE_URL=... npm run db:migrate`).
 2. In Vercel, import the repo and set every variable from `.env.example` except `DEV_*`, `TEST_DATABASE_URL` and `APP_ENV`. `DATABASE_URL` is Neon's pooled URL; `PUBLIC_URL` is the exact production URL; `CRON_SECRET` is a long random value. `OPENAPI_EXTENSION_KEY` is the extension key the gateway reads catalogue metadata from; get the exact value from the gateway admins.

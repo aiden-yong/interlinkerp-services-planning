@@ -141,10 +141,9 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 
 ## P2: Next milestone
 
-### 21. End-to-end browser tests
+### 21. End-to-end browser tests (done 2026-10-20)
 - **Area:** Testing
-- **Why:** None exist. UI regressions are caught only by hand.
-- **Fix:** Use Playwright against `npm run dev`, with the DEV identity and a seeded test database. Cover four flows: publish a week, employee claims an open shift, give up then take over, and read and mark notices. Run the tests in CI.
+- **Done:** `e2e/flows.spec.ts` runs the four flows in Chromium against `next dev` on port 3200, using the development sign-in and the identity picker's cookie to switch people. The flows are: publish a week, claim an open shift, ask for cover and take it over, and read and mark notices. Every test also fails on a Content-Security-Policy violation in the browser console. CI runs them in a separate "Browser tests" job.
 - **Effort:** M–L
 
 ### 22. Stronger isolation and race tests (done 2026-10-20)
