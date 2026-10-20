@@ -11,6 +11,14 @@ export function getApp(): App {
   return (app ??= new App());
 }
 
+/**
+ * Backlog item 17: only people using the app start a delivery sweep. Health probes, the OpenAPI document and the
+ * crons (which deliver on their own) never do, so the gateway's polling costs no background work.
+ */
+export function startsDelivery(request: Request): boolean {
+  return new URL(request.url).pathname.startsWith('/api/');
+}
+
 /** Every API route file hands its requests to this. */
 export async function handleApi(request: Request): Promise<Response> {
   try {
@@ -23,6 +31,7 @@ export async function handleApi(request: Request): Promise<Response> {
   }
   const app = getApp();
   const response = await app.kernel().handle(request);
+  if (!startsDelivery(request)) return response;
   try {
     after(() => app.deliveryTrigger().kick()); // D1: deliver queued notices after the response is sent
   } catch (error) {

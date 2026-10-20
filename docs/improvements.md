@@ -87,10 +87,9 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Fix:** Add a per-user token bucket, for example in Postgres or Upstash, that returns `429` with `Retry-After`. Apply it to `POST`, `PATCH` and `DELETE` requests.
 - **Effort:** M
 
-### 11. Remove email addresses from framework error logs
+### 11. Remove email addresses from framework error logs (done 2026-10-20)
 - **Area:** Security (DR-02)
-- **Why:** Errors thrown while Next.js renders server components go to the log unscrubbed, so they can contain directory email addresses. The API path is already scrubbed.
-- **Fix:** Add an `instrumentation.ts` `onRequestError` hook that runs `redactAddresses` before logging.
+- **Done:** `src/instrumentation.ts` routes `console.error` and `console.warn` through `redactAddresses` on the Node.js runtime, so errors that Next.js logs itself are scrubbed too. The fix covers the logging call itself, not only one hook.
 - **Effort:** S
 
 ### 12. Fix cookie and cache headers on error responses (done 2026-10-20)
@@ -123,10 +122,9 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
   - Otherwise, skip introspection for prefetch requests that only reuse an already-verified session.
 - **Effort:** M
 
-### 17. Stop running background work for health probes
+### 17. Stop running background work for health probes (done 2026-10-20)
 - **Area:** Performance
-- **Why:** The gateway polls `/health`, and every poll schedules the delivery sweep in `after()`.
-- **Fix:** Trigger the sweep only for authenticated `/api` requests and for cron.
+- **Done:** `handleApi` starts the delivery sweep only after `/api/` requests. `/health`, `/openapi.json` and the crons never start it.
 - **Effort:** S
 
 ### 18. Bring list endpoints in line with the gateway's paging rule
@@ -150,10 +148,9 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
   - List the error codes in the OpenAPI document.
 - **Effort:** S
 
-### 20. Narrow the proxy matcher
+### 20. Narrow the proxy matcher (done 2026-10-20)
 - **Area:** Correctness
-- **Why:** The matcher in `src/proxy.ts` covers everything except `_next/static`, `_next/image` and `favicon.ico`. Any future file in `public/` (`robots.txt`, icons, fonts) will get a JSON 404.
-- **Fix:** Also exclude common static file extensions in the matcher, or exclude paths that contain a dot.
+- **Done:** The matcher also skips common static file types (images, fonts, `txt`, `xml`, `css`, `js`, `map`, `webmanifest`). `src/proxy.test.ts` checks which paths it covers.
 - **Effort:** S
 
 ---
@@ -268,8 +265,7 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Fix:** Add a picker that appears only in development, guarded by the same checks as the DEV identity: `NODE_ENV`, `APP_ENV` and loopback.
 - **Effort:** S
 
-### 33. Workspace clean-up
+### 33. Workspace clean-up (done 2026-10-20)
 - **Area:** Housekeeping
-- **Why:** An empty `.worktrees/m2/.next/dev/node_modules` folder was left behind after the worktree was removed.
-- **Fix:** Delete it in File Explorer. Check first that it is not a link to a folder that is still in use.
+- **Done:** The leftover `.worktrees` folder is deleted. Its two links pointed into the removed worktree.
 - **Effort:** S
