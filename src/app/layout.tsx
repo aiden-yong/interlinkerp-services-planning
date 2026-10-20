@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import { THEME_BOOT_SCRIPT } from '@/client/theme';
 import './globals.css';
@@ -13,12 +14,14 @@ export const viewport: Viewport = {
 // Every page is per-user and must not be cached (auth guide §7).
 export const dynamic = 'force-dynamic';
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // Set by src/proxy.ts; the page Content-Security-Policy only runs scripts carrying it.
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
     // The boot script may set data-theme before React hydrates, so <html> is allowed to differ.
     <html lang="en" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
       <body>{children}</body>
     </html>

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Principal } from '../auth/principal';
 import { currentCorrelationId } from '../support/requestContext';
 import { HttpError } from './errors';
-import { type AccessGuard, Kernel } from './kernel';
+import { type AccessGuard, Kernel, MAX_BODY_BYTES } from './kernel';
 import { json } from './responses';
 import { Router } from './router';
 
@@ -77,5 +77,46 @@ describe('Kernel', () => {
     const bad = await kernel(r).handle(req('/y', { method: 'POST', body: '[1,2]' }));
     expect(bad.status).toBe(422);
     expect((await bad.json()).error.details).toEqual({ body: 'Request body must be a JSON object.' });
+  });
+  describe('request body cap', () => {
+    const echo = () => {
+      const r = new Router();
+      r.add('POST', '/y', 'public', 'Y', async ({ body }) => json(200, await body()));
+      return r;
+    };
+    const chunked = (text: string) => {
+      const bytes = new TextEncoder().encode(text);
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (let at = 0; at < bytes.length; at += 4096) controller.enqueue(bytes.slice(at, at + 4096));
+          controller.close();
+        },
+      });
+      return req('/y', { method: 'POST', body: stream, duplex: 'half' } as RequestInit);
+    };
+
+    it('accepts a body of exactly 64 KB', async () => {
+      const text = JSON.stringify({ note: 'a'.repeat(MAX_BODY_BYTES - 11) });
+      expect(new TextEncoder().encode(text).length).toBe(MAX_BODY_BYTES);
+      expect((await kernel(echo()).handle(req('/y', { method: 'POST', body: text }))).status).toBe(200);
+    });
+
+    it('rejects a declared Content-Length over 64 KB with 413 before reading', async () => {
+      const response = await kernel(echo()).handle(req('/y', { method: 'POST', body: '{}', headers: { 'Content-Length': String(MAX_BODY_BYTES + 1) } }));
+      expect(response.status).toBe(413);
+      expect((await response.json()).error.code).toBe('PAYLOAD_TOO_LARGE');
+    });
+
+    it('stops reading a chunked body once it passes 64 KB', async () => {
+      const response = await kernel(echo()).handle(chunked(JSON.stringify({ note: 'a'.repeat(MAX_BODY_BYTES) })));
+      expect(response.status).toBe(413);
+      expect((await response.json()).error.code).toBe('PAYLOAD_TOO_LARGE');
+    });
+
+    it('decodes multi-byte characters split across chunks', async () => {
+      const response = await kernel(echo()).handle(chunked(JSON.stringify({ note: 'é'.repeat(5000) })));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ note: 'é'.repeat(5000) });
+    });
   });
 });
