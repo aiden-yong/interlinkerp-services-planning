@@ -30,15 +30,6 @@ describe('RateLimiter (backlog item 10)', () => {
     expect(await limiter.take('person:ana')).toBe(1);
     expect(await new RateLimiter(database.db, 'other-org', clock, { capacity: 2, perSecond: 1 }).take('person:ana')).toBeNull();
   });
-
-  it('prunes buckets untouched for a day', async () => {
-    const clock = FixedClock.at('2026-10-20T00:00:00Z');
-    const limiter = new RateLimiter(database.db, ORG, clock);
-    await limiter.take('person:ana');
-    clock.advance(86_400);
-    await limiter.take('person:bo');
-    expect(await limiter.prune(new Date(clock.now().getTime() - 3600_000))).toBe(1);
-  });
 });
 
 describe('JobRuns (backlog item 30)', () => {

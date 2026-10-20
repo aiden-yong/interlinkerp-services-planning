@@ -163,7 +163,7 @@ export class DeliveryService {
         await db.update(notifications).set({ emailAttempts: MAX_EMAIL_ATTEMPTS, emailError: 'No email address on the roster.' }).where(byId(n.id));
         continue;
       }
-      const result = await this.d.mailer.send({ to, subject: n.title, text: `${n.body}\n\nOpen Planning: ${n.link}` });
+      const result = await this.d.mailer.send({ to, subject: n.title, text: `${n.body}\n\nOpen Planning: ${n.link}`, messageId: `<notice-${n.id}@${new URL(this.d.publicUrl()).hostname}>` });
       if (result.ok) {
         sent++;
         await db.update(notifications).set({ emailedAt: clock.now(), emailError: null }).where(byId(n.id));
@@ -185,9 +185,8 @@ export class DeliveryService {
       const emails = [...new Set([...touched.emails, ...refEmails.values()])];
       const refOf = await this.d.directory.refsFor(emails);
       const managers = new Set((await this.d.managers.all()).map((m) => m.email));
-      const badges = [];
-      for (const email of emails) badges.push({ email, count: await this.d.inbox.unreadCount({ ref: refOf.get(email) ?? null, email, isManager: managers.has(email) }) });
-      return await this.d.badges.publish(badges);
+      const counts = await this.d.inbox.unreadCounts(emails.map((email) => ({ ref: refOf.get(email) ?? null, email, isManager: managers.has(email) })));
+      return await this.d.badges.publish(emails.map((email, i) => ({ email, count: counts[i]! })));
     } catch (error) {
       this.d.log(`[badges] could not compute counts: ${scrubAddresses(error instanceof Error ? error.message : String(error))}`);
       return false;

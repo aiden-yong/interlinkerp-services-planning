@@ -164,6 +164,7 @@ describe('delivery: email and badges', () => {
     expect(report.emailed).toBe(2);
     expect(h.mailer.sent.map((m) => [m.to, m.subject]).sort()).toEqual([['ana@example.com', 'Your shift was published'], ['mona@example.com', 'Open shift claimed']]);
     expect(h.mailer.sent[0]!.text).toContain('https://');
+    expect(h.mailer.sent.map((m) => m.messageId).sort()).toEqual(['<notice-1@planning.test>', '<notice-2@planning.test>']); // backlog item 26
   });
 
   it('skips email, but keeps the in-app notice, for someone who has left the roster (backlog item 14)', async () => {
@@ -272,7 +273,7 @@ describe('delivery: failures stay contained', () => {
     const badges = { enabled: true, publish: async (): Promise<boolean> => { throw new Error('insert ... params: ana@example.com'); } };
     const { lines, app } = capture({ badges });
     const unread = app.notifications();
-    unread.unreadCount = async () => { throw new Error('query failed for ana@example.com'); };
+    unread.unreadCounts = async () => { throw new Error('query failed for ana@example.com'); };
     const report = await app.delivery().deliverDue();
     expect(report.notified).toBe(1);
     expect(lines.length).toBeGreaterThan(0);

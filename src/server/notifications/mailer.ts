@@ -6,6 +6,8 @@ export interface MailMessage {
   to: string;
   subject: string;
   text: string;
+  /** Stable per notice (backlog item 26), so a resend after a crash shows up as the same message in mail clients. */
+  messageId?: string;
 }
 
 export type SendResult = { ok: true } | { ok: false; error: string };
@@ -53,7 +55,7 @@ export class SmtpMailer implements Mailer {
     } catch {
       return { ok: false, error: 'SMTP_URL is not a valid SMTP URL.' };
     }
-    return withTimeout(transport.sendMail({ from: this.from, to: message.to, subject: message.subject, text: message.text }), this.timeoutMs);
+    return withTimeout(transport.sendMail({ from: this.from, to: message.to, subject: message.subject, text: message.text, ...(message.messageId ? { messageId: message.messageId } : {}) }), this.timeoutMs);
   }
 }
 

@@ -24,9 +24,10 @@ export function register(r: Router, app: App): void {
     return json(200, { refreshed: await app.directoryRefresher().refresh() });
   });
 
-  // D1 backstop: delivers anything the after-response sweeps left behind.
-  r.add('GET', '/internal/cron/notifications', 'internal', 'Deliver due notifications.', async ({ request }) => {
+  // D1 backstop: delivers anything the after-response sweeps left behind, then removes finished rows (backlog item 23).
+  r.add('GET', '/internal/cron/notifications', 'internal', 'Deliver due notifications and prune old ones.', async ({ request }) => {
     requireCronSecret(app, request);
-    return json(200, await app.delivery().deliverDue());
+    const report = await app.delivery().deliverDue();
+    return json(200, { ...report, pruned: await app.retention().run(app.clock().now()) });
   });
 }
