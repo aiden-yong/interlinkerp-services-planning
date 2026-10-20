@@ -65,7 +65,7 @@ export const catalog = {
       description: 'Create and change shifts, with warnings when a shift breaks a planning rule.',
       does: ['See the schedule for a week or month', 'Create a shift', 'Move or reassign a shift', 'Duplicate or delete a shift', 'Undo a deletion'],
       best_for: 'Managers building and adjusting the team schedule.',
-      endpoints: ['GET /api/schedule', 'POST /api/shifts', 'GET /api/shifts/{id}', 'PATCH /api/shifts/{id}', 'DELETE /api/shifts/{id}', 'POST /api/shift-restorations'],
+      endpoints: ['GET /api/schedule', 'POST /api/shifts', 'GET /api/shifts/{id}', 'PATCH /api/shifts/{id}', 'DELETE /api/shifts/{id}', 'POST /api/shift-splits', 'POST /api/shift-restorations'],
     },
     {
       name: 'Reuse Shift Patterns',

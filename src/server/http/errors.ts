@@ -10,6 +10,7 @@ export const ERROR_CODES = [
   'COUNTRY_NOT_SET', 'HOLIDAY_PROVIDER_NOT_CONFIGURED', 'PROVIDER_HOLIDAY',
   'RECURRENCE_PATTERN_SCOPE',
   'TEMPLATE_NAME_TAKEN',
+  'SPLIT_OUTSIDE', 'BREAK_DOES_NOT_FIT',
 ] as const;
 
 /** An expected failure that becomes a non-2xx response with the error envelope (contract SS-5). */

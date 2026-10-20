@@ -179,6 +179,53 @@ export class ShiftService {
     return { shift: saved.shift, conflicts, updated: saved.updated };
   }
 
+  /** D12: splits one shift into two at `at`. The first part keeps the id; the second is a brand new, non-series shift. */
+  async split(body: Record<string, unknown>, by: Principal): Promise<[ShiftRecord, ShiftRecord]> {
+    const input = new Input(body);
+    const id = input.string('shift_id', 36, true);
+    const version = input.int('version', 1, Number.MAX_SAFE_INTEGER);
+    if (version === null) input.error('version', 'Send the version you last loaded, so edits made by someone else are not overwritten.');
+    const at = input.instant('at', true);
+    input.check();
+
+    const current = (await this.shifts.find(id!)) ?? (() => { throw HttpError.notFound('No shift with that id.'); })();
+
+    const MIN_PART_MS = 15 * 60_000;
+    if (at!.getTime() - current.start.getTime() < MIN_PART_MS || current.end.getTime() - at!.getTime() < MIN_PART_MS) {
+      throw new HttpError(422, 'SPLIT_OUTSIDE', 'The split point must leave at least 15 minutes on each side.', { at: 'The split point must leave at least 15 minutes on each side.' });
+    }
+    const firstMs = at!.getTime() - current.start.getTime();
+    const secondMs = current.end.getTime() - at!.getTime();
+    const breakGoesToFirst = firstMs >= secondMs; // on a tie, the first part gets it
+    const breakPartMs = breakGoesToFirst ? firstMs : secondMs;
+    if (current.breakMinutes * 60_000 >= breakPartMs) {
+      throw new HttpError(422, 'BREAK_DOES_NOT_FIT', 'The break does not fit in the part it would land in.', { at: 'The break does not fit in the part it would land in.' });
+    }
+
+    const now = this.clock.now();
+    const secondId = randomUUID();
+    const firstRecord: ShiftRecord = {
+      ...current, end: at!, breakMinutes: breakGoesToFirst ? current.breakMinutes : 0,
+      recurrenceDetached: current.recurrenceId !== null ? true : current.recurrenceDetached,
+    };
+    const secondRecord: ShiftRecord = {
+      ...current, id: secondId, start: at!, breakMinutes: breakGoesToFirst ? 0 : current.breakMinutes,
+      version: 1, createdBy: actorId(by), ackBy: null, ackAt: null, switchRequestedAt: null, deletedAt: null,
+      recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null,
+    };
+
+    const [first, second] = await this.unit.run(async (scope) => {
+      const savedFirst = await scope.shifts.update(firstRecord, version!, now);
+      if (!savedFirst) throw stale();
+      await scope.shifts.insert(secondRecord, now);
+      if (current.state === 'published' && current.employeeRef) {
+        await scope.outbox.add('shift_changed', current.employeeRef, savedFirst.id, { shift_id: savedFirst.id, changed: ['end'] }, now, now);
+      }
+      return [savedFirst, secondRecord];
+    });
+    return [first, second];
+  }
+
   async delete(id: string, by: Principal, scope?: 'following' | 'all'): Promise<{ deleted: number } | null> {
     const now = this.clock.now();
     if (!scope) {

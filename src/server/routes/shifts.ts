@@ -44,6 +44,13 @@ export function register(r: Router, app: App): void {
   }, op('Delete Shift', 'Remove a shift from the schedule, or a repeating series from a point on', ['A shift is no longer needed', 'A repeating series should stop'], ['Giving a shift to someone else (reassign it instead)'],
     ['id', 'scope'], ['deleted'], ['Planning Manager'], ['POST /api/shift-restorations'], ['delete', 'remove shift', 'cancel shift']));
 
+  r.add('POST', '/api/shift-splits', 'manager', 'Split a shift in two at a chosen time.', async ({ body, principal }) => {
+    const [first, second] = await app.shiftService().split(await body(), actor(principal));
+    return json(201, { shifts: [shiftToApi(first), shiftToApi(second)] });
+  }, op('Split Shift', 'Divide one shift into two shorter ones', ['A long shift should become two shorter ones'], ["Changing a shift's own times (use PATCH)"],
+    ['shift_id', 'version', 'at'], ['shifts'], ['Planning Manager', 'Latest version of the shift', 'At least 15 minutes on each side'], ['GET /api/shifts/{id}', 'PATCH /api/shifts/{id}'],
+    ['split', 'divide shift', 'break up shift']));
+
   r.add('POST', '/api/shift-restorations', 'manager', 'Undo a shift deletion made in the last 30 seconds.', async ({ body, principal }) => {
     const input = new Input(await body());
     const id = input.string('shift_id', 36, true);
