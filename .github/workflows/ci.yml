@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: planning
+          POSTGRES_PASSWORD: planning-ci-only
+          POSTGRES_DB: planning_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U planning -d planning_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://planning:planning-ci-only@localhost:5432/planning_test
+      TEST_DATABASE_URL: postgres://planning:planning-ci-only@localhost:5432/planning_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # The same settings a developer starts from; real environment variables above win.
+      - run: cp .env.example .env.local
+
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
