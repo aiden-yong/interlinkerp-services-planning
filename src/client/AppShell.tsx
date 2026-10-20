@@ -9,6 +9,7 @@ import { PlanningMark } from './icons';
 import { access, notOnRosterMessage, type Screen } from './router';
 import { NotificationBell } from './notifications/NotificationBell';
 import { ThemeSwitch } from './ThemeSwitch';
+import { DevIdentityPicker } from './DevIdentityPicker';
 import type { Me } from './types';
 
 function NavLink({ href, active, children }: { href: string; active: boolean; children: ReactNode }) {
@@ -49,6 +50,7 @@ export function AppShell({ screen, children }: { screen: Screen; children?: (me:
         </nav>
         <span className="spacer" />
         {me && screen !== 'not-on-roster' && <NotificationBell />}
+        {me?.dev_identity && <DevIdentityPicker />}
         <ThemeSwitch />
         {/* No sign-out button: the InterlinkERP gateway is the only place to sign out. */}
         <span className="who" title={me?.email ?? undefined}>{me?.name ?? me?.email ?? ''}</span>

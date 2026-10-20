@@ -623,3 +623,7 @@ td:last-child:has(button) { text-align: right; white-space: nowrap; }
     --line-strong: light-dark(rgb(60 60 67 / 0.7), rgb(235 235 245 / 0.6));
   }
 }
+
+/* Backlog item 32: the local development identity picker. */
+.dev-picker select { font-size: 0.8125rem; max-width: 14rem; border: 1px dashed var(--accent, currentColor); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

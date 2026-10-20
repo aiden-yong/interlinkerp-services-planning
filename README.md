@@ -11,7 +11,7 @@ Next.js 16 (App Router) + React 19 + TypeScript, Drizzle ORM, PostgreSQL (local 
 2. `cp .env.example .env.local`, then set `SESSION_SECRET` (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`).
 3. `npm install`
 4. `npm run db:migrate`
-5. `npm run dev`, then open http://127.0.0.1:3000. Locally you are the `DEV_USER_*` identity from `.env.local`.
+5. `npm run dev`, then open http://127.0.0.1:3000. Locally you are the `DEV_USER_*` identity from `.env.local`. To see Planning as someone else, use the "Dev:" picker in the top bar. It switches between that identity, a Planning Manager and any employee in the directory, without editing `.env.local` or restarting. It exists only under `npm run dev` on 127.0.0.1.
 
 Optional demo data: `npm run db:seed-demo -- --yes-this-is-a-demo-database`. Browse the data with pgAdmin 4. To time the schedule endpoint, run `scripts/time-schedule.sh` while the dev server is up.
 

@@ -203,10 +203,9 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Done:** The forced tests found one real problem. If the delivery sweep sent the "shift deleted" notice at the same moment a manager pressed Undo, the undo still succeeded, and the employee was told about a deletion that had been undone. The undo now returns `409 UNDO_EXPIRED` in that case and the shift stays deleted. A manager edit racing an employee claim was already safe: one wins and the other gets a clear `409`.
 - **Effort:** S
 
-### 32. Identity switcher for local development
+### 32. Identity switcher for local development (done 2026-10-20)
 - **Area:** Developer experience
-- **Why:** Switching between manager and employee views means editing `.env.local` and restarting.
-- **Fix:** Add a picker that appears only in development, guarded by the same checks as the DEV identity: `NODE_ENV`, `APP_ENV` and loopback.
+- **Done:** A "Dev:" picker in the top bar sets a `planning_dev_as` cookie and reloads. Choices: the `.env.local` identity, a Planning Manager, or any employee in the directory. The server honours the cookie only through `DevIdentity`, so only under `next dev` with `APP_ENV=development`, never on Vercel, and only from loopback. `/internal/dev/identities` answers 404 everywhere else.
 - **Effort:** S
 
 ### 33. Workspace clean-up (done 2026-10-20)
