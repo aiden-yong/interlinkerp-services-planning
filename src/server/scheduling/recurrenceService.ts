@@ -13,6 +13,11 @@ import type { UnitOfWork, WriteScope } from './unitOfWork';
 
 export type RepeatFields = Pick<RepeatRule, 'interval' | 'unit' | 'ends' | 'untilDate' | 'count'>;
 
+export type SeriesChanges = Partial<{
+  employeeRef: string | null; roleId: string | null; startTimeLocal: string; durationMinutes: number;
+  breakMinutes: number; percent: number; note: string | null;
+}>;
+
 /** Builds the full RepeatRule used by occurrences(), from the parsed `repeat` fields plus the first shift. */
 function ruleFrom(repeat: RepeatFields, zone: string, first: { start: Date; end: Date }): RepeatRule {
   return {
@@ -146,6 +151,76 @@ export class RecurrenceService {
     });
     const insertedIds = await scope.shifts.insertMany(rows, now);
     return { seriesId, created: insertedIds.length };
+  }
+
+  /** D5: edits "this and following" / "all" — not-started, draft, attached, live shifts from fromIndex on; also keeps the series row current so later generation uses the new values. */
+  async applyToSeries(scope: WriteScope, seriesId: string, fromIndex: number, changes: SeriesChanges, now: Date, excludeId?: string): Promise<number> {
+    const series = await scope.recurrences.find(seriesId);
+    if (!series) return 0;
+    // The DATE part of firstStartLocal never changes here (it anchors which calendar dates get generated) — only
+    // its time-of-day component changes, and only if changes.startTimeLocal was given.
+    const nextSeries: SeriesRecord = {
+      ...series,
+      employeeRef: changes.employeeRef !== undefined ? changes.employeeRef : series.employeeRef,
+      roleId: changes.roleId !== undefined ? changes.roleId : series.roleId,
+      breakMinutes: changes.breakMinutes ?? series.breakMinutes,
+      percent: changes.percent ?? series.percent,
+      note: changes.note !== undefined ? changes.note : series.note,
+      durationMinutes: changes.durationMinutes ?? series.durationMinutes,
+      firstStartLocal: changes.startTimeLocal
+        ? `${series.firstStartLocal.slice(0, 10)}T${changes.startTimeLocal}`
+        : series.firstStartLocal,
+    };
+    await scope.recurrences.update(nextSeries, now);
+    return scope.shifts.updateSeriesShifts(seriesId, fromIndex, now, {
+      employeeRef: changes.employeeRef, roleId: changes.roleId, breakMinutes: changes.breakMinutes,
+      percent: changes.percent, note: changes.note, startTimeLocal: changes.startTimeLocal,
+      durationMinutes: changes.durationMinutes, zone: series.timezone,
+    }, excludeId);
+  }
+
+  /**
+   * D6: changes the repeat pattern partway through a series. Ends the old series at atIndex - 1, hard-deletes its
+   * untouched future drafts from atIndex on (except `from`, which the caller already saved earlier in this same
+   * transaction), then creates a new series anchored at `from` (step 0) with the new pattern and generates the rest
+   * up to the horizon. `from` is an EXISTING row — this never inserts a row for it, only reassigns it.
+   */
+  async splitSeries(
+    scope: WriteScope, seriesId: string, atIndex: number, pattern: RepeatFields, from: ShiftRecord, horizonMonths: number, now: Date,
+  ): Promise<{ newSeriesId: string; removed: number; created: number }> {
+    const old = await scope.recurrences.find(seriesId);
+    if (!old) throw new Error('Series not found.');
+
+    await scope.recurrences.update({ ...old, lastIndex: atIndex - 1 }, now);
+    const removed = await scope.shifts.hardDeleteSeriesShiftsFrom(seriesId, atIndex, now, from.id);
+
+    const newSeriesId = randomUUID();
+    const until = DateTime.fromJSDate(now, { zone: old.timezone }).plus({ months: horizonMonths }).toJSDate();
+    const newSeries: SeriesRecord = {
+      id: newSeriesId, interval: pattern.interval, unit: pattern.unit, ends: pattern.ends, untilDate: pattern.untilDate, count: pattern.count,
+      timezone: old.timezone,
+      firstStartLocal: DateTime.fromJSDate(from.start, { zone: old.timezone }).toFormat("yyyy-MM-dd'T'HH:mm"),
+      durationMinutes: Math.round((from.end.getTime() - from.start.getTime()) / 60_000),
+      lastIndex: null,
+      employeeRef: from.employeeRef, roleId: from.roleId, breakMinutes: from.breakMinutes, percent: from.percent, note: from.note,
+      generatedUntil: until, createdBy: from.createdBy,
+    };
+    await scope.recurrences.insert(newSeries, now);
+    await scope.shifts.reassignSeries(from.id, newSeriesId, 0, now);
+
+    const rule: RepeatRule = {
+      interval: newSeries.interval, unit: newSeries.unit, ends: newSeries.ends, untilDate: newSeries.untilDate, count: newSeries.count,
+      timezone: newSeries.timezone, firstStartLocal: newSeries.firstStartLocal, durationMinutes: newSeries.durationMinutes, lastIndex: newSeries.lastIndex,
+    };
+    const steps = occurrences(rule, 1, until);
+    const rows: ShiftRecord[] = steps.map((step) => ({
+      id: randomUUID(), employeeRef: newSeries.employeeRef, roleId: newSeries.roleId, start: step.start, end: step.end,
+      breakMinutes: newSeries.breakMinutes, percent: newSeries.percent, note: newSeries.note, state: 'draft', publishedAt: null,
+      ackBy: null, ackAt: null, version: 1, createdBy: newSeries.createdBy, deletedAt: null, switchRequestedAt: null,
+      recurrenceId: newSeriesId, recurrenceIndex: step.index, recurrenceDetached: false, copiedFrom: null,
+    }));
+    const insertedIds = await scope.shifts.insertMany(rows, now);
+    return { newSeriesId, removed, created: insertedIds.length };
   }
 
   /** Generates missing shifts for one series up to now + horizon; one transaction, lockSeries first (so two extensions never double-create, Review Focus 4). */

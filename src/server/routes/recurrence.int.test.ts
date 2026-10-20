@@ -21,6 +21,13 @@ const createRepeating = (overrides: Record<string, unknown> = {}) =>
 
 const seriesRows = async (seriesId: string) => (await h.database.db.select().from(shifts)).filter((r) => r.recurrenceId === seriesId);
 
+const atIndex = async (seriesId: string, idx: number) => {
+  const rows = await seriesRows(seriesId);
+  const row = rows.find((r) => r.recurrenceIndex === idx)!;
+  const { body } = await h.call('GET', `/api/shifts/${row.id}`);
+  return body.shift;
+};
+
 describe('recurring shifts', () => {
   beforeEach(() => advanceTo('2026-01-01T02:00:00Z'));
 
@@ -160,5 +167,104 @@ describe('recurring shifts', () => {
       id: body.recurrence.id, interval: 1, unit: 'week', ends: 'never', until_date: null, count: null, index: 0, detached: false,
     });
     expect(plainShift.recurrence).toBeNull();
+  });
+
+  it('edits only this shift and detaches it', async () => {
+    const { body } = await createRepeating();
+    const shift2 = await atIndex(body.recurrence.id, 2);
+    const res = await h.call('PATCH', `/api/shifts/${shift2.id}`, { version: shift2.version, note: 'Bring keys', scope: 'this' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.shift.recurrence.detached).toBe(true);
+    expect(res.body.updated).toBe(0);
+
+    const others = (await seriesRows(body.recurrence.id)).filter((r) => r.recurrenceIndex !== 2);
+    for (const r of others) expect(r.note).toBeNull();
+  });
+
+  it('edits this and following', async () => {
+    const { body } = await createRepeating();
+    const shift5 = await atIndex(body.recurrence.id, 5);
+    const res = await h.call('PATCH', `/api/shifts/${shift5.id}`, { version: shift5.version, note: 'New site', scope: 'following' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.updated).toBe(20);
+
+    const rows = await seriesRows(body.recurrence.id);
+    expect(rows.find((r) => r.recurrenceIndex === 4)!.note).toBeNull();
+    expect(rows.find((r) => r.recurrenceIndex === 6)!.note).toBe('New site');
+
+    h.clock.advance(31 * 24 * 3600);
+    await h.app.recurrences().extendAll(h.clock.now());
+    const after = await seriesRows(body.recurrence.id);
+    const newest = after.filter((r) => r.recurrenceIndex! > 25);
+    expect(newest.length).toBeGreaterThan(0);
+    for (const r of newest) expect(r.note).toBe('New site');
+  });
+
+  it('moves the time of day for all', async () => {
+    const { body } = await createRepeating();
+    const now = h.clock.now();
+    const shift3 = await atIndex(body.recurrence.id, 3);
+    const res = await h.call('PATCH', `/api/shifts/${shift3.id}`, {
+      version: shift3.version, start_at: '2026-01-22T10:00:00+08:00', end_at: '2026-01-22T18:00:00+08:00', scope: 'all',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+
+    const rows = (await seriesRows(body.recurrence.id))
+      .filter((r) => r.state === 'draft' && !r.recurrenceDetached && r.deletedAt === null && r.startAt.getTime() > now.getTime());
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(r.startAt.getUTCHours()).toBe(2);
+      expect(r.startAt.getUTCMinutes()).toBe(0);
+    }
+  });
+
+  it('leaves published, detached and started shifts alone (Review Focus 3)', async () => {
+    const { body } = await createRepeating();
+    const shift1 = await atIndex(body.recurrence.id, 1);
+    expect((await h.call('POST', '/api/publications', { shift_ids: [shift1.id] })).status).toBe(201);
+    const shift2 = await atIndex(body.recurrence.id, 2);
+    expect((await h.call('PATCH', `/api/shifts/${shift2.id}`, { version: shift2.version, scope: 'this' })).status).toBe(200);
+
+    const shift3 = await atIndex(body.recurrence.id, 3);
+    const res = await h.call('PATCH', `/api/shifts/${shift3.id}`, { version: shift3.version, note: 'Updated', scope: 'all' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+
+    const rows = await seriesRows(body.recurrence.id);
+    for (const idx of [0, 1, 2]) expect(rows.find((r) => r.recurrenceIndex === idx)!.note).toBeNull();
+    for (const idx of [3, 4, 5]) expect(rows.find((r) => r.recurrenceIndex === idx)!.note).toBe('Updated');
+  });
+
+  it('changes the pattern from this shift on (D6)', async () => {
+    const { body } = await createRepeating();
+    const shift4 = await atIndex(body.recurrence.id, 4);
+    const res = await h.call('PATCH', `/api/shifts/${shift4.id}`, {
+      version: shift4.version, scope: 'following', repeat: { interval: 2, unit: 'week', ends: 'never' },
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.shift.recurrence.index).toBe(0);
+    expect(res.body.shift.recurrence.interval).toBe(2);
+    const newSeriesId = res.body.shift.recurrence.id;
+    expect(newSeriesId).not.toBe(body.recurrence.id);
+
+    const oldSeries = await h.app.recurrences().find(body.recurrence.id);
+    expect(oldSeries!.lastIndex).toBe(3);
+
+    const oldLiveFuture = (await seriesRows(body.recurrence.id)).filter((r) => r.recurrenceIndex! >= 4 && r.deletedAt === null);
+    expect(oldLiveFuture.length).toBe(0);
+
+    const newRows = (await seriesRows(newSeriesId)).sort((a, b) => a.recurrenceIndex! - b.recurrenceIndex!);
+    expect(newRows[0]!.id).toBe(shift4.id);
+    const diffDays = (newRows[1]!.startAt.getTime() - newRows[0]!.startAt.getTime()) / 86_400_000;
+    expect(diffDays).toBe(14);
+  });
+
+  it('refuses a pattern change for one shift', async () => {
+    const { body } = await createRepeating();
+    const shift2 = await atIndex(body.recurrence.id, 2);
+    const res = await h.call('PATCH', `/api/shifts/${shift2.id}`, {
+      version: shift2.version, scope: 'this', repeat: { interval: 2, unit: 'week', ends: 'never' },
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(res.body.error.code).toBe('RECURRENCE_PATTERN_SCOPE');
   });
 });

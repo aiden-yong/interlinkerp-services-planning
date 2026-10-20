@@ -93,11 +93,15 @@ export class ShiftService {
     return { shift, conflicts };
   }
 
-  async update(id: string, body: Record<string, unknown>, by: Principal): Promise<{ shift: ShiftRecord; conflicts: Conflict[] }> {
+  async update(id: string, body: Record<string, unknown>, by: Principal): Promise<{ shift: ShiftRecord; conflicts: Conflict[]; updated: number }> {
     const current = (await this.shifts.find(id)) ?? (() => { throw HttpError.notFound('No shift with that id.'); })();
     const input = new Input(body);
     const version = input.int('version', 1, Number.MAX_SAFE_INTEGER);
     if (version === null) input.error('version', 'Send the version you last loaded, so edits made by someone else are not overwritten.');
+
+    const scopeRaw = input.has('scope') ? input.string('scope', 16) : 'this';
+    if (scopeRaw !== 'this' && scopeRaw !== 'following' && scopeRaw !== 'all') input.error('scope', 'Use this, following or all.');
+    const repeat = input.has('repeat') ? this.recurrences.parseRepeat(input, 'repeat') : null;
 
     const next: ShiftRecord = { ...current };
     if (input.has('employee_ref')) {
@@ -118,6 +122,15 @@ export class ShiftService {
     validateTimes(input, next.start, next.end, next.breakMinutes);
     input.check();
 
+    if (input.has('repeat') && scopeRaw === 'this') {
+      const message = "A repeated shift's pattern can only be changed for this and following, or all.";
+      throw new HttpError(422, 'RECURRENCE_PATTERN_SCOPE', message, { scope: message });
+    }
+    if (scopeRaw !== 'this' && current.recurrenceId === null) {
+      const message = 'This shift is not part of a repeating series.';
+      throw new HttpError(422, 'RECURRENCE_PATTERN_SCOPE', message, { scope: message });
+    }
+
     if (version !== current.version) throw stale();
     const now = this.clock.now();
     const { shift, conflicts } = await this.guardConflicts(next, acknowledged, by, now);
@@ -125,9 +138,39 @@ export class ShiftService {
       const row = await scope.shifts.update(shift, current.version, now);
       if (!row) throw stale();
       if (current.state === 'published') await this.notifyChange(scope, current, row, now); // BR-11: stays published; employees are told
-      return row;
+
+      let updated = 0;
+      if (scopeRaw === 'this') {
+        if (row.recurrenceId !== null) {
+          const detached = await scope.shifts.update({ ...row, recurrenceDetached: true }, row.version, now);
+          if (!detached) throw stale();
+        }
+      } else if (repeat !== null) {
+        // D6: a pattern change splits the series; following uses this shift's own index, all uses the series'
+        // first-not-started index (a safe lower bound — splitSeries's own filters handle draft/attached/live).
+        const fromIndex = scopeRaw === 'following' ? row.recurrenceIndex! : (await scope.shifts.firstNotStartedIndex(row.recurrenceId!, now)) ?? row.recurrenceIndex!;
+        const horizonMonths = (await scope.settings.get()).recurrence_horizon_months;
+        const result = await this.recurrences.splitSeries(scope, row.recurrenceId!, fromIndex, repeat, row, horizonMonths, now);
+        updated = result.removed + result.created;
+      } else {
+        const fromIndex = scopeRaw === 'following' ? row.recurrenceIndex! : (await scope.shifts.firstNotStartedIndex(row.recurrenceId!, now)) ?? row.recurrenceIndex!;
+        const timeChanged = input.has('start_at') || input.has('end_at');
+        const zone = timeChanged ? (await scope.recurrences.find(row.recurrenceId!))!.timezone : null;
+        updated = await this.recurrences.applyToSeries(scope, row.recurrenceId!, fromIndex, {
+          employeeRef: input.has('employee_ref') ? row.employeeRef : undefined,
+          roleId: input.has('role_id') ? row.roleId : undefined,
+          breakMinutes: input.has('break_minutes') ? row.breakMinutes : undefined,
+          percent: input.has('allocated_percent') ? row.percent : undefined,
+          note: input.has('note') ? row.note : undefined,
+          startTimeLocal: timeChanged ? DateTime.fromJSDate(row.start, { zone: zone! }).toFormat('HH:mm') : undefined,
+          durationMinutes: timeChanged ? Math.round((row.end.getTime() - row.start.getTime()) / 60_000) : undefined,
+        }, now, row.id);
+      }
+
+      const finalShift = (await scope.shifts.find(row.id)) ?? row;
+      return { shift: finalShift, updated };
     });
-    return { shift: saved, conflicts };
+    return { shift: saved.shift, conflicts, updated: saved.updated };
   }
 
   async delete(id: string, by: Principal): Promise<void> {

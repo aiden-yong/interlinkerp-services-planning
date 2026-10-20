@@ -28,11 +28,13 @@ export function register(r: Router, app: App): void {
     ['id'], ['shift'], ['Planning Manager'], ['PATCH /api/shifts/{id}', 'GET /api/schedule'], ['shift', 'details']));
 
   r.add('PATCH', '/api/shifts/{id}', 'manager', 'Move, resize, reassign or edit a shift.', async ({ params, body, principal }) => {
-    const { shift, conflicts } = await app.shiftService().update(params.id, await body(), actor(principal));
-    return json(200, { shift: shiftToApi(shift, conflicts) });
+    const { shift, conflicts, updated } = await app.shiftService().update(params.id, await body(), actor(principal));
+    const series = shift.recurrenceId ? await app.recurrences().find(shift.recurrenceId) : null;
+    const recurrence = series ? seriesToApi(series, shift.recurrenceIndex, shift.recurrenceDetached) : null;
+    return json(200, { shift: shiftToApi(shift, conflicts, recurrence), updated });
   }, op('Update Shift', "Change a shift's time, employee, role or details", ['Dragging a shift to another day or person', 'Changing the note'], ['Creating a shift'],
-    ['version', 'employee_ref', 'role_id', 'start_at', 'end_at', 'break_minutes', 'allocated_percent', 'note', 'acknowledge_conflicts'],
-    ['shift'], ['Planning Manager', 'Latest version of the shift'], ['GET /api/shifts/{id}'], ['move', 'reassign', 'edit shift', 'resize']));
+    ['version', 'scope', 'repeat', 'employee_ref', 'role_id', 'start_at', 'end_at', 'break_minutes', 'allocated_percent', 'note', 'acknowledge_conflicts'],
+    ['shift', 'updated'], ['Planning Manager', 'Latest version of the shift'], ['GET /api/shifts/{id}'], ['move', 'reassign', 'edit shift', 'resize']));
 
   r.add('DELETE', '/api/shifts/{id}', 'manager', 'Delete a shift (can be undone for 30 seconds).', async ({ params, principal }) => {
     await app.shiftService().delete(params.id, actor(principal));

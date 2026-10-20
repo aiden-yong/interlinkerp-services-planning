@@ -1,4 +1,5 @@
-import { and, eq, gt, inArray, isNotNull, isNull, lt, max, sql } from 'drizzle-orm';
+import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, max, min, ne, sql } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 import type { Db } from '../db/client';
 import { shifts } from '../db/schema';
 import { type ShiftFacts, shiftHours } from '../domain/allocation';
@@ -6,7 +7,7 @@ import type { Conflict } from '../domain/conflicts';
 import { Interval } from '../domain/interval';
 import type { seriesToApi } from './recurrences';
 import { isUuid } from '../support/ids';
-import { iso } from '../support/time';
+import { iso, localDate } from '../support/time';
 
 export interface ShiftRecord {
   id: string;
@@ -116,6 +117,75 @@ export class ShiftRepository {
     const [row] = await this.db.select({ m: max(shifts.recurrenceIndex) }).from(shifts)
       .where(and(eq(shifts.organisationId, this.org), eq(shifts.recurrenceId, seriesId)));
     return row?.m ?? null;
+  }
+
+  /** Lowest recurrence_index among this series' live shifts that have not started yet — a safe lower bound for scope 'all' (D5). Not filtered by draft/detached: callers apply those filters themselves. */
+  async firstNotStartedIndex(seriesId: string, now: Date): Promise<number | null> {
+    const [row] = await this.db.select({ m: min(shifts.recurrenceIndex) }).from(shifts)
+      .where(and(eq(shifts.organisationId, this.org), eq(shifts.recurrenceId, seriesId), isNull(shifts.deletedAt), gt(shifts.startAt, now)));
+    return row?.m ?? null;
+  }
+
+  /**
+   * D5: applies `patch` to every not-started, draft, attached, live shift of the series with recurrence_index >=
+   * fromIndex (excluding `excludeId`, the shift already saved by the caller). Each row keeps its own local calendar
+   * date (only startTimeLocal's time-of-day moves it) and its own existing duration unless durationMinutes is given.
+   * A row whose version changed between the SELECT and the UPDATE (rare) is skipped silently, not retried: this is
+   * a best-effort bulk operation and a single lost row here is never a correctness problem.
+   */
+  async updateSeriesShifts(
+    seriesId: string, fromIndex: number, now: Date,
+    patch: {
+      employeeRef?: string | null; roleId?: string | null; breakMinutes?: number; percent?: number; note?: string | null;
+      startTimeLocal?: string; durationMinutes?: number; zone?: string;
+    },
+    excludeId?: string,
+  ): Promise<number> {
+    const conditions = [
+      this.live(), eq(shifts.recurrenceId, seriesId), gte(shifts.recurrenceIndex, fromIndex),
+      eq(shifts.state, 'draft'), eq(shifts.recurrenceDetached, false), gt(shifts.startAt, now),
+    ];
+    if (excludeId) conditions.push(ne(shifts.id, excludeId));
+    const rows = await this.db.select().from(shifts).where(and(...conditions));
+
+    let count = 0;
+    for (const raw of rows) {
+      const row = toRecord(raw);
+      const newStart = patch.startTimeLocal
+        ? DateTime.fromISO(`${localDate(row.start.getTime(), patch.zone!)}T${patch.startTimeLocal}`, { zone: patch.zone! }).toJSDate()
+        : row.start;
+      const durationMinutes = patch.durationMinutes ?? Math.round((row.end.getTime() - row.start.getTime()) / 60_000);
+      const newEnd = new Date(newStart.getTime() + durationMinutes * 60_000);
+      const next: ShiftRecord = {
+        ...row,
+        start: newStart,
+        end: newEnd,
+        employeeRef: patch.employeeRef !== undefined ? patch.employeeRef : row.employeeRef,
+        roleId: patch.roleId !== undefined ? patch.roleId : row.roleId,
+        breakMinutes: patch.breakMinutes !== undefined ? patch.breakMinutes : row.breakMinutes,
+        percent: patch.percent !== undefined ? patch.percent : row.percent,
+        note: patch.note !== undefined ? patch.note : row.note,
+      };
+      // eslint-disable-next-line no-await-in-loop -- sequential on the transaction's own connection, same pattern as recurrenceService.ts's previewConflicts/extendAll
+      const saved = await this.update(next, row.version, now);
+      if (saved) count += 1;
+    }
+    return count;
+  }
+
+  /** D6: hard-deletes the untouched future drafts of a series from fromIndex on (except `exceptId`, which moves to the new series instead). */
+  async hardDeleteSeriesShiftsFrom(seriesId: string, fromIndex: number, now: Date, exceptId: string): Promise<number> {
+    const deleted = await this.db.delete(shifts).where(and(
+      this.live(), eq(shifts.recurrenceId, seriesId), gte(shifts.recurrenceIndex, fromIndex),
+      eq(shifts.state, 'draft'), eq(shifts.recurrenceDetached, false), gt(shifts.startAt, now), ne(shifts.id, exceptId),
+    )).returning({ id: shifts.id });
+    return deleted.length;
+  }
+
+  /** D6: moves one shift onto a new series at a given step, re-attaching it. No version check: this always runs right after that same row was already version-checked and updated once in the same transaction. */
+  async reassignSeries(id: string, recurrenceId: string, recurrenceIndex: number, now: Date): Promise<void> {
+    await this.db.update(shifts).set({ recurrenceId, recurrenceIndex, recurrenceDetached: false, updatedAt: now })
+      .where(and(eq(shifts.organisationId, this.org), eq(shifts.id, id)));
   }
 
   /** Saves only if nobody else saved since `expectedVersion` (optimistic concurrency); bumps the version. Returns the saved row, or null when the shift changed or was deleted meanwhile. */
