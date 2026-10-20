@@ -87,6 +87,14 @@ export class ShiftRepository {
     return rows.map(toRecord);
   }
 
+  /** Which of these source ids already have a live copy starting in [from, to) — so a second "copy previous week" press copies nothing twice. */
+  async copiedInto(sourceIds: string[], from: Date, to: Date): Promise<Set<string>> {
+    if (sourceIds.length === 0) return new Set();
+    const rows = await this.db.select({ copiedFrom: shifts.copiedFrom }).from(shifts)
+      .where(and(this.live(), inArray(shifts.copiedFrom, sourceIds), gte(shifts.startAt, from), lt(shifts.startAt, to)));
+    return new Set(rows.flatMap((r) => (r.copiedFrom ? [r.copiedFrom] : [])));
+  }
+
   async insert(s: ShiftRecord, now: Date): Promise<void> {
     await this.db.insert(shifts).values({
       id: s.id, organisationId: this.org, employeeRef: s.employeeRef, roleId: s.roleId, startAt: s.start, endAt: s.end,

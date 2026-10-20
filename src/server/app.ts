@@ -37,6 +37,7 @@ import { RecurrenceService } from './scheduling/recurrenceService';
 import { ScheduleService } from './scheduling/scheduleService';
 import { ShiftService } from './scheduling/shiftService';
 import { UnitOfWork } from './scheduling/unitOfWork';
+import { WeekCopyService } from './scheduling/weekCopyService';
 import { ClientCredentials } from './roster/clientCredentials';
 import { DepartmentApi } from './roster/departments';
 import { InternDatabaseRoster } from './roster/internDatabase';
@@ -281,6 +282,12 @@ export class App {
 
   publishService(): PublishService {
     return this.once('publishService', () => new PublishService(this.unitOfWork(), this.clock(), this.directory()));
+  }
+
+  weekCopies(): WeekCopyService {
+    return this.once('weekCopies', () => new WeekCopyService(
+      this.shifts(), this.directory(), this.conflictContext(), this.settings(), this.unitOfWork(),
+    ));
   }
 
   scheduleService(): ScheduleService {
