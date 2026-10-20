@@ -19,6 +19,13 @@ export interface AccessGuard {
 
 export type Logger = (line: string) => void;
 
+/** Backlog item 10. take() returns null when the call may go ahead, otherwise the seconds to wait. */
+export interface WriteLimiter {
+  take(bucket: string): Promise<number | null>;
+}
+
+const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
 /** Contract SS-4: reuse the caller's id when it is safe to echo, otherwise mint one. */
 export function correlationIdFor(request: Request): string {
   const supplied = request.headers.get('x-correlation-id')?.trim() ?? '';
@@ -72,7 +79,24 @@ export class Kernel {
     private readonly router: Router,
     private readonly guard: AccessGuard,
     private readonly log: Logger,
+    private readonly limiter: WriteLimiter | null = null,
   ) {}
+
+  /** Every signed-in caller gets one bucket for changes. Cron and public routes have no principal and are not limited. */
+  private async limit(method: string, principal: Principal | null): Promise<void> {
+    if (!this.limiter || !principal || !WRITES.has(method)) return;
+    let wait: number | null;
+    try {
+      wait = await this.limiter.take(`${principal.kind}:${principal.subject}`);
+    } catch (error) {
+      // Fail open: a limiter problem must not block work; the write itself will report a database outage.
+      this.log(`[planning-api] rate limiter failed: ${redactAddresses(error instanceof Error ? error.message : String(error))}`);
+      return;
+    }
+    if (wait !== null) {
+      throw new HttpError(429, 'RATE_LIMITED', `Too many changes in a short time. Try again in ${wait} seconds.`, { retry_after_seconds: wait }, { 'Retry-After': String(wait) });
+    }
+  }
 
   handle(request: Request): Promise<Response> {
     const cid = correlationIdFor(request);
@@ -88,6 +112,7 @@ export class Kernel {
         const { route, params } = this.router.match(method, path);
         const access = await this.guard.check(route, request);
         refreshed = access.cookies;
+        await this.limit(method, access.principal);
         let body: Promise<Record<string, unknown>> | null = null;
         response = await route.handler({
           request,

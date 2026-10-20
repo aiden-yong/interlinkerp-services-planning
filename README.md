@@ -28,6 +28,10 @@ Edit `src/server/db/schema.ts`, run `npm run db:generate`, read the new SQL in `
 4. Turn off Vercel Deployment Protection for Production (or exempt `/health` and `/openapi.json`); the gateway must reach both.
 5. Deploy, then register the base URL with the gateway and run its `/conformance` check.
 
+## Changes after 0.2.0 (not yet released)
+Apply the new migrations to the production database BEFORE deploying: `DATABASE_URL='<pooled url>' npm run db:migrate`. Locally, run `npm run db:migrate`.
+- `0002` adds `rate_limits` (each person or program may make 60 changes in a burst, then one a second; over that they get `429` with `Retry-After`) and `job_runs` (one delivery sweep per 30 seconds across all instances). If the code is deployed first, both features fail open and log a line until the migration runs.
+
 ## Upgrading to 0.2.0 (M2)
 Do these in order:
 1. Apply the new migration to the production database BEFORE deploying the new code: `DATABASE_URL='<pooled url>' npm run db:migrate`. After merging, also run `npm run db:migrate` on your local dev database.

@@ -143,6 +143,34 @@ describe('Kernel', () => {
     });
   });
 
+  describe('write rate limit (backlog item 10)', () => {
+    const signedIn: AccessGuard = { check: async () => ({ principal: { kind: 'person', subject: 'sub-1' } as Principal, cookies: [] }) };
+    const routes = () => {
+      const r = new Router();
+      r.add('GET', '/x', 'person', 'Read', () => json(200, {}));
+      r.add('POST', '/x', 'person', 'Write', () => json(201, {}));
+      return r;
+    };
+
+    it('refuses a write over the limit with 429 and Retry-After, per caller', async () => {
+      const buckets: string[] = [];
+      const limiter = { take: async (bucket: string) => (buckets.push(bucket), 7) };
+      const response = await new Kernel(routes(), signedIn, () => {}, limiter).handle(req('/x', { method: 'POST' }));
+      expect(response.status).toBe(429);
+      expect(response.headers.get('Retry-After')).toBe('7');
+      expect((await response.json()).error).toMatchObject({ code: 'RATE_LIMITED', details: { retry_after_seconds: 7 } });
+      expect(buckets).toEqual(['person:sub-1']);
+    });
+
+    it('never limits reads, and lets writes through when the limiter fails', async () => {
+      const logged: string[] = [];
+      const broken = { take: async (): Promise<number | null> => { throw new Error('db down'); } };
+      expect((await new Kernel(routes(), signedIn, () => {}, { take: async () => 7 }).handle(req('/x'))).status).toBe(200);
+      expect((await new Kernel(routes(), signedIn, (l) => logged.push(l), broken).handle(req('/x', { method: 'POST' }))).status).toBe(201);
+      expect(logged[0]).toContain('rate limiter failed: db down');
+    });
+  });
+
   describe('request body cap', () => {
     const echo = () => {
       const r = new Router();

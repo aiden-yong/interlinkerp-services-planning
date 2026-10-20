@@ -22,6 +22,8 @@ export class DeliveryTrigger {
     private readonly clock: Clock,
     private readonly log: Logger,
     private readonly minGapMs = MIN_GAP_MS,
+    /** Backlog item 30: asks every instance's shared record whether a sweep may start; resolves false to skip. */
+    private readonly claim: ((now: Date, minGapMs: number) => Promise<boolean>) | null = null,
   ) {}
 
   noteBadges(touched: Touched): void {
@@ -53,7 +55,16 @@ export class DeliveryTrigger {
     const now = this.clock.now().getTime();
     if (now - this.lastStart < this.minGapMs) return Promise.resolve();
     this.lastStart = now;
-    this.running = this.delivery.deliverDue()
+    const run = this.claim
+      ? this.claim(new Date(now), this.minGapMs)
+        .catch((error: unknown) => {
+          // Fail open: without the shared record this instance still sweeps (SKIP LOCKED keeps that safe), as before.
+          this.log(`[delivery] shared throttle unavailable: ${message(error)}`);
+          return true;
+        })
+        .then((claimed) => (claimed ? this.delivery.deliverDue() : undefined))
+      : this.delivery.deliverDue();
+    this.running = run
       .then(() => undefined, (error: unknown) => this.log(`[delivery] trigger failed: ${message(error)}`))
       .finally(() => {
         this.running = null;

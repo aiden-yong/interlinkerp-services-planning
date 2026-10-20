@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
-  bigint, bigserial, boolean, char, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid, varchar,
+  bigint, bigserial, boolean, char, check, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid, varchar,
 } from 'drizzle-orm/pg-core';
 
 export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
@@ -188,3 +188,18 @@ export const notifications = pgTable('notifications', {
   uniqueIndex('notifications_outbox_ref_key').on(t.organisationId, t.outboxId, t.recipientRef).where(sql`${t.recipientRef} is not null`),
   uniqueIndex('notifications_outbox_email_key').on(t.organisationId, t.outboxId, t.recipientEmail).where(sql`${t.recipientEmail} is not null`),
 ]);
+
+/** Backlog item 10: one token bucket per caller for write requests, shared by every server instance. */
+export const rateLimits = pgTable('rate_limits', {
+  organisationId: organisationId(),
+  bucket: varchar('bucket', { length: 200 }).notNull(),
+  tokens: doublePrecision('tokens').notNull(),
+  updatedAt: instant('updated_at').notNull(),
+}, (t) => [primaryKey({ columns: [t.organisationId, t.bucket] })]);
+
+/** Backlog item 30: when a background job last started, so every instance shares one throttle. */
+export const jobRuns = pgTable('job_runs', {
+  organisationId: organisationId(),
+  job: varchar('job', { length: 40 }).notNull(),
+  startedAt: instant('started_at').notNull(),
+}, (t) => [primaryKey({ columns: [t.organisationId, t.job] })]);

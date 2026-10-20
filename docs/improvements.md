@@ -81,10 +81,9 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 
 ## P1: Soon after go-live
 
-### 10. Rate-limit write endpoints
+### 10. Rate-limit write endpoints (done 2026-10-20)
 - **Area:** Security
-- **Why:** Claims, give-ups, notification reads and publications have no rate limit. A single script can flood the outbox and the mail quota.
-- **Fix:** Add a per-user token bucket, for example in Postgres or Upstash, that returns `429` with `Retry-After`. Apply it to `POST`, `PATCH` and `DELETE` requests.
+- **Done:** Every `POST`, `PUT`, `PATCH` and `DELETE` from a signed-in person or program takes a token from a Postgres bucket (`rate_limits`, migration `0002`). The limit is a burst of 60, then one a second. Over it, the caller gets `429 RATE_LIMITED` with `Retry-After`. Crons and public routes are not limited. If the limiter fails, it lets the request through and logs a line.
 - **Effort:** M
 
 ### 11. Remove email addresses from framework error logs (done 2026-10-20)
@@ -229,10 +228,9 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Fix:** Add a per-person setting for each notice type: in-app plus email, or in-app only.
 - **Effort:** M
 
-### 30. Shared delivery throttle
+### 30. Shared delivery throttle (done 2026-10-20)
 - **Area:** Performance
-- **Why:** The 30-second throttle in `DeliveryTrigger` is per server instance. With several instances running, sweeps happen more often than intended. They are safe because of `SKIP LOCKED`, but wasteful.
-- **Fix:** Keep a "last swept" timestamp in Postgres and claim it with a conditional `UPDATE`.
+- **Done:** `DeliveryTrigger` claims the `delivery` row in `job_runs` with one conditional upsert, so all instances together sweep at most once per 30 seconds. If the table cannot be read, the instance sweeps anyway, as before.
 - **Effort:** S
 
 ### 31. Re-check the narrow races the reviews noted
