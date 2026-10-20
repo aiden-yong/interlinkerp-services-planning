@@ -34,7 +34,7 @@ Browser tests (Playwright) cover four flows: publish a week, claim an open shift
 Apply the new migrations to the production database BEFORE deploying: `DATABASE_URL='<pooled url>' npm run db:migrate`. Locally, run `npm run db:migrate`.
 - `0002` adds `rate_limits` (each person or program may make 60 changes in a burst, then one a second; over that they get `429` with `Retry-After`) and `job_runs` (one delivery sweep per 30 seconds across all instances). If the code is deployed first, both features fail open and log a line until the migration runs.
 - `0003` adds `email_opt_outs`: people can turn email off per notice type from "Email settings" in the bell. In-app notices always arrive.
-- The daily notifications cron also deletes read notices older than 90 days, finished outbox rows older than 30 days and idle rate-limit buckets. Its response now includes `pruned` counts.
+- The daily notifications cron also deletes read notices older than 90 days, finished outbox rows older than 30 days and idle rate-limit buckets. Its response now includes `pruned` counts and `alerts`. Each alert is also logged as a line starting with `[alert]` (failed emails, undeliverable notices, a directory older than 48 hours), so log alerts can match it.
 
 ## Upgrading to 0.2.0 (M2)
 Do these in order:

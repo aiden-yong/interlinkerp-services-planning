@@ -65,16 +65,10 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
   - Decide between Vercel Pro and Hobby for a company ERP.
 - **Effort:** S
 
-### 9. Monitoring and alerts
+### 9. Monitoring and alerts (check done 2026-10-20; alert service still to choose)
 - **Area:** Operations
-- **Why:** Failures are currently invisible:
-  - Failed emails only record `last_error` on the outbox row.
-  - Cron failures are visible only in Vercel's logs.
-- **Fix:** Add both of these:
-  - An error tracker, or Vercel log drains with alerts.
-  - A daily check that raises an alert when either of these is true:
-    - Outbox rows are stuck at `email_attempts >= 5`.
-    - `directory.lastFetchedAt` is more than 48 hours old.
+- **Done:** The daily notifications cron runs `OpsCheck` and logs one `[alert] ...` line for each problem. It checks for emails that failed for good, notices that could not be delivered (both in the last day; skipped emails do not count), and a directory not refreshed for 48 hours. The cron response lists the same alerts.
+- **Still to do (yours):** choose where alerts go. For example, a Vercel log drain or an error tracker, with a rule that matches `[alert]` and also flags a failed cron run. No code change is needed.
 - **Effort:** M
 
 ---
