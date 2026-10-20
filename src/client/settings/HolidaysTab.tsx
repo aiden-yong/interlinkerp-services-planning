@@ -6,6 +6,7 @@ import { useFeedback } from '../feedback';
 import { todayIn } from '../schedule/tz';
 import type { Holiday, Me } from '../types';
 import { describeError, useBusy, useLoad } from './common';
+import { FieldError, FormError, invalid } from '../fields';
 
 const FIELDS = ['date', 'name'];
 
@@ -79,12 +80,12 @@ export function HolidaysTab({ me }: { me: Me }) {
         <button type="button" disabled={busy} onClick={sync}>Load public holidays</button>
         <span className="spacer" />
         <form className="inline" onSubmit={add}>
-          <label>Date<input type="date" required value={date} onChange={(e) => setDate(e.target.value)} />{fe.date && <span className="field-error">{fe.date}</span>}</label>
-          <label>Name<input required maxLength={160} value={name} onChange={(e) => setName(e.target.value)} />{fe.name && <span className="field-error">{fe.name}</span>}</label>
+          <label>Date<input {...invalid(fe.date, 'holiday-date-error')} type="date" required value={date} onChange={(e) => setDate(e.target.value)} /><FieldError id="holiday-date-error" message={fe.date} /></label>
+          <label>Name<input {...invalid(fe.name, 'holiday-name-error')} required maxLength={160} value={name} onChange={(e) => setName(e.target.value)} /><FieldError id="holiday-name-error" message={fe.name} /></label>
           <button className="primary" disabled={busy}>Add holiday</button>
         </form>
       </div>
-      {(problem || error) && <p className="form-error">{problem || error}</p>}
+      <FormError message={problem || error} />
       <div className="table-wrap">
         <table>
           <thead><tr><th>Date</th><th>Name</th><th>Source</th><th /></tr></thead>

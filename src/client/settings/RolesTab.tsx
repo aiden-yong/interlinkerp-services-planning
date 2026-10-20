@@ -4,6 +4,7 @@ import { type FormEvent, useState } from 'react';
 import { api, ApiError } from '../api';
 import type { Role } from '../types';
 import { describeError, useBusy, useLoad } from './common';
+import { FieldError, FormError, invalid } from '../fields';
 
 const FIELDS = ['name', 'color'];
 
@@ -32,11 +33,11 @@ function RoleRow({ role, onDone }: { role: Role; onDone: () => Promise<void> }) 
   return (
     <tr>
       <td>
-        <input aria-label="Role name" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
-        {fe.name && <div className="field-error">{fe.name}</div>}
-        {problem && <div className="field-error">{problem}</div>}
+        <input {...invalid(fe.name, `role-${role.id}-name-error`)} aria-label="Role name" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />
+        <FieldError id={`role-${role.id}-name-error`} message={fe.name} as="div" />
+        <FieldError id={`role-${role.id}-problem-error`} message={problem} as="div" />
       </td>
-      <td><input type="color" aria-label="Role colour" value={color} onChange={(e) => setColor(e.target.value)} />{fe.color && <div className="field-error">{fe.color}</div>}</td>
+      <td><input {...invalid(fe.color, `role-${role.id}-color-error`)} type="color" aria-label="Role colour" value={color} onChange={(e) => setColor(e.target.value)} /><FieldError id={`role-${role.id}-color-error`} message={fe.color} as="div" /></td>
       <td>{role.archived ? <span className="muted">Archived</span> : 'Active'}</td>
       <td className="row-actions">
         <button type="button" disabled={busy} onClick={() => patch({ name, color })}>Save</button>
@@ -74,12 +75,12 @@ export function RolesTab() {
   return (
     <>
       <form className="panel-head" onSubmit={add}>
-        <label>New role<input required maxLength={80} placeholder="Technician" value={name} onChange={(e) => setName(e.target.value)} />
-          {fe.name && <span className="field-error">{fe.name}</span>}</label>
-        <label>Colour<input type="color" value={color} onChange={(e) => setColor(e.target.value)} />{fe.color && <span className="field-error">{fe.color}</span>}</label>
+        <label>New role<input {...invalid(fe.name, 'new-role-name-error')} required maxLength={80} placeholder="Technician" value={name} onChange={(e) => setName(e.target.value)} />
+          <FieldError id="new-role-name-error" message={fe.name} /></label>
+        <label>Colour<input {...invalid(fe.color, 'new-role-color-error')} type="color" value={color} onChange={(e) => setColor(e.target.value)} /><FieldError id="new-role-color-error" message={fe.color} /></label>
         <button className="primary" disabled={busy}>Add role</button>
       </form>
-      {(problem || error) && <p className="form-error">{problem || error}</p>}
+      <FormError message={problem || error} />
       <div className="table-wrap">
         <table>
           <thead><tr><th>Name</th><th>Colour</th><th>Status</th><th /></tr></thead>

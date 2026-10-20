@@ -5,6 +5,7 @@ import { api, ApiError } from '../api';
 import { Modal, useFeedback } from '../feedback';
 import type { SchedulePayload, Shift } from '../types';
 import { FIELD_FOR, formToBody, saveShift, STALE_MESSAGE, type ShiftForm } from './shiftForm';
+import { FieldError, FormError, invalid } from '../fields';
 
 interface Props {
   data: SchedulePayload;
@@ -126,7 +127,8 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
     });
   }
 
-  const field = (name: keyof ShiftForm) => errors[name] && <span className="field-error">{errors[name]}</span>;
+  const field = (name: keyof ShiftForm) => <FieldError id={`shift-${name}-error`} message={errors[name]} />;
+  const aria = (name: keyof ShiftForm) => invalid(errors[name], `shift-${name}-error`);
 
   return (
     <Modal title={shift ? 'Edit shift' : 'New shift'} onClose={onClose}>
@@ -134,27 +136,27 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
         {shift && shift.conflicts.length > 0 && <ul className="form-error">{shift.conflicts.map((c) => <li key={c.message}>{c.message}</li>)}</ul>}
         <div className="form-grid">
           <label className="wide">Employee
-            <select value={form.employee_ref} onChange={(e) => changeEmployee(e.target.value)}>
+            <select {...aria('employee_ref')} value={form.employee_ref} onChange={(e) => changeEmployee(e.target.value)}>
               <option value="">Open shift (nobody yet)</option>
               {data.employees.filter((e) => e.on_roster || e.employee_ref === initial.employee_ref).map((e) => <option key={e.employee_ref} value={e.employee_ref}>{e.name}</option>)}
             </select>{field('employee_ref')}
           </label>
           <label className="wide">Role
-            <select value={form.role_id} onChange={(e) => set({ role_id: e.target.value })}>
+            <select {...aria('role_id')} value={form.role_id} onChange={(e) => set({ role_id: e.target.value })}>
               <option value="">No role</option>
               {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>{field('role_id')}
           </label>
           <label>Start date<input type="date" required value={form.start_date} onChange={(e) => set({ start_date: e.target.value })} /></label>
-          <label>Start time<input type="time" required value={form.start_time} onChange={(e) => set({ start_time: e.target.value })} />{field('start_time')}</label>
+          <label>Start time<input {...aria('start_time')} type="time" required value={form.start_time} onChange={(e) => set({ start_time: e.target.value })} />{field('start_time')}</label>
           <label>End date<input type="date" required value={form.end_date} onChange={(e) => set({ end_date: e.target.value })} /></label>
-          <label>End time<input type="time" required value={form.end_time} onChange={(e) => set({ end_time: e.target.value })} />{field('end_time')}</label>
-          <label>Break (minutes)<input type="number" min={0} max={1440} step={5} value={form.break_minutes} onChange={(e) => set({ break_minutes: e.target.value })} />{field('break_minutes')}</label>
-          <label>Allocated %<input type="number" min={1} max={100} value={form.allocated_percent} onChange={(e) => set({ allocated_percent: e.target.value })} />{field('allocated_percent')}</label>
-          <label className="wide">Note for the employee<textarea rows={2} maxLength={2000} value={form.note} onChange={(e) => set({ note: e.target.value })} />{field('note')}</label>
+          <label>End time<input {...aria('end_time')} type="time" required value={form.end_time} onChange={(e) => set({ end_time: e.target.value })} />{field('end_time')}</label>
+          <label>Break (minutes)<input {...aria('break_minutes')} type="number" min={0} max={1440} step={5} value={form.break_minutes} onChange={(e) => set({ break_minutes: e.target.value })} />{field('break_minutes')}</label>
+          <label>Allocated %<input {...aria('allocated_percent')} type="number" min={1} max={100} value={form.allocated_percent} onChange={(e) => set({ allocated_percent: e.target.value })} />{field('allocated_percent')}</label>
+          <label className="wide">Note for the employee<textarea {...aria('note')} rows={2} maxLength={2000} value={form.note} onChange={(e) => set({ note: e.target.value })} />{field('note')}</label>
         </div>
         <p className="muted">Times are in {zone}.</p>
-        {message && <p className="form-error">{message}</p>}
+        <FormError message={message} />
         <div className="actions">
           {shift && <><button type="button" className="danger" disabled={busy} onClick={remove}>Delete</button><button type="button" disabled={busy} onClick={duplicate}>Duplicate</button>
             {shift.state === 'draft' && <button type="button" disabled={busy} onClick={publish}>Publish</button>}<span className="spacer" /></>}

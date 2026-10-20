@@ -12,3 +12,4 @@
 .bell-panel li.unread button { background: var(--accent-soft); }
 .bell-panel li.unread button:hover:not(:disabled) { background: var(--fill-hover); }
 .bell-body { display: block; white-space: pre-line; font-size: 0.85rem; color: var(--muted); }
+.bell-more { display: block; width: 100%; margin-top: 0.25rem; }

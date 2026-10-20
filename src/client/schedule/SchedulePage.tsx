@@ -133,7 +133,7 @@ export function SchedulePage({ me }: { me: Me }) {
         <input type="search" aria-label="Find employee" placeholder="Find employee" value={filters.name} onChange={(e) => set({ name: e.target.value })} />
       </div>
       {data?.directory_stale && <p className="notice">Employee names may be out of date because the roster could not be refreshed. Planning still works.</p>}
-      {error && <p className="form-error">{error}</p>}
+      {error && <p role="alert" className="form-error">{error}</p>}
       {data ? (
         <Board
           data={data}

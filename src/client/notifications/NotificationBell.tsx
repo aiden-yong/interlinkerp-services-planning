@@ -8,10 +8,15 @@ import type { NotificationItem, NotificationsPayload } from '../types';
 import { unreadLabel } from './inbox';
 
 const POLL_MS = 60_000;
+/** The server's default page size for /api/notifications. */
+const PAGE = 50;
 
 /** FR-NTF-04 in-app: a bell with the unread count and a panel of recent notices. Failing to load never breaks the page. */
 export function NotificationBell() {
   const [data, setData] = useState<NotificationsPayload | null>(null);
+  /** Older pages loaded with "Load older" (backlog item 27); dropped whenever the newest page is reloaded after a change. */
+  const [older, setOlder] = useState<NotificationItem[]>([]);
+  const [olderDone, setOlderDone] = useState(false);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -59,7 +64,23 @@ export function NotificationBell() {
     } catch {
       // The reload below shows the true state.
     }
+    setOlder([]);
+    setOlderDone(false);
     await load();
+  }
+
+  const shown = [...(data?.notifications ?? []), ...older.filter((o) => !data?.notifications.some((n) => n.id === o.id))];
+
+  async function loadOlder() {
+    const oldest = shown.at(-1);
+    if (!oldest) return;
+    try {
+      const page = await api<NotificationsPayload>('GET', `/api/notifications?before=${oldest.id}`);
+      setOlder((have) => [...have, ...page.notifications]);
+      if (page.notifications.length < PAGE) setOlderDone(true);
+    } catch {
+      // Same as the bell itself: a failed load changes nothing.
+    }
   }
 
   async function openItem(item: NotificationItem) {
@@ -82,9 +103,9 @@ export function NotificationBell() {
             <strong>Notifications</strong>
             {unread > 0 && <button type="button" onClick={() => void markRead({ all: true })}>Mark all read</button>}
           </div>
-          {data && data.notifications.length === 0 && <p className="muted">Nothing yet.</p>}
+          {data && shown.length === 0 && <p className="muted">Nothing yet.</p>}
           <ul>
-            {data?.notifications.map((n) => (
+            {shown.map((n) => (
               <li key={n.id} className={n.read_at ? 'read' : 'unread'}>
                 <button type="button" onClick={() => void openItem(n)}>
                   <strong>{n.title}</strong>
@@ -93,6 +114,9 @@ export function NotificationBell() {
               </li>
             ))}
           </ul>
+          {data && data.notifications.length >= PAGE && !olderDone && (
+            <button type="button" className="bell-more" onClick={() => void loadOlder()}>Load older</button>
+          )}
         </div>
       )}
     </div>

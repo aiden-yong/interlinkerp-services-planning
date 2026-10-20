@@ -52,7 +52,7 @@ export function MyPlanningPage({ me }: { me: Me }) {
         <Stepper unit="week" nowLabel="This week" onStep={(d) => setAnchor(step('week', anchor, d))} onNow={() => setAnchor(todayIn(zone))} />
         <h1 className="period">{periodLabel(week)}</h1>
       </div>
-      {error && <p className="form-error">{error}</p>}
+      {error && <p role="alert" className="form-error">{error}</p>}
       {data && data.shifts.length === 0 && <p className="empty">No published shifts this week.</p>}
       {data && data.shifts.length > 0 && (
         <>

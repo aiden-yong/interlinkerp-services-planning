@@ -6,6 +6,7 @@ import { Modal, useFeedback } from '../feedback';
 import type { EmployeeProfile, Role, Weekday, WorkingHoursMap } from '../types';
 import { describeError, useBusy, useLoad } from './common';
 import { formatRanges, readWorkingHours, WEEKDAYS, weeklyHours } from './workingHoursInput';
+import { FieldError, FormError, invalid } from '../fields';
 
 const FIELDS = ['role_ids', 'default_role_id', 'timezone', 'working_hours'];
 
@@ -73,25 +74,25 @@ function Editor({ employee, roles, onClose, onSaved }: { employee: EmployeeProfi
             </label>
           ))}
           {offered.length === 0 && <p className="muted">Create roles first.</p>}
-          {fe.role_ids && <p className="field-error">{fe.role_ids}</p>}
+          <FieldError id="employee-role_ids-error" message={fe.role_ids} as="p" />
         </fieldset>
         <div className="form-grid">
           <label>Default role
-            <select value={defaultRoleId} onChange={(e) => setDefaultRoleId(e.target.value)}>
+            <select {...invalid(fe.default_role_id, 'employee-default_role_id-error')} value={defaultRoleId} onChange={(e) => setDefaultRoleId(e.target.value)}>
               <option value="">None</option>
               {chosen.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
-            {fe.default_role_id && <span className="field-error">{fe.default_role_id}</span>}
+            <FieldError id="employee-default_role_id-error" message={fe.default_role_id} />
           </label>
-          <label>Time zone (blank = organisation)<input value={timezone} placeholder={employee.effective_timezone} onChange={(e) => setTimezone(e.target.value)} />
-            {fe.timezone && <span className="field-error">{fe.timezone}</span>}</label>
+          <label>Time zone (blank = organisation)<input {...invalid(fe.timezone, 'employee-timezone-error')} value={timezone} placeholder={employee.effective_timezone} onChange={(e) => setTimezone(e.target.value)} />
+            <FieldError id="employee-timezone-error" message={fe.timezone} /></label>
           <label className="wide check"><input type="checkbox" checked={flexible} onChange={(e) => setFlexible(e.target.checked)} /> Flexible hours (no fixed working hours)</label>
           {!flexible && WEEKDAYS.map(([day, label]) => (
             <label key={day}>{label}<input placeholder="09:00-13:00, 14:00-18:00" value={hours[day]} onChange={(e) => setHours({ ...hours, [day]: e.target.value })} /></label>
           ))}
-          {!flexible && fe.working_hours && <p className="wide field-error">{fe.working_hours}</p>}
+          <FieldError id="employee-working_hours-error" message={!flexible ? fe.working_hours : null} as="p" className="wide" />
         </div>
-        {problem && <p className="form-error">{problem}</p>}
+        <FormError message={problem} />
         <div className="actions"><button type="button" onClick={onClose}>Cancel</button><button className="primary" disabled={busy}>Save</button></div>
       </form>
     </Modal>
@@ -104,7 +105,7 @@ export function EmployeesTab() {
     api<{ roles: Role[] }>('GET', '/api/roles?include_archived=true'),
   ]), []);
   const [editing, setEditing] = useState<EmployeeProfile | null>(null);
-  if (error) return <p className="form-error">{error}</p>;
+  if (error) return <p role="alert" className="form-error">{error}</p>;
   if (!data) return <p className="empty">Loading…</p>;
   const [{ employees }, { roles }] = data;
   const roleName = new Map(roles.map((r) => [r.id, r.name]));
