@@ -53,6 +53,8 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   return response;
 }
 
+// Backlog item 20: static files (anything later put in public/) skip the proxy, so they are served instead of getting
+// the JSON 404. Next.js needs this to be a literal; proxy.test.ts checks what it matches.
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon\.ico|.*\.(?:png|jpe?g|gif|svg|ico|webp|avif|txt|xml|css|js|map|woff2?|ttf|otf|webmanifest)$).*)'],
 };

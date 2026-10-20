@@ -7,7 +7,7 @@ export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   test: {
     projects: [
-      { extends: true, test: { name: 'unit', environment: 'node', include: ['src/server/**/*.test.ts'], exclude: ['src/server/**/*.int.test.ts'] } },
+      { extends: true, test: { name: 'unit', environment: 'node', include: ['src/server/**/*.test.ts', 'src/*.test.ts'], exclude: ['src/server/**/*.int.test.ts'] } },
       {
         extends: true,
         test: {
