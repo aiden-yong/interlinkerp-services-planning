@@ -147,16 +147,9 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Fix:** Use Playwright against `npm run dev`, with the DEV identity and a seeded test database. Cover four flows: publish a week, employee claims an open shift, give up then take over, and read and mark notices. Run the tests in CI.
 - **Effort:** M–L
 
-### 22. Stronger isolation and race tests
+### 22. Stronger isolation and race tests (done 2026-10-20)
 - **Area:** Testing
-- **Why:**
-  - No test proves that one organisation can never see another's data.
-  - The concurrency tests depend on timing, so they can pass by luck.
-  - The logging in `entry.ts` is untested.
-- **Fix:**
-  - Add a two-organisation fixture and assert that every repository filters by organisation.
-  - Make the race tests deterministic by holding a lock in one connection while the second request runs.
-  - Add tests for the `entry.ts` logging.
+- **Done:** `isolation.int.test.ts` fills one organisation through the API and checks that a second organisation, on the same database, sees nothing through any read endpoint. It also checks that it cannot edit, delete, publish or claim the first organisation's shifts. `src/server/test/races.ts` holds a row lock until every racer is blocked on it, so `races.int.test.ts` forces the worst interleaving every time. `entry.test.ts` covers the misconfiguration answer and the once-per-error logging.
 - **Effort:** M
 
 ### 23. Notification retention (done 2026-10-20)
@@ -216,13 +209,9 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Done:** `DeliveryTrigger` claims the `delivery` row in `job_runs` with one conditional upsert, so all instances together sweep at most once per 30 seconds. If the table cannot be read, the instance sweeps anyway, as before.
 - **Effort:** S
 
-### 31. Re-check the narrow races the reviews noted
+### 31. Re-check the narrow races the reviews noted (done 2026-10-20)
 - **Area:** Correctness
-- **Why:** Two narrow timing windows were noted and accepted:
-  - Restoring a notice can interleave with a delivery sweep in the same millisecond.
-  - A manager editing a shift can interleave with an employee claiming it.
-  The version guards prevent corrupt data, so the worst outcome is an unclear error or a notice delivered late.
-- **Fix:** Add deterministic tests (see item 22). Make the code change only if a test shows a real problem.
+- **Done:** The forced tests found one real problem. If the delivery sweep sent the "shift deleted" notice at the same moment a manager pressed Undo, the undo still succeeded, and the employee was told about a deletion that had been undone. The undo now returns `409 UNDO_EXPIRED` in that case and the shift stays deleted. A manager edit racing an employee claim was already safe: one wins and the other gets a clear `409`.
 - **Effort:** S
 
 ### 32. Identity switcher for local development
