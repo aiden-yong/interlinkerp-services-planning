@@ -4,6 +4,7 @@ import { MAX_EMAIL_ATTEMPTS, notificationOutbox, notifications } from '../db/sch
 import type { Logger } from '../http/kernel';
 import type { DirectoryRepository } from '../repo/directory';
 import type { ManagerRepository } from '../repo/managers';
+import type { EmailPreferences } from '../repo/emailPreferences';
 import type { NotificationRepository } from '../repo/notifications';
 import type { ProfileRepository } from '../repo/profiles';
 import type { SettingsRepository } from '../repo/settings';
@@ -59,6 +60,8 @@ export interface DeliveryDeps {
   mailer: Mailer;
   badges: BadgePublisher;
   inbox: NotificationRepository;
+  /** Backlog item 29: notice types people chose not to get by email. */
+  preferences: EmailPreferences;
   /** Read only when there is something to render, so building the service never needs PUBLIC_URL. */
   publicUrl: () => string;
 }
@@ -142,11 +145,17 @@ export class DeliveryService {
     });
     if (leased.length === 0) return 0;
     const byId = (id: number) => and(eq(notifications.organisationId, org), eq(notifications.id, id));
+    const addressOf = (n: (typeof leased)[number]) => (n.recipientRef ? `ref:${n.recipientRef}` : `email:${n.recipientEmail}`);
+    const muted = await this.d.preferences.optedOut(leased.map(addressOf));
     const refs = leased.flatMap((n) => (n.recipientRef ? [n.recipientRef] : []));
     const [addresses, onRoster] = await Promise.all([this.d.directory.emailsFor(refs), this.d.directory.present(refs)]);
     let sent = 0;
     let directoryHasEmails: boolean | undefined;
     for (const n of leased) {
+      if (muted.has(`${addressOf(n)}|${n.kind}`)) {
+        await db.update(notifications).set({ emailAttempts: MAX_EMAIL_ATTEMPTS, emailError: 'Skipped: email turned off for this notice type.' }).where(byId(n.id));
+        continue;
+      }
       const to = n.recipientEmail ?? (n.recipientRef ? addresses.get(n.recipientRef) : undefined);
       if (!to && n.recipientRef && !onRoster.has(n.recipientRef) && !(await this.d.directory.isEmpty())) {
         // Backlog item 14: someone who has left (no longer Onboarding, Active or Offboarding) keeps the in-app notice but gets no email.

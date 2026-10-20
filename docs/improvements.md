@@ -186,10 +186,9 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 
 ## P3: Later or nice to have
 
-### 29. Notification preferences
+### 29. Notification preferences (done 2026-10-20)
 - **Area:** UX
-- **Why:** Employees can't turn off email for a notice type.
-- **Fix:** Add a per-person setting for each notice type: in-app plus email, or in-app only.
+- **Done:** "Email settings" in the bell panel lists the notice types the person receives, employee and manager types separately. Each can be in-app plus email (the default) or in-app only. They are stored in `email_opt_outs` (migration `0003`) and served by `GET` and `PATCH /api/my/notification-preferences`. The email step marks a muted notice `Skipped: email turned off for this notice type.` and keeps the in-app notice.
 - **Effort:** M
 
 ### 30. Shared delivery throttle (done 2026-10-20)
