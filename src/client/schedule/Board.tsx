@@ -127,7 +127,7 @@ export function Board({ data, rows, period, onOpen, onCreate, onChange }: BoardP
     const [startTime, endTime] = [formatTime(shift.start_at, zone), formatTime(shift.end_at, zone)];
     const label = `${startTime}–${endTime}${role ? ` ${role.name}` : ''}`;
     const problems = shift.conflicts.map((c) => c.message);
-    const title = [label, shift.state === 'draft' ? 'Draft, not published' : 'Published', ...(shift.switch_requested ? ['Shift is up for switch'] : []), ...problems].join('\n');
+    const title = [label, shift.state === 'draft' ? 'Draft, not published' : 'Published', ...(shift.recurrence ? ['Repeats'] : []), ...(shift.switch_requested ? ['Shift is up for switch'] : []), ...problems].join('\n');
     const classes = ['shift', shift.state, problems.length && 'conflict', g.clippedStart && 'clipped-start', g.clippedEnd && 'clipped-end'].filter(Boolean).join(' ');
     return (
       <div
@@ -147,6 +147,7 @@ export function Board({ data, rows, period, onOpen, onCreate, onChange }: BoardP
         {/* A short bar drops the role, then the end time, rather than cutting a time in half. */}
         <span className="time">{startTime}<span className="end">–{endTime}</span></span>
         {shift.switch_requested && <span className="switch-mark" aria-hidden="true">⇄</span>}
+        {shift.recurrence && <span className="repeat-mark" aria-hidden="true">↻</span>}
         {role && <span className="role">{role.name}</span>}
         <span className="grip end" data-grip="resize-end" />
       </div>

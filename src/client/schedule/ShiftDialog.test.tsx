@@ -61,4 +61,25 @@ describe('ShiftDialog', () => {
     dialog(shift());
     expect(screen.getByText('Times are in Asia/Kuala_Lumpur.')).toBeTruthy();
   });
+
+  it('asks the scope and sends it when saving an edited series shift (note changed, not the pattern)', async () => {
+    const fetchMock = vi.fn(async (_path: string, init?: RequestInit) =>
+      new Response(JSON.stringify({ shift: shift() }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const seriesShift = shift({ recurrence: { id: 'r1', interval: 1, unit: 'week', ends: 'never', until_date: null, count: null, index: 0, detached: false } });
+    dialog(seriesShift);
+
+    fireEvent.change(screen.getByLabelText('Note for the employee'), { target: { value: 'Updated note' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    const question = await screen.findByRole('dialog', { name: 'Change a repeated shift' });
+    expect(question.querySelector('button')!.textContent).not.toBe(undefined);
+    fireEvent.click(Array.from(question.querySelectorAll('button')).find((b) => b.textContent === 'All')!);
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(true));
+    const patch = fetchMock.mock.calls.find(([, init]) => init?.method === 'PATCH')!;
+    const body = JSON.parse(String(patch[1]!.body));
+    expect(body.scope).toBe('all');
+    expect(body.note).toBe('Updated note');
+  });
 });

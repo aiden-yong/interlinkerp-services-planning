@@ -31,6 +31,8 @@ export interface Shift {
   conflicts: Conflict[];
   conflict_acknowledged: boolean;
   switch_requested: boolean;
+  recurrence: { id: string; interval: number; unit: 'day' | 'week' | 'month'; ends: 'never' | 'on' | 'after'; until_date: string | null; count: number | null; index: number | null; detached: boolean } | null;
+  copied_from: string | null;
 }
 
 export interface TimeSpan { start_at: string; end_at: string }

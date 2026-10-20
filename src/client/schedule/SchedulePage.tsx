@@ -57,7 +57,7 @@ export function SchedulePage({ me }: { me: Me }) {
     if (!data) return;
     const times = newShiftTimes(scale, atIso, data.period.timezone, period.from);
     const employee = data.employees.find((e) => e.employee_ref === rowRef);
-    setEditing({ shift: null, initial: shiftToForm({ employee_ref: rowRef, role_id: employee?.default_role_id ?? null, ...times, break_minutes: 0, allocated_percent: 100, note: null }, data.period.timezone) });
+    setEditing({ shift: null, initial: shiftToForm({ employee_ref: rowRef, role_id: employee?.default_role_id ?? null, ...times, break_minutes: 0, allocated_percent: 100, note: null, recurrence: null }, data.period.timezone) });
   }
 
   async function applyChange(shift: Shift, change: ShiftChange) {

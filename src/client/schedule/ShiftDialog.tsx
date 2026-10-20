@@ -4,7 +4,7 @@ import { type FormEvent, useState } from 'react';
 import { api, ApiError } from '../api';
 import { Modal, useFeedback } from '../feedback';
 import type { SchedulePayload, Shift } from '../types';
-import { FIELD_FOR, formToBody, saveShift, STALE_MESSAGE, type ShiftForm } from './shiftForm';
+import { FIELD_FOR, formToBody, saveShift, SCOPE_OPTIONS, STALE_MESSAGE, type ShiftForm } from './shiftForm';
 import { FieldError, FormError, invalid } from '../fields';
 
 interface Props {
@@ -16,7 +16,7 @@ interface Props {
 }
 
 export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
-  const { confirm, toast } = useFeedback();
+  const { confirm, choose, toast } = useFeedback();
   const [form, setForm] = useState<ShiftForm>(initial);
   const [errors, setErrors] = useState<Partial<Record<keyof ShiftForm, string>>>({});
   const [busy, setBusy] = useState(false);
@@ -66,7 +66,18 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
     }
     await guarded(async () => {
       try {
-        const body = { ...formToBody(form, zone), ...(shift ? { version: shift.version } : {}) };
+        const body: Record<string, unknown> = { ...formToBody(form, zone), ...(shift ? { version: shift.version } : {}) };
+        const patternChanged = shift !== null && (
+          form.repeat !== initial.repeat || form.repeat_interval !== initial.repeat_interval ||
+          form.repeat_ends !== initial.repeat_ends || form.repeat_until !== initial.repeat_until || form.repeat_count !== initial.repeat_count
+        );
+        if (shift !== null && !patternChanged) delete body.repeat;
+        if (shift !== null && shift.recurrence !== null) {
+          const offered = patternChanged ? SCOPE_OPTIONS.filter((o) => o.value !== 'this') : SCOPE_OPTIONS;
+          const scope = await choose('Change a repeated shift', [], offered);
+          if (scope === null) return;
+          body.scope = scope;
+        }
         const saved = await saveShift(shift ? 'PATCH' : 'POST', shift ? `/api/shifts/${shift.id}` : '/api/shifts', body, confirm, shift?.conflicts.map((c) => c.message));
         if (saved) await done(shift ? 'Shift saved.' : 'Shift created as a draft.');
       } catch (error) {
@@ -89,6 +100,28 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
   async function remove() {
     if (!shift) return;
     await guarded(async () => {
+      if (shift.recurrence !== null) {
+        const scope = await choose('Delete a repeated shift', [], SCOPE_OPTIONS);
+        if (scope === null) return;
+        if (scope === 'this') {
+          await api('DELETE', `/api/shifts/${shift.id}`);
+          await done('Shift deleted.', {
+            label: 'Undo',
+            run: async () => {
+              try {
+                await api('POST', '/api/shift-restorations', { shift_id: shift.id });
+                await onSaved();
+              } catch (error) {
+                toast((error as Error).message, undefined, 5000);
+              }
+            },
+          });
+          return;
+        }
+        const result = await api<{ deleted: number }>('DELETE', `/api/shifts/${shift.id}?scope=${scope}`);
+        await done(`Deleted ${result.deleted} shifts.`);
+        return;
+      }
       const lines = shift.state === 'published' ? ['The employee will be told unless you undo within 10 seconds.'] : [];
       if (!(await confirm('Delete this shift?', lines, 'Delete'))) return;
       await api('DELETE', `/api/shifts/${shift.id}`);
@@ -155,6 +188,39 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
           <label>Allocated %<input {...aria('allocated_percent')} type="number" min={1} max={100} value={form.allocated_percent} onChange={(e) => set({ allocated_percent: e.target.value })} />{field('allocated_percent')}</label>
           <label className="wide">Note for the employee<textarea {...aria('note')} rows={2} maxLength={2000} value={form.note} onChange={(e) => set({ note: e.target.value })} />{field('note')}</label>
         </div>
+        {(!shift || shift.recurrence !== null) && (
+          <fieldset className="form-grid">
+            <legend>Repeat</legend>
+            <label>Repeat
+              <select value={form.repeat} onChange={(e) => set({ repeat: e.target.value as ShiftForm['repeat'] })}>
+                <option value="">Does not repeat</option>
+                <option value="day">Days</option>
+                <option value="week">Weeks</option>
+                <option value="month">Months</option>
+              </select>
+            </label>
+            {form.repeat !== '' && (
+              <>
+                <label>Every
+                  <input type="number" min={1} max={99} value={form.repeat_interval} onChange={(e) => set({ repeat_interval: e.target.value })} />
+                </label>
+                <label>Ends
+                  <select value={form.repeat_ends} onChange={(e) => set({ repeat_ends: e.target.value as ShiftForm['repeat_ends'] })}>
+                    <option value="never">Never</option>
+                    <option value="on">On date</option>
+                    <option value="after">After N shifts</option>
+                  </select>
+                </label>
+                {form.repeat_ends === 'on' && (
+                  <label>Until<input type="date" value={form.repeat_until} onChange={(e) => set({ repeat_until: e.target.value })} /></label>
+                )}
+                {form.repeat_ends === 'after' && (
+                  <label>Shifts<input type="number" min={1} value={form.repeat_count} onChange={(e) => set({ repeat_count: e.target.value })} /></label>
+                )}
+              </>
+            )}
+          </fieldset>
+        )}
         <p className="muted">Times are in {zone}.</p>
         <FormError message={message} />
         <div className="actions">

@@ -12,7 +12,18 @@ export interface ShiftForm {
   break_minutes: string;
   allocated_percent: string;
   note: string;
+  repeat: '' | 'day' | 'week' | 'month';
+  repeat_interval: string;
+  repeat_ends: 'never' | 'on' | 'after';
+  repeat_until: string;
+  repeat_count: string;
 }
+
+export const SCOPE_OPTIONS = [
+  { value: 'this', label: 'This shift' },
+  { value: 'following', label: 'This and following' },
+  { value: 'all', label: 'All' },
+] as const;
 
 /** API error field -> form input. */
 export const FIELD_FOR: Record<string, keyof ShiftForm> = {
@@ -20,7 +31,7 @@ export const FIELD_FOR: Record<string, keyof ShiftForm> = {
   break_minutes: 'break_minutes', allocated_percent: 'allocated_percent', note: 'note',
 };
 
-type FormSource = Pick<Shift, 'employee_ref' | 'role_id' | 'start_at' | 'end_at' | 'break_minutes' | 'allocated_percent' | 'note'>;
+type FormSource = Pick<Shift, 'employee_ref' | 'role_id' | 'start_at' | 'end_at' | 'break_minutes' | 'allocated_percent' | 'note' | 'recurrence'>;
 
 export function shiftToForm(s: FormSource, zone: string): ShiftForm {
   const start = isoToWall(s.start_at, zone);
@@ -29,6 +40,11 @@ export function shiftToForm(s: FormSource, zone: string): ShiftForm {
     employee_ref: s.employee_ref ?? '', role_id: s.role_id ?? '',
     start_date: start.date, start_time: start.time, end_date: end.date, end_time: end.time,
     break_minutes: String(s.break_minutes), allocated_percent: String(s.allocated_percent), note: s.note ?? '',
+    repeat: s.recurrence ? s.recurrence.unit : '',
+    repeat_interval: s.recurrence ? String(s.recurrence.interval) : '1',
+    repeat_ends: s.recurrence ? s.recurrence.ends : 'never',
+    repeat_until: s.recurrence ? s.recurrence.until_date ?? '' : '',
+    repeat_count: s.recurrence && s.recurrence.count !== null ? String(s.recurrence.count) : '',
   };
 }
 
@@ -41,6 +57,15 @@ export function formToBody(f: ShiftForm, zone: string): Record<string, unknown> 
     break_minutes: Number(f.break_minutes || 0),
     allocated_percent: Number(f.allocated_percent || 100),
     note: f.note.trim() || null,
+    ...(f.repeat !== '' ? {
+      repeat: {
+        interval: Number(f.repeat_interval),
+        unit: f.repeat,
+        ends: f.repeat_ends,
+        ...(f.repeat_ends === 'on' ? { until_date: f.repeat_until } : {}),
+        ...(f.repeat_ends === 'after' ? { count: Number(f.repeat_count) } : {}),
+      },
+    } : {}),
   };
 }
 
