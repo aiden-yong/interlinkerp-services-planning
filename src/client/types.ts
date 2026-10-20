@@ -7,6 +7,8 @@ export interface Me {
   roster_status: 'found' | 'not_found' | 'failed';
   is_manager: boolean;
   timezone: string;
+  /** Local development only: show the identity picker (backlog item 32). */
+  dev_identity?: boolean;
   organisation_timezone: string;
 }
 

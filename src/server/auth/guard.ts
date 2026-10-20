@@ -66,7 +66,7 @@ export class GatewayAccessGuard implements AccessGuard {
   }
 
   private async person(request: Request): Promise<{ principal: Principal; cookies: string[] }> {
-    if (this.dev?.allows(request)) return { principal: await this.principalFor(this.dev.session), cookies: [] };
+    if (this.dev?.allows(request)) return { principal: await this.principalFor(this.dev.sessionFor(request)), cookies: [] };
 
     const session = this.sessions.decode(readCookies(request)[SESSION_COOKIE]);
     if (!session) throw HttpError.unauthorized('Sign in through the InterlinkERP gateway first.');

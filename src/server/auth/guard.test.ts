@@ -221,4 +221,15 @@ describe('GatewayAccessGuard', () => {
     expect((await rejection(guard({ dev }).check(route('person'), proxied))).status).toBe(401);
     expect((await rejection(guard({ dev }).check(route('person'), remoteHost))).status).toBe(401);
   });
+
+  it('acts as the persona chosen in the development picker (backlog item 32)', async () => {
+    const dev = new DevIdentity({ sid: 'dev', sub: 'dev:dev@example.com', email: 'dev@example.com', name: 'Dev', gatewayRole: 'admin', employeeRef: null, expiresAt: Number.MAX_SAFE_INTEGER });
+    const persona = Buffer.from(JSON.stringify({ email: 'ana@example.com', name: 'Ana Lim', role: 'user', ref: 'E1' })).toString('base64url');
+    const asAna = new Request('http://127.0.0.1:3000/api/x', { headers: { cookie: `planning_dev_as=${persona}` } });
+    const { principal } = await guard({ dev }).check(route('person'), asAna);
+    expect(principal).toMatchObject({ email: 'ana@example.com', employeeRef: 'E1', isManager: false });
+    expect((await rejection(guard({ dev }).check(route('manager'), asAna))).status).toBe(403);
+    const remote = new Request('http://planning.example.com/api/x', { headers: { cookie: `planning_dev_as=${persona}` } });
+    expect((await rejection(guard({ dev }).check(route('person'), remote))).status).toBe(401);
+  });
 });
