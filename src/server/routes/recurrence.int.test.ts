@@ -267,4 +267,15 @@ describe('recurring shifts', () => {
     expect(res.status, JSON.stringify(res.body)).toBe(422);
     expect(res.body.error.code).toBe('RECURRENCE_PATTERN_SCOPE');
   });
+
+  it('refuses a pattern change on an already-started shift, even for scope all', async () => {
+    const { body } = await createRepeating();
+    const shift1 = await atIndex(body.recurrence.id, 1);
+    h.clock.advance(7 * 24 * 3600); // -> 2026-01-08T02:00:00Z, an hour past shift1's own start (09:00 +08:00 = 01:00Z)
+    const res = await h.call('PATCH', `/api/shifts/${shift1.id}`, {
+      version: shift1.version, scope: 'all', repeat: { interval: 2, unit: 'week', ends: 'never' },
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(res.body.error.code).toBe('RECURRENCE_PATTERN_SCOPE');
+  });
 });

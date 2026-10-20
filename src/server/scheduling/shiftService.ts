@@ -130,9 +130,15 @@ export class ShiftService {
       const message = 'This shift is not part of a repeating series.';
       throw new HttpError(422, 'RECURRENCE_PATTERN_SCOPE', message, { scope: message });
     }
+    const now = this.clock.now();
+    if (repeat !== null && current.start <= now) {
+      // Keeps the pattern-change target always within firstNotStartedIndex's range (used by scope: 'all'), so
+      // splitSeries's old-series lastIndex bookkeeping can never land behind the index actually being reassigned out.
+      const message = "A repeated shift's pattern can only be changed starting from a shift that has not started yet.";
+      throw new HttpError(422, 'RECURRENCE_PATTERN_SCOPE', message, { scope: message });
+    }
 
     if (version !== current.version) throw stale();
-    const now = this.clock.now();
     const { shift, conflicts } = await this.guardConflicts(next, acknowledged, by, now);
     const saved = await this.unit.run(async (scope) => {
       const row = await scope.shifts.update(shift, current.version, now);
