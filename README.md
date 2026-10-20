@@ -31,6 +31,7 @@ Edit `src/server/db/schema.ts`, run `npm run db:generate`, read the new SQL in `
 ## Changes after 0.2.0 (not yet released)
 Apply the new migrations to the production database BEFORE deploying: `DATABASE_URL='<pooled url>' npm run db:migrate`. Locally, run `npm run db:migrate`.
 - `0002` adds `rate_limits` (each person or program may make 60 changes in a burst, then one a second; over that they get `429` with `Retry-After`) and `job_runs` (one delivery sweep per 30 seconds across all instances). If the code is deployed first, both features fail open and log a line until the migration runs.
+- The daily notifications cron also deletes read notices older than 90 days, finished outbox rows older than 30 days and idle rate-limit buckets. Its response now includes `pruned` counts.
 
 ## Upgrading to 0.2.0 (M2)
 Do these in order:

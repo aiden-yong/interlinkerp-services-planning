@@ -36,6 +36,20 @@ describe('inbox API', () => {
     expect((await h.call('POST', '/api/notification-reads', { ids: [managerNotice] })).body).toEqual({ marked: 0 });
   });
 
+  it('counts unread notices for many people at once, manager notices only for current managers (backlog item 24)', async () => {
+    await seed('E1', null, 'a');
+    await seed('E1', null, 'b');
+    await seed(null, 'ana@example.com', 'manager notice');
+    await seed('E2', null, 'c');
+    const counts = await h.app.notifications().unreadCounts([
+      { ref: 'E1', email: 'ana@example.com', isManager: true },
+      { ref: 'E1', email: 'ana@example.com', isManager: false },
+      { ref: 'E2', email: null, isManager: false },
+      { ref: null, email: 'nobody@example.com', isManager: true },
+    ]);
+    expect(counts).toEqual([3, 2, 1, 0]);
+  });
+
   it('marks chosen or all notices read, and never other people\'s', async () => {
     const mine = await seed('E1', null, 'one');
     await seed('E1', null, 'two');

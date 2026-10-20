@@ -159,41 +159,24 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
   - Add tests for the `entry.ts` logging.
 - **Effort:** M
 
-### 23. Notification retention
+### 23. Notification retention (done 2026-10-20)
 - **Area:** Performance and data minimisation
-- **Why:** The `notifications` and `outbox` tables grow forever.
-- **Fix:** Add a step to the daily cron that deletes read notifications older than 90 days, and delivered or expired outbox rows older than 30 days. Agree on the periods with the data owner.
+- **Done:** After delivering, the daily notifications cron deletes read notices older than 90 days, delivered or cancelled outbox rows older than 30 days, and rate-limit buckets idle for a day (`src/server/notifications/retention.ts`). Unread notices are kept. Still to do: confirm the periods with the data owner. They are one constant.
 - **Effort:** S
 
-### 24. Reduce repeated queries
+### 24. Reduce repeated queries (done 2026-10-20)
 - **Area:** Performance
-- **Why:**
-  - `pushBadges` reads unread counts one recipient at a time.
-  - `available()` re-runs eligibility for each shift.
-  - The directory refresh deletes and re-inserts every row, even when only a few changed.
-- **Fix:**
-  - Read the unread counts in a single grouped query.
-  - Use the bulk `eligibleShifts()` in `available()`.
-  - Change the directory refresh to an upsert plus a delete of the missing rows.
+- **Done:** `pushBadges` reads every unread count in two grouped queries (`unreadCounts`). The directory refresh updates rows in place and deletes only people who left. `available()` already used the bulk `eligibleShifts()`.
 - **Effort:** M
 
-### 25. Smaller schedule payload
+### 25. Smaller schedule payload (checked, no change)
 - **Area:** Performance (NFR-02)
-- **Why:** One week for 50 people is 165 KB, and a month is about 4× that.
-- **Fix:**
-  - Drop `working_intervals` when the client can work them out from the profile.
-  - Send role names once rather than with every shift.
-  - Confirm that Vercel compresses the response.
+- **Finding:** Role names are already sent once (shifts carry only `role_id`), and the shifts themselves are most of the payload. `working_intervals` is about a tenth of it, and working them out in the browser would mean shipping Luxon and duplicating server rules. Vercel compresses JSON responses automatically. When measuring production (item 15), confirm `content-encoding: br` or `gzip` on `/api/schedule`.
 - **Effort:** S–M
 
-### 26. More dependable email
+### 26. More dependable email (done 2026-10-20)
 - **Area:** Reliability
-- **Why:**
-  - Delivery is at least once, so a crash between sending and recording can send an email twice.
-  - Gmail SMTP is capped at about 500 messages a day (about 2,000 on Workspace).
-- **Fix:**
-  - Set a stable `Message-ID` for each outbox row, so mail clients merge duplicates.
-  - Before volume grows, move to a transactional provider such as SES, Postmark or Resend. `SMTP_URL` already allows this without code changes.
+- **Done:** Each email carries a stable `Message-ID` (`<notice-{id}@{public host}>`), so a resend after a crash shows up as the same message. Moving to a transactional provider (SES, Postmark, Resend) is your decision; it needs only a new `SMTP_URL`.
 - **Effort:** S
 
 ### 27. Accessibility

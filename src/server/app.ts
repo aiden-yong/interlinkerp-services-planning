@@ -43,6 +43,7 @@ import { type Clock, systemClock } from './support/clock';
 import { FetchHttpClient, type HttpClient } from './support/http';
 import { isTimezone } from './support/time';
 import { JobRuns } from './repo/jobRuns';
+import { Retention } from './notifications/retention';
 import { RateLimiter, type RateLimitPolicy, WRITE_LIMIT } from './repo/rateLimits';
 import { PageGate } from './web/pageGate';
 
@@ -215,6 +216,10 @@ export class App {
   deliveryTrigger(): DeliveryTrigger {
     return this.once('deliveryTrigger', () => new DeliveryTrigger(this.delivery(), this.clock(), this.log, MIN_GAP_MS,
       (now, gap) => this.jobRuns().claim('delivery', now, gap)));
+  }
+
+  retention(): Retention {
+    return this.once('retention', () => new Retention(this.database().db, this.organisationId()));
   }
 
   jobRuns(): JobRuns {

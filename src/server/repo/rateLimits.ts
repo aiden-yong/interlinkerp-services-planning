@@ -35,10 +35,4 @@ export class RateLimiter {
     const available = row ? Math.min(capacity, row.tokens + ((now.getTime() - row.updatedAt.getTime()) / 1000) * perSecond) : 0;
     return Math.max(1, Math.ceil((1 - available) / perSecond));
   }
-
-  /** Buckets untouched for a day are full again anyway; the daily cron removes them. */
-  async prune(olderThan: Date): Promise<number> {
-    const rows = await this.db.delete(rateLimits).where(and(eq(rateLimits.organisationId, this.org), sql`${rateLimits.updatedAt} < ${olderThan.toISOString()}::timestamptz`)).returning({ bucket: rateLimits.bucket });
-    return rows.length;
-  }
 }

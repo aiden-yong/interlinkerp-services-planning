@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, max, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, max, notInArray, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { employeeDirectory } from '../db/schema';
 
@@ -26,10 +26,20 @@ const COLUMNS = {
 export class DirectoryRepository {
   constructor(private readonly db: Db, private readonly org: string) {}
 
+  /** Makes the cache exactly `rows`: changed people are updated in place and people who left are removed (backlog item 24). */
   async replaceAll(rows: DirectoryRow[], fetchedAt: Date): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await tx.delete(employeeDirectory).where(eq(employeeDirectory.organisationId, this.org));
-      if (rows.length > 0) await tx.insert(employeeDirectory).values(rows.map((r) => ({ ...r, organisationId: this.org, fetchedAt })));
+      const refs = rows.map((r) => r.employeeRef);
+      await tx.delete(employeeDirectory).where(and(eq(employeeDirectory.organisationId, this.org), refs.length > 0 ? notInArray(employeeDirectory.employeeRef, refs) : undefined));
+      if (rows.length === 0) return;
+      await tx.insert(employeeDirectory).values(rows.map((r) => ({ ...r, organisationId: this.org, fetchedAt })))
+        .onConflictDoUpdate({
+          target: [employeeDirectory.organisationId, employeeDirectory.employeeRef],
+          set: {
+            displayName: sql`excluded.display_name`, photoUrl: sql`excluded.photo_url`, departmentId: sql`excluded.department_id`,
+            departmentName: sql`excluded.department_name`, status: sql`excluded.status`, email: sql`excluded.email`, fetchedAt: sql`excluded.fetched_at`,
+          },
+        });
     });
   }
 

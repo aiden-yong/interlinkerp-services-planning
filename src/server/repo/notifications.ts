@@ -42,6 +42,22 @@ export class NotificationRepository {
     return Number(row?.n ?? 0);
   }
 
+  /** Unread counts for many people in two grouped queries, in the order given (backlog item 24: badges). */
+  async unreadCounts(people: Recipient[]): Promise<number[]> {
+    const refs = [...new Set(people.flatMap((p) => (p.ref ? [p.ref] : [])))];
+    const emails = [...new Set(people.flatMap((p) => (p.email && p.isManager ? [p.email] : [])))];
+    const unread = and(eq(notifications.organisationId, this.org), isNull(notifications.readAt));
+    const [byRef, byEmail] = await Promise.all([
+      refs.length === 0 ? [] : this.db.select({ key: notifications.recipientRef, n: count() }).from(notifications)
+        .where(and(unread, inArray(notifications.recipientRef, refs))).groupBy(notifications.recipientRef),
+      emails.length === 0 ? [] : this.db.select({ key: notifications.recipientEmail, n: count() }).from(notifications)
+        .where(and(unread, inArray(notifications.recipientEmail, emails))).groupBy(notifications.recipientEmail),
+    ]);
+    const refCount = new Map(byRef.map((r) => [r.key, Number(r.n)]));
+    const emailCount = new Map(byEmail.map((r) => [r.key, Number(r.n)]));
+    return people.map((p) => (p.ref ? refCount.get(p.ref) ?? 0 : 0) + (p.email && p.isManager ? emailCount.get(p.email) ?? 0 : 0));
+  }
+
   /** ids = null marks everything. Only the person's own unread rows change. */
   async markRead(who: Recipient, ids: number[] | null, now: Date): Promise<number> {
     if (ids !== null && ids.length === 0) return 0;
