@@ -1,9 +1,10 @@
-import { and, eq, gt, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, isNull, lt, max, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { shifts } from '../db/schema';
 import { type ShiftFacts, shiftHours } from '../domain/allocation';
 import type { Conflict } from '../domain/conflicts';
 import { Interval } from '../domain/interval';
+import type { seriesToApi } from './recurrences';
 import { isUuid } from '../support/ids';
 import { iso } from '../support/time';
 
@@ -44,12 +45,13 @@ export function factsOf(s: ShiftRecord): ShiftFacts {
   return { id: s.id, employeeRef: s.employeeRef, roleId: s.roleId, interval: Interval.of(s.start, s.end), breakMinutes: s.breakMinutes, percent: s.percent };
 }
 
-export function shiftToApi(s: ShiftRecord, conflicts: Conflict[] = []) {
+export function shiftToApi(s: ShiftRecord, conflicts: Conflict[] = [], recurrence: ReturnType<typeof seriesToApi> | null = null) {
   return {
     id: s.id, employee_ref: s.employeeRef, role_id: s.roleId, start_at: iso(s.start), end_at: iso(s.end),
     break_minutes: s.breakMinutes, allocated_percent: s.percent, allocated_hours: shiftHours(factsOf(s)), note: s.note,
     state: s.state, published_at: s.publishedAt ? iso(s.publishedAt) : null, version: s.version,
     conflicts, conflict_acknowledged: s.ackAt !== null, switch_requested: s.switchRequestedAt !== null,
+    copied_from: s.copiedFrom, recurrence,
   };
 }
 
@@ -91,6 +93,25 @@ export class ShiftRepository {
       conflictAcknowledgedBy: s.ackBy, conflictAcknowledgedAt: s.ackAt, version: s.version, createdBy: s.createdBy, switchRequestedAt: s.switchRequestedAt, createdAt: now, updatedAt: now,
       recurrenceId: s.recurrenceId, recurrenceIndex: s.recurrenceIndex, recurrenceDetached: s.recurrenceDetached, copiedFrom: s.copiedFrom,
     });
+  }
+
+  /** Inserts a batch of series occurrences; a step whose (org, recurrence_id, recurrence_index) already exists (incl. soft-deleted, D4) is skipped. Returns the ids actually inserted. */
+  async insertMany(rows: ShiftRecord[], now: Date): Promise<string[]> {
+    if (rows.length === 0) return [];
+    const inserted = await this.db.insert(shifts).values(rows.map((s) => ({
+      id: s.id, organisationId: this.org, employeeRef: s.employeeRef, roleId: s.roleId, startAt: s.start, endAt: s.end,
+      breakMinutes: s.breakMinutes, allocatedPercent: s.percent, note: s.note, state: s.state, publishedAt: s.publishedAt,
+      conflictAcknowledgedBy: s.ackBy, conflictAcknowledgedAt: s.ackAt, version: s.version, createdBy: s.createdBy, switchRequestedAt: s.switchRequestedAt, createdAt: now, updatedAt: now,
+      recurrenceId: s.recurrenceId, recurrenceIndex: s.recurrenceIndex, recurrenceDetached: s.recurrenceDetached, copiedFrom: s.copiedFrom,
+    }))).onConflictDoNothing().returning({ id: shifts.id });
+    return inserted.map((r) => r.id);
+  }
+
+  /** Highest recurrence_index already used by this series, soft-deleted rows included (D4: a resume point, not a per-step check). */
+  async maxRecurrenceIndex(seriesId: string): Promise<number | null> {
+    const [row] = await this.db.select({ m: max(shifts.recurrenceIndex) }).from(shifts)
+      .where(and(eq(shifts.organisationId, this.org), eq(shifts.recurrenceId, seriesId)));
+    return row?.m ?? null;
   }
 
   /** Saves only if nobody else saved since `expectedVersion` (optimistic concurrency); bumps the version. Returns the saved row, or null when the shift changed or was deleted meanwhile. */

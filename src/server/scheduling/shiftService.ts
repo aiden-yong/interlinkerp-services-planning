@@ -13,6 +13,7 @@ import type { ShiftRecord, ShiftRepository } from '../repo/shifts';
 import type { Clock } from '../support/clock';
 import { iso } from '../support/time';
 import type { ConflictContext } from './conflictContext';
+import type { RecurrenceService } from './recurrenceService';
 import type { UnitOfWork, WriteScope } from './unitOfWork';
 
 export const MAX_DURATION_MS = 7 * 86_400_000;
@@ -36,9 +37,10 @@ export class ShiftService {
     private readonly settings: SettingsRepository,
     private readonly clock: Clock,
     private readonly unit: UnitOfWork,
+    private readonly recurrences: RecurrenceService,
   ) {}
 
-  async create(body: Record<string, unknown>, by: Principal): Promise<{ shift: ShiftRecord; conflicts: Conflict[] }> {
+  async create(body: Record<string, unknown>, by: Principal): Promise<{ shift: ShiftRecord; conflicts: Conflict[]; recurrence?: { id: string; created: number } }> {
     const input = new Input(body);
     if (input.has('duplicate_of')) return this.duplicate(input, by);
     const employeeRef = input.string('employee_ref', 64);
@@ -52,6 +54,7 @@ export class ShiftService {
     const percent = input.int('allocated_percent', 1, 100, 100)!;
     const note = input.string('note', 2000);
     const acknowledged = input.bool('acknowledge_conflicts');
+    const repeat = input.has('repeat') ? this.recurrences.parseRepeat(input, 'repeat') : null;
     validateTimes(input, start, end, breakMinutes);
     input.check();
 
@@ -59,8 +62,29 @@ export class ShiftService {
     const draft: ShiftRecord = {
       id: randomUUID(), employeeRef, roleId, start: start!, end: end!, breakMinutes, percent, note, state: 'draft', publishedAt: null,
       ackBy: null, ackAt: null, version: 1, createdBy: actorId(by), deletedAt: null, switchRequestedAt: null,
-      recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null,
+      recurrenceId: null, recurrenceIndex: repeat ? 0 : null, recurrenceDetached: false, copiedFrom: null,
     };
+
+    if (repeat) {
+      const zone = await this.settings.timezone();
+      const horizonMonths = (await this.settings.get()).recurrence_horizon_months;
+      const preview = await this.recurrences.previewConflicts(draft, repeat, zone, horizonMonths, now);
+      const flagged = preview.filter((p) => p.conflicts.length > 0);
+      if (flagged.length > 0 && !acknowledged) {
+        throw HttpError.conflict('SHIFT_CONFLICT', 'This shift breaks a planning rule. Send acknowledge_conflicts: true to save it anyway.', {
+          conflicts: preview.flatMap((p) => p.conflicts),
+          occurrences: flagged.map((p) => ({ date: p.date, conflicts: p.conflicts })),
+        });
+      }
+      const ack = flagged.length > 0 && acknowledged ? { by: actorId(by), at: now } : null;
+      const { shift, seriesId, created } = await this.unit.run(async (scope) => {
+        const result = await this.recurrences.createSeries(scope, draft, repeat, zone, horizonMonths, ack, now);
+        const inserted = (await scope.shifts.find(draft.id)) ?? (() => { throw new Error('The first shift of a new series was not found right after being saved.'); })();
+        return { shift: inserted, ...result };
+      });
+      return { shift, conflicts: preview[0]?.conflicts ?? [], recurrence: { id: seriesId, created } };
+    }
+
     const { shift, conflicts } = await this.guardConflicts(draft, acknowledged, by, now);
     await this.unit.run(({ shifts }) => shifts.insert(shift, now));
     return { shift, conflicts };

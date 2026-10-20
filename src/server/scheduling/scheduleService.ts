@@ -13,6 +13,7 @@ import { DIRECTORY_MAX_AGE_SECONDS, type DirectoryRefresher } from '../roster/re
 import type { Clock } from '../support/clock';
 import { iso, localDate, localMidnight, nextDay } from '../support/time';
 import { ConflictContext } from './conflictContext';
+import type { RecurrenceService } from './recurrenceService';
 
 export const MAX_RANGE_DAYS = 62;
 const CONTEXT_MARGIN_MS = 7 * 86_400_000; // the longest possible shift
@@ -32,10 +33,14 @@ export class ScheduleService {
     private readonly holidays: HolidayRepository,
     private readonly settings: SettingsRepository,
     private readonly clock: Clock,
+    private readonly recurrences: RecurrenceService,
   ) {}
 
   /** `viewZone` is the viewer's time zone (BR-10): the period's days start and end there. It defaults to the organisation's. */
   async build(fromDate: string, toDate: string, viewZone?: string) {
+    // D3: a missed cron run (or a shrunk horizon) fixes itself on the next schedule read; extendAll's own
+    // dueForExtension query makes this a cheap no-op when nothing is actually behind.
+    await this.recurrences.extendAll(this.clock.now());
     const orgZone = await this.settings.timezone();
     const periodZone = viewZone ?? orgZone;
     const from = localMidnight(fromDate, periodZone);

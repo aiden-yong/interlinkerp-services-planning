@@ -3,6 +3,7 @@ import type { Db } from '../db/client';
 import { HolidayRepository } from '../repo/holidays';
 import { Outbox } from '../repo/outbox';
 import { ProfileRepository } from '../repo/profiles';
+import { RecurrenceRepository } from '../repo/recurrences';
 import { SettingsRepository } from '../repo/settings';
 import { ShiftRepository } from '../repo/shifts';
 import { TimeOffRepository } from '../repo/timeOff';
@@ -16,10 +17,13 @@ export interface WriteScope {
   settings: SettingsRepository;
   /** BR-05 reading through this transaction's connection, so a transaction never waits on the pool. */
   eligibility: Eligibility;
+  recurrences: RecurrenceRepository;
   /** Serialises this employee's claims and take-overs until the transaction ends (NFR-04). */
   lockEmployee(ref: string): Promise<void>;
   /** Serialises changes to the give-up settings against switch requests until the transaction ends (BR-07). */
   lockSettings(): Promise<void>;
+  /** Serialises two extensions of the same series until the transaction ends (Review Focus 4). */
+  lockSeries(id: string): Promise<void>;
 }
 
 /**
@@ -42,12 +46,16 @@ export class UnitOfWork {
         outbox: new Outbox(db, this.org),
         settings,
         eligibility: new Eligibility(shifts, profiles, timeOff, context),
+        recurrences: new RecurrenceRepository(db, this.org),
         lockEmployee: async (ref) => {
           // hashtext is 32-bit, so two employees can share a key; the only effect is a little extra serialisation.
           await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`${this.org}:${ref}`}))`);
         },
         lockSettings: async () => {
           await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`${this.org}:settings`}))`);
+        },
+        lockSeries: async (id) => {
+          await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`${this.org}:series:${id}`}))`);
         },
       });
     }, { isolationLevel: 'read committed' });

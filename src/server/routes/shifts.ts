@@ -5,22 +5,25 @@ import { HttpError } from '../http/errors';
 import { Input } from '../http/input';
 import { json, noContent } from '../http/responses';
 import type { Router } from '../http/router';
+import { seriesToApi } from '../repo/recurrences';
 import { shiftToApi } from '../repo/shifts';
 
 export const actor = (p: Principal | null): Principal => p ?? (() => { throw HttpError.unauthorized('Sign in through the InterlinkERP gateway first.'); })();
 
 export function register(r: Router, app: App): void {
   r.add('POST', '/api/shifts', 'manager', 'Create a draft shift, or duplicate an existing one.', async ({ body, principal }) => {
-    const { shift, conflicts } = await app.shiftService().create(await body(), actor(principal));
-    return json(201, { shift: shiftToApi(shift, conflicts) });
+    const { shift, conflicts, recurrence } = await app.shiftService().create(await body(), actor(principal));
+    return json(201, { shift: shiftToApi(shift, conflicts), ...(recurrence ? { recurrence } : {}) });
   }, op('Create Shift', 'Plan a block of work for an employee or as an open shift', ['Adding a shift to the schedule', 'Copying a shift with duplicate_of'], ['Moving an existing shift'],
-    ['employee_ref', 'role_id', 'start_at', 'end_at', 'break_minutes', 'allocated_percent', 'note', 'acknowledge_conflicts', 'duplicate_of'],
-    ['shift', 'shift.conflicts'], ['Planning Manager'], ['PATCH /api/shifts/{id}', 'POST /api/publications'],
+    ['employee_ref', 'role_id', 'start_at', 'end_at', 'break_minutes', 'allocated_percent', 'note', 'acknowledge_conflicts', 'duplicate_of', 'repeat'],
+    ['shift', 'shift.conflicts', 'recurrence'], ['Planning Manager'], ['PATCH /api/shifts/{id}', 'POST /api/publications'],
     ['shift', 'schedule', 'plan', 'roster', 'rota', 'create']));
 
   r.add('GET', '/api/shifts/{id}', 'manager', 'Read one shift with its current conflicts.', async ({ params }) => {
     const shift = (await app.shifts().find(params.id)) ?? (() => { throw HttpError.notFound('No shift with that id.'); })();
-    return json(200, { shift: shiftToApi(shift, await app.conflictContext().conflictsFor(shift)) });
+    const series = shift.recurrenceId ? await app.recurrences().find(shift.recurrenceId) : null;
+    const recurrence = series ? seriesToApi(series, shift.recurrenceIndex, shift.recurrenceDetached) : null;
+    return json(200, { shift: shiftToApi(shift, await app.conflictContext().conflictsFor(shift), recurrence) });
   }, op('Read Shift', 'See one shift in detail', ['Opening a shift to edit it'], ['Listing a week of shifts'],
     ['id'], ['shift'], ['Planning Manager'], ['PATCH /api/shifts/{id}', 'GET /api/schedule'], ['shift', 'details']));
 
