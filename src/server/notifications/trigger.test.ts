@@ -17,6 +17,25 @@ function setup(result: () => Promise<unknown> = async () => ({}), push: Push = a
 }
 
 describe('DeliveryTrigger', () => {
+  it('still sweeps when the shared throttle cannot be read', async () => {
+    let runs = 0;
+    const logs: string[] = [];
+    const trigger = new DeliveryTrigger({ deliverDue: async () => { runs++; }, pushBadges: async () => true },
+      FixedClock.at('2026-10-13T02:00:00Z'), (l) => logs.push(l), 30_000, async () => { throw new Error('relation "job_runs" does not exist'); });
+    await trigger.kick();
+    expect(runs).toBe(1);
+    expect(logs[0]).toContain('shared throttle unavailable');
+  });
+
+  it('skips the sweep when another instance claimed it (backlog item 30)', async () => {
+    let runs = 0;
+    const claims: number[] = [];
+    const trigger = new DeliveryTrigger({ deliverDue: async () => { runs++; }, pushBadges: async () => true },
+      FixedClock.at('2026-10-13T02:00:00Z'), () => {}, 30_000, async (_now, gap) => (claims.push(gap), false));
+    await trigger.kick();
+    expect([runs, claims]).toEqual([0, [30_000]]);
+  });
+
   it('runs at most once per 30 seconds in one instance', async () => {
     const s = setup();
     await s.trigger.kick();

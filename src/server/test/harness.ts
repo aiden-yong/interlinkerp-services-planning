@@ -98,7 +98,7 @@ export function useApiHarness(): Harness {
     h.app = new App({
       database, organisationId: ORG, defaultTimezone: 'Asia/Kuala_Lumpur', clock: h.clock, guard, devIdentity: null,
       roster: h.roster, departments: h.departments, holidayProvider: h.holidays, logger: () => {}, publicUrl: 'https://planning.test',
-      mailer: h.mailer, badges: h.badges,
+      mailer: h.mailer, badges: h.badges, rateLimit: null,
     });
     h.asManager();
   });

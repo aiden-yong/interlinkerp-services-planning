@@ -15,6 +15,13 @@
       "when": 1792118497685,
       "tag": "0001_rainy_mad_thinker",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792472708307,
+      "tag": "0002_rate_limits_and_job_runs",
+      "breakpoints": true
     }
   ]
 }

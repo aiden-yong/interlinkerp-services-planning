@@ -16,7 +16,7 @@ import { HolidayRepository } from './repo/holidays';
 import { DirectoryRepository } from './repo/directory';
 import { type BadgePublisher, GatewayBadgePublisher, noBadges } from './notifications/badges';
 import { DeliveryService } from './notifications/deliveryService';
-import { DeliveryTrigger } from './notifications/trigger';
+import { DeliveryTrigger, MIN_GAP_MS } from './notifications/trigger';
 import { LogMailer, type Mailer, SmtpMailer } from './notifications/mailer';
 import { ManagerRepository } from './repo/managers';
 import { NotificationRepository } from './repo/notifications';
@@ -42,6 +42,8 @@ import { type DepartmentNames, type Roster, unconfiguredRoster } from './roster/
 import { type Clock, systemClock } from './support/clock';
 import { FetchHttpClient, type HttpClient } from './support/http';
 import { isTimezone } from './support/time';
+import { JobRuns } from './repo/jobRuns';
+import { RateLimiter, type RateLimitPolicy, WRITE_LIMIT } from './repo/rateLimits';
 import { PageGate } from './web/pageGate';
 
 /** Checked before any request is served (contract SS-20). Later tasks extend this list. */
@@ -65,6 +67,8 @@ export interface AppDeps {
   publicUrl?: string;
   mailer?: Mailer;
   badges?: BadgePublisher;
+  /** Write rate limit (backlog item 10); null turns it off. */
+  rateLimit?: RateLimitPolicy | null;
 }
 
 /**
@@ -209,7 +213,17 @@ export class App {
   }
 
   deliveryTrigger(): DeliveryTrigger {
-    return this.once('deliveryTrigger', () => new DeliveryTrigger(this.delivery(), this.clock(), this.log));
+    return this.once('deliveryTrigger', () => new DeliveryTrigger(this.delivery(), this.clock(), this.log, MIN_GAP_MS,
+      (now, gap) => this.jobRuns().claim('delivery', now, gap)));
+  }
+
+  jobRuns(): JobRuns {
+    return this.once('jobRuns', () => new JobRuns(this.database().db, this.organisationId()));
+  }
+
+  rateLimiter(): RateLimiter | null {
+    const policy = this.deps.rateLimit === undefined ? WRITE_LIMIT : this.deps.rateLimit;
+    return policy ? this.once('rateLimiter', () => new RateLimiter(this.database().db, this.organisationId(), this.clock(), policy)) : null;
   }
 
   conflictContext(): ConflictContext {
@@ -298,7 +312,7 @@ export class App {
   }
 
   kernel(): Kernel {
-    return this.once('kernel', () => new Kernel(this.router(), this.guard(), this.log));
+    return this.once('kernel', () => new Kernel(this.router(), this.guard(), this.log, this.rateLimiter()));
   }
 
   /** Built once per process, never per request (performance guide §4). */
