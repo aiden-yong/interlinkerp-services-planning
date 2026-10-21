@@ -8,7 +8,7 @@ import type { Settings } from '../types';
 import { describeError, useBusy, useLoad } from './common';
 import { FieldError, FormError, invalid } from '../fields';
 
-const FIELDS = ['country_code', 'region_code', 'timezone', 'give_up_mode', 'unassign_window_days'];
+const FIELDS = ['country_code', 'region_code', 'timezone', 'give_up_mode', 'unassign_window_days', 'recurrence_horizon_months'];
 const MODES = [{ value: 'switch', label: 'Switch' }, { value: 'unassign', label: 'Unassign' }] as const;
 
 export function GeneralTab() {
@@ -17,6 +17,7 @@ export function GeneralTab() {
   const [form, setForm] = useState<Settings | null>(null);
   const [saved, setSaved] = useState<Settings | null>(null); // the baseline the BR-07 confirm compares against
   const [windowText, setWindowText] = useState('');
+  const [horizonText, setHorizonText] = useState('');
   const [problem, setProblem] = useState('');
   const [fe, setFe] = useState<Record<string, string>>({});
   const { busy, run } = useBusy();
@@ -25,6 +26,7 @@ export function GeneralTab() {
       setForm(data.settings);
       setSaved(data.settings);
       setWindowText(String(data.settings.unassign_window_days));
+      setHorizonText(String(data.settings.recurrence_horizon_months));
     }
   }, [data]);
   const zones = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
@@ -38,6 +40,11 @@ export function GeneralTab() {
       setFe({ unassign_window_days: windowText.trim() === '' ? 'Required. Enter a whole number of days from 0 to 60.' : 'Use a whole number of days from 0 to 60.' });
       return;
     }
+    const horizonMonths = horizonText.trim() === '' ? NaN : Number(horizonText);
+    if (!(Number.isInteger(horizonMonths) && horizonMonths >= 1 && horizonMonths <= 24)) {
+      setFe({ recurrence_horizon_months: horizonText.trim() === '' ? 'Required. Enter a whole number of months from 1 to 24.' : 'Use a whole number of months from 1 to 24.' });
+      return;
+    }
     void run(async () => {
       // Moving from Switch to Unassign cancels pending switch requests (BR-07), so ask first.
       if (saved?.give_up_mode === 'switch' && unassign
@@ -49,10 +56,12 @@ export function GeneralTab() {
           timezone: form.timezone.trim(),
           give_up_mode: form.give_up_mode,
           unassign_window_days: unassign ? days : form.unassign_window_days,
+          recurrence_horizon_months: horizonMonths,
         });
         setSaved(result.settings);
         setForm(result.settings);
         setWindowText(String(result.settings.unassign_window_days));
+        setHorizonText(String(result.settings.recurrence_horizon_months));
         setProblem('');
         setFe({});
         toast('Settings saved.', undefined, 3000);
@@ -87,6 +96,9 @@ export function GeneralTab() {
         <label>Unassign window (days)<input {...invalid(fe.unassign_window_days, 'general-unassign_window_days-error')} type="number" min={0} max={60} step={1} value={windowText} onChange={(e) => setWindowText(e.target.value)} />
           <FieldError id="general-unassign_window_days-error" message={fe.unassign_window_days} /></label>
       )}
+      <label className="wide">Recurrence horizon (months)<input {...invalid(fe.recurrence_horizon_months, 'general-recurrence_horizon_months-error')} type="number" min={1} max={24} step={1} value={horizonText} onChange={(e) => setHorizonText(e.target.value)} />
+        <FieldError id="general-recurrence_horizon_months-error" message={fe.recurrence_horizon_months} /></label>
+      <p className="wide muted">How far ahead repeated shifts are generated before the schedule needs to extend them again.</p>
       <p className="wide muted">The country and region decide which public holidays are loaded. Employees without their own time zone use this one.</p>
       <FormError message={problem} className="wide" />
       <div className="wide actions"><button className="primary" disabled={busy}>Save</button></div>

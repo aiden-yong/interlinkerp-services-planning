@@ -7,10 +7,11 @@ import { GeneralTab } from './GeneralTab';
 import { HolidaysTab } from './HolidaysTab';
 import { ManagersTab } from './ManagersTab';
 import { RolesTab } from './RolesTab';
+import { TemplatesTab } from './TemplatesTab';
 import { TimeOffTab } from './TimeOffTab';
 
 const TABS = [
-  ['general', 'General'], ['roles', 'Roles'], ['employees', 'Employees'], ['time-off', 'Time off'], ['holidays', 'Holidays'], ['managers', 'Managers'],
+  ['general', 'General'], ['roles', 'Roles'], ['templates', 'Templates'], ['employees', 'Employees'], ['time-off', 'Time off'], ['holidays', 'Holidays'], ['managers', 'Managers'],
 ] as const;
 
 export function SettingsPage({ me, tab }: { me: Me; tab: string }) {
@@ -22,6 +23,7 @@ export function SettingsPage({ me, tab }: { me: Me; tab: string }) {
       </nav>
       {active === 'general' && <GeneralTab />}
       {active === 'roles' && <RolesTab />}
+      {active === 'templates' && <TemplatesTab />}
       {active === 'employees' && <EmployeesTab />}
       {active === 'time-off' && <TimeOffTab me={me} />}
       {active === 'holidays' && <HolidaysTab me={me} />}

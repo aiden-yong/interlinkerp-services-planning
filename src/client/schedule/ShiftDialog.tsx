@@ -3,8 +3,11 @@
 import { type FormEvent, useState } from 'react';
 import { api, ApiError } from '../api';
 import { Modal, useFeedback } from '../feedback';
-import type { SchedulePayload, Shift } from '../types';
+import { useLoad } from '../settings/common';
+import type { SchedulePayload, Shift, Template } from '../types';
 import { FIELD_FOR, formToBody, saveShift, SCOPE_OPTIONS, STALE_MESSAGE, type ShiftForm } from './shiftForm';
+import { applyTemplate, templatesFor } from './templates';
+import { isoToWall, wallToIso } from './tz';
 import { FieldError, FormError, invalid } from '../fields';
 
 interface Props {
@@ -24,6 +27,70 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
   const zone = data.period.timezone;
   const roles = data.roles.filter((r) => !r.archived || r.id === initial.role_id);
   const set = (patch: Partial<ShiftForm>) => setForm((f) => ({ ...f, ...patch }));
+
+  const { data: templatesData } = useLoad(() => api<{ templates: Template[] }>('GET', '/api/shift-templates'), []);
+  const offeredTemplates = templatesData?.templates
+    ? templatesFor(templatesData.templates, data.employees.find((e) => e.employee_ref === form.employee_ref)?.role_ids ?? [])
+    : [];
+
+  function chooseTemplate(id: string) {
+    if (!id) return;
+    const template = offeredTemplates.find((t) => t.id === id);
+    if (template) set(applyTemplate(form, template, zone));
+  }
+
+  // "Save as template" (existing shifts only): a small inline form, kept separate from the dialog's main busy/message.
+  const [templateFormOpen, setTemplateFormOpen] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [templateError, setTemplateError] = useState('');
+
+  async function saveAsTemplate() {
+    if (!shift) return;
+    if (templateBusy) return;
+    setTemplateBusy(true);
+    setTemplateError('');
+    try {
+      await api('POST', '/api/shift-templates', { name: templateName, from_shift_id: shift.id });
+      setTemplateFormOpen(false);
+      setTemplateName('');
+      toast('Saved as template.', undefined, 3000);
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'TEMPLATE_NAME_TAKEN') setTemplateError(error.message);
+      else if (error instanceof ApiError && error.details && typeof error.details === 'object' && 'name' in (error.details as Record<string, unknown>)) {
+        setTemplateError((error.details as Record<string, string>).name);
+      } else setTemplateError((error as Error).message);
+    } finally {
+      setTemplateBusy(false);
+    }
+  }
+
+  // Split (existing shifts only): a small inline form, kept separate from the dialog's main busy/message.
+  const [splitFormOpen, setSplitFormOpen] = useState(false);
+  const [splitTime, setSplitTime] = useState('');
+  const [splitBusy, setSplitBusy] = useState(false);
+  const [splitError, setSplitError] = useState('');
+
+  async function splitHere() {
+    if (!shift) return;
+    if (splitBusy) return;
+    setSplitBusy(true);
+    setSplitError('');
+    try {
+      const startWall = isoToWall(shift.start_at, zone);
+      const at = wallToIso(startWall.date, splitTime, zone);
+      await api<{ shifts: [unknown, unknown] }>('POST', '/api/shift-splits', { shift_id: shift.id, version: shift.version, at });
+      setSplitFormOpen(false);
+      setSplitTime('');
+      await done('Shift split into two.');
+    } catch (error) {
+      if (error instanceof ApiError && error.details && typeof error.details === 'object' && 'at' in (error.details as Record<string, unknown>)) {
+        setSplitError((error.details as Record<string, string>).at);
+      } else setSplitError((error as Error).message);
+    } finally {
+      setSplitBusy(false);
+    }
+  }
 
   function changeEmployee(ref: string) {
     // FR-SHF-01 AC2: a new shift takes the employee's default role.
@@ -180,6 +247,14 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
               {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>{field('role_id')}
           </label>
+          {offeredTemplates.length > 0 && (
+            <label className="wide">Template
+              <select aria-label="Template" value="" onChange={(e) => chooseTemplate(e.target.value)}>
+                <option value="">Choose a template…</option>
+                {offeredTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </label>
+          )}
           <label>Start date<input type="date" required value={form.start_date} onChange={(e) => set({ start_date: e.target.value })} /></label>
           <label>Start time<input {...aria('start_time')} type="time" required value={form.start_time} onChange={(e) => set({ start_time: e.target.value })} />{field('start_time')}</label>
           <label>End date<input type="date" required value={form.end_date} onChange={(e) => set({ end_date: e.target.value })} /></label>
@@ -225,9 +300,35 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
           </fieldset>
         )}
         <p className="muted">Times are in {zone}.</p>
+        {shift && templateFormOpen && (
+          <div className="form-grid">
+            <label>Template name
+              <input aria-label="Template name" maxLength={80} value={templateName} onChange={(e) => setTemplateName(e.target.value)} />
+              <FieldError id="shift-template-name-error" message={templateError} />
+            </label>
+            <div className="actions">
+              <button type="button" onClick={() => { setTemplateFormOpen(false); setTemplateName(''); setTemplateError(''); }}>Cancel</button>
+              <button type="button" className="primary" disabled={templateBusy} onClick={saveAsTemplate}>Save</button>
+            </div>
+          </div>
+        )}
+        {shift && splitFormOpen && (
+          <div className="form-grid">
+            <label>Split at
+              <input aria-label="Split at" type="time" value={splitTime} onChange={(e) => setSplitTime(e.target.value)} />
+              <FieldError id="shift-split-at-error" message={splitError} />
+            </label>
+            <div className="actions">
+              <button type="button" onClick={() => { setSplitFormOpen(false); setSplitTime(''); setSplitError(''); }}>Cancel</button>
+              <button type="button" className="primary" disabled={splitBusy} onClick={splitHere}>Split here</button>
+            </div>
+          </div>
+        )}
         <FormError message={message} />
         <div className="actions">
           {shift && <><button type="button" className="danger" disabled={busy} onClick={remove}>Delete</button><button type="button" disabled={busy} onClick={duplicate}>Duplicate</button>
+            <button type="button" disabled={busy} onClick={() => { setTemplateFormOpen((open) => !open); setSplitFormOpen(false); }}>Save as template</button>
+            <button type="button" disabled={busy} onClick={() => { setSplitFormOpen((open) => !open); setTemplateFormOpen(false); }}>Split</button>
             {shift.state === 'draft' && <button type="button" disabled={busy} onClick={publish}>Publish</button>}<span className="spacer" /></>}
           <button type="button" onClick={onClose}>Cancel</button>
           <button type="submit" className="primary" disabled={busy}>Save</button>
