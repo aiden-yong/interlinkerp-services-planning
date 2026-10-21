@@ -11,7 +11,7 @@ import type { RoleRepository } from '../repo/roles';
 import type { SettingsRepository } from '../repo/settings';
 import type { ShiftRecord, ShiftRepository } from '../repo/shifts';
 import type { Clock } from '../support/clock';
-import { iso } from '../support/time';
+import { iso, localDate } from '../support/time';
 import type { ConflictContext } from './conflictContext';
 import type { RecurrenceService } from './recurrenceService';
 import type { UnitOfWork, WriteScope } from './unitOfWork';
@@ -23,6 +23,7 @@ const NOTIFY_FIELDS: [keyof ShiftRecord, string][] = [
   ['employeeRef', 'employee'], ['roleId', 'role'], ['start', 'start'], ['end', 'end'], ['breakMinutes', 'break'], ['percent', 'allocation'], ['note', 'note'],
 ];
 const same = (a: unknown, b: unknown) => (a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b);
+const UNTIL_BEFORE_FIRST = "Must be on or after the shift's own date.";
 const stale = () => HttpError.conflict('STALE_SHIFT', 'Someone else changed this shift since you loaded it. Reload and try again.');
 
 /** FR-SHF-*, BR-01/02/11. Managers are warned about conflicts, never blocked (FR-SHF-09). */
@@ -67,6 +68,9 @@ export class ShiftService {
 
     if (repeat) {
       const zone = await this.settings.timezone();
+      if (repeat.ends === 'on' && repeat.untilDate! < localDate(draft.start.getTime(), zone)) {
+        throw HttpError.validation({ 'repeat.until_date': UNTIL_BEFORE_FIRST });
+      }
       const horizonMonths = (await this.settings.get()).recurrence_horizon_months;
       const preview = await this.recurrences.previewConflicts(draft, repeat, zone, horizonMonths, now);
       const flagged = preview.filter((p) => p.conflicts.length > 0);
@@ -137,6 +141,22 @@ export class ShiftService {
       const message = "A repeated shift's pattern can only be changed starting from a shift that has not started yet.";
       throw new HttpError(422, 'RECURRENCE_PATTERN_SCOPE', message, { scope: message });
     }
+    if (repeat !== null && scopeRaw === 'all' && current.recurrenceId !== null) {
+      // splitSeries removes the untouched drafts from the first not-started index on but anchors the new series at
+      // this shift's own date, so starting anywhere later would leave the weeks in between deleted and never remade.
+      const firstNotStarted = await this.shifts.firstNotStartedIndex(current.recurrenceId, now);
+      if (firstNotStarted !== null && firstNotStarted !== current.recurrenceIndex) {
+        const message = 'Changing the pattern for all shifts must start from the earliest shift that has not started yet. Open that shift instead.';
+        throw new HttpError(422, 'RECURRENCE_PATTERN_SCOPE', message, { scope: message });
+      }
+    }
+    if (repeat !== null && repeat.ends === 'on' && current.recurrenceId !== null) {
+      // The new series starts at this shift (as saved by this request), in the old series' own zone.
+      const series = await this.recurrences.find(current.recurrenceId);
+      if (series && repeat.untilDate! < localDate(next.start.getTime(), series.timezone)) {
+        throw HttpError.validation({ 'repeat.until_date': UNTIL_BEFORE_FIRST });
+      }
+    }
 
     if (version !== current.version) throw stale();
     const { shift, conflicts } = await this.guardConflicts(next, acknowledged, by, now);
@@ -160,14 +180,16 @@ export class ShiftService {
         updated = result.removed + result.created;
       } else {
         const fromIndex = scopeRaw === 'following' ? row.recurrenceIndex! : (await scope.shifts.firstNotStartedIndex(row.recurrenceId!, now)) ?? row.recurrenceIndex!;
-        const timeChanged = input.has('start_at') || input.has('end_at');
+        // Only what this request actually changed spreads to the other shifts: the dialog always sends every field,
+        // so "was it in the body" would treat untouched fields as edits too.
+        const timeChanged = row.start.getTime() !== current.start.getTime() || row.end.getTime() !== current.end.getTime();
         const zone = timeChanged ? (await scope.recurrences.find(row.recurrenceId!))!.timezone : null;
         updated = await this.recurrences.applyToSeries(scope, row.recurrenceId!, fromIndex, {
-          employeeRef: input.has('employee_ref') ? row.employeeRef : undefined,
-          roleId: input.has('role_id') ? row.roleId : undefined,
-          breakMinutes: input.has('break_minutes') ? row.breakMinutes : undefined,
-          percent: input.has('allocated_percent') ? row.percent : undefined,
-          note: input.has('note') ? row.note : undefined,
+          employeeRef: row.employeeRef !== current.employeeRef ? row.employeeRef : undefined,
+          roleId: row.roleId !== current.roleId ? row.roleId : undefined,
+          breakMinutes: row.breakMinutes !== current.breakMinutes ? row.breakMinutes : undefined,
+          percent: row.percent !== current.percent ? row.percent : undefined,
+          note: row.note !== current.note ? row.note : undefined,
           startTimeLocal: timeChanged ? DateTime.fromJSDate(row.start, { zone: zone! }).toFormat('HH:mm') : undefined,
           durationMinutes: timeChanged ? Math.round((row.end.getTime() - row.start.getTime()) / 60_000) : undefined,
         }, now, row.id);

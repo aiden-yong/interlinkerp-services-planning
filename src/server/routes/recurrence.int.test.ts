@@ -1,9 +1,11 @@
+import { eq } from 'drizzle-orm';
 import { DateTime } from 'luxon';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { shifts } from '../db/schema';
+import { recurrences, shifts } from '../db/schema';
 import { Outbox } from '../repo/outbox';
 import { ORG } from '../test/db';
 import { useApiHarness } from '../test/harness';
+import { whileLocked } from '../test/races';
 
 const h = useApiHarness();
 beforeEach(async () => {
@@ -326,5 +328,152 @@ describe('recurring shifts', () => {
 
     const restore = await h.call('POST', '/api/shift-restorations', { shift_id: shift3.id });
     expect(restore.status, JSON.stringify(restore.body)).toBe(201);
+  });
+});
+
+describe('recurrence lifecycle (final review fixes)', () => {
+  beforeEach(() => advanceTo('2026-01-01T02:00:00Z'));
+
+  const localDay = (d: Date) => DateTime.fromJSDate(d, { zone: 'Asia/Kuala_Lumpur' }).toISODate();
+
+  it('always creates the first shift, even when it starts beyond the horizon', async () => {
+    expect((await h.call('PATCH', '/api/settings', { recurrence_horizon_months: 1 })).status).toBe(200);
+    const { status, body } = await createRepeating({ start_at: '2026-03-05T09:00:00+08:00', end_at: '2026-03-05T17:00:00+08:00' });
+    expect(status, JSON.stringify(body)).toBe(201);
+    expect(body.recurrence.created).toBe(1);
+    const rows = await seriesRows(body.recurrence.id);
+    expect(rows.map((r) => [r.id, r.recurrenceIndex])).toEqual([[body.shift.id, 0]]);
+  });
+
+  it('refuses an until_date before the first shift', async () => {
+    const { status, body } = await createRepeating({ repeat: { interval: 1, unit: 'week', ends: 'on', until_date: '2025-12-31' } });
+    expect(status, JSON.stringify(body)).toBe(422);
+    expect(Object.keys(body.error.details)).toEqual(['repeat.until_date']);
+    expect(await h.database.db.select().from(shifts)).toEqual([]);
+  });
+
+  it("refuses a pattern change whose until_date is before the chosen shift's date", async () => {
+    const { body } = await createRepeating();
+    const cases = [
+      { scope: 'following', index: 4, untilDate: '2026-01-20' }, // shift 4 is on 2026-01-29
+      { scope: 'all', index: 1, untilDate: '2026-01-07' }, // shift 1 (the first not started) is on 2026-01-08
+    ];
+    for (const c of cases) {
+      // eslint-disable-next-line no-await-in-loop -- sequential requests against one series
+      const target = await atIndex(body.recurrence.id, c.index);
+      // eslint-disable-next-line no-await-in-loop
+      const res = await h.call('PATCH', `/api/shifts/${target.id}`, {
+        version: target.version, scope: c.scope, repeat: { interval: 2, unit: 'week', ends: 'on', until_date: c.untilDate },
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(Object.keys(res.body.error.details)).toEqual(['repeat.until_date']);
+    }
+    expect((await h.app.recurrences().find(body.recurrence.id))!.lastIndex).toBeNull();
+    expect((await seriesRows(body.recurrence.id)).length).toBe(26);
+  });
+
+  it('changes the pattern for all only from the first shift that has not started', async () => {
+    const { body } = await createRepeating(); // index 0 has already started; 1.. have not
+    const shift3 = await atIndex(body.recurrence.id, 3);
+    const refused = await h.call('PATCH', `/api/shifts/${shift3.id}`, {
+      version: shift3.version, scope: 'all', repeat: { interval: 2, unit: 'week', ends: 'never' },
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
+    expect(refused.body.error.code).toBe('RECURRENCE_PATTERN_SCOPE');
+    expect((await seriesRows(body.recurrence.id)).length).toBe(26);
+
+    const shift1 = await atIndex(body.recurrence.id, 1);
+    const ok = await h.call('PATCH', `/api/shifts/${shift1.id}`, {
+      version: shift1.version, scope: 'all', repeat: { interval: 2, unit: 'week', ends: 'never' },
+    });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect(ok.body.shift.recurrence.index).toBe(0);
+    expect((await h.app.recurrences().find(body.recurrence.id))!.lastIndex).toBe(0);
+  });
+
+  it('a pattern change never doubles a published shift or brings back a deleted one (D4, D6)', async () => {
+    const { body } = await createRepeating();
+    const shift3 = await atIndex(body.recurrence.id, 3); // 2026-01-22
+    expect((await h.call('POST', '/api/publications', { shift_ids: [shift3.id] })).status).toBe(201);
+    const shift4 = await atIndex(body.recurrence.id, 4); // 2026-01-29
+    expect((await h.call('DELETE', `/api/shifts/${shift4.id}`)).status).toBe(204);
+
+    const shift1 = await atIndex(body.recurrence.id, 1);
+    const res = await h.call('PATCH', `/api/shifts/${shift1.id}`, {
+      version: shift1.version, scope: 'following', repeat: { interval: 1, unit: 'week', ends: 'never' },
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const newDates = (await seriesRows(res.body.shift.recurrence.id)).map((r) => localDay(r.startAt));
+    expect(newDates).toEqual(expect.arrayContaining(['2026-01-08', '2026-01-15', '2026-02-05']));
+    expect(newDates).not.toContain('2026-01-22');
+    expect(newDates).not.toContain('2026-01-29');
+
+    const oldRows = await seriesRows(body.recurrence.id);
+    const published = oldRows.find((r) => r.id === shift3.id)!;
+    expect([published.state, published.deletedAt, published.recurrenceIndex, localDay(published.startAt)]).toEqual(['published', null, 3, '2026-01-22']);
+    expect(oldRows.find((r) => r.id === shift4.id)!.deletedAt).not.toBeNull();
+  });
+
+  it('an extension never overwrites a series change committed while it ran (lost update)', async () => {
+    const { body } = await createRepeating();
+    h.clock.advance(35 * 24 * 3600);
+    // Stands in for an end-of-series change (as deleteFrom/splitSeries make) committed between extendOne's read and
+    // its write: the row lock makes extendOne's final write wait until that change is committed.
+    const created = await whileLocked(h.database, async (client) => {
+      await client.query('update recurrences set last_index = 30 where id = $1', [body.recurrence.id]);
+    }, () => h.app.recurrences().extendOne(body.recurrence.id, h.clock.now()), 1);
+    expect(created).toBeGreaterThan(0);
+    const [row] = await h.database.db.select().from(recurrences).where(eq(recurrences.id, body.recurrence.id));
+    expect(row!.lastIndex).toBe(30);
+    expect(row!.generatedUntil.getTime()).toBeGreaterThan(Date.parse('2026-08-01T00:00:00Z'));
+  });
+
+  it('a later series delete never moves an earlier series end forward', async () => {
+    const { body } = await createRepeating();
+    // A published shift at index 6 stays in the old series when the pattern changes from index 3 (series ends at 2)...
+    const shift6 = await atIndex(body.recurrence.id, 6);
+    expect((await h.call('POST', '/api/publications', { shift_ids: [shift6.id] })).status).toBe(201);
+    const shift3 = await atIndex(body.recurrence.id, 3);
+    const split = await h.call('PATCH', `/api/shifts/${shift3.id}`, {
+      version: shift3.version, scope: 'following', repeat: { interval: 2, unit: 'week', ends: 'never' },
+    });
+    expect(split.status, JSON.stringify(split.body)).toBe(200);
+    expect((await h.app.recurrences().find(body.recurrence.id))!.lastIndex).toBe(2);
+
+    // ...so deleting "this and following" from it must keep the series' earlier end, not move it to 5.
+    const res = await h.call('DELETE', `/api/shifts/${shift6.id}`, undefined, { scope: 'following' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.deleted).toBe(1);
+    expect((await h.app.recurrences().find(body.recurrence.id))!.lastIndex).toBe(2);
+  });
+
+  it('spreads only the fields this edit changed to the following shifts', async () => {
+    await h.addEmployee('E2', 'Bo Tan');
+    const { body } = await createRepeating();
+    // Shift 5 is first edited on its own (and so detached): another employee and a later time.
+    const shift5 = await atIndex(body.recurrence.id, 5); // 2026-02-05
+    const own = await h.call('PATCH', `/api/shifts/${shift5.id}`, {
+      version: shift5.version, scope: 'this', employee_ref: 'E2', start_at: '2026-02-05T10:00:00+08:00', end_at: '2026-02-05T18:00:00+08:00',
+    });
+    expect(own.status, JSON.stringify(own.body)).toBe(200);
+
+    // Then only its note changes, but the body carries every field, as the dialog sends it.
+    const s = own.body.shift;
+    const res = await h.call('PATCH', `/api/shifts/${s.id}`, {
+      version: s.version, scope: 'following', employee_ref: s.employee_ref, role_id: s.role_id, start_at: s.start_at, end_at: s.end_at,
+      break_minutes: s.break_minutes, allocated_percent: s.allocated_percent, note: 'Bring keys',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+
+    const following = (await seriesRows(body.recurrence.id)).filter((r) => r.recurrenceIndex! > 5);
+    expect(following.length).toBeGreaterThan(0);
+    for (const r of following) {
+      expect(r.note).toBe('Bring keys');
+      expect(r.employeeRef).toBe('E1');
+      expect(r.startAt.getUTCHours()).toBe(1); // still 09:00 +08:00
+      expect(r.endAt.getUTCHours()).toBe(9);
+    }
+    const series = await h.app.recurrences().find(body.recurrence.id);
+    expect([series!.employeeRef, series!.firstStartLocal.slice(11), series!.note]).toEqual(['E1', '09:00', 'Bring keys']);
   });
 });

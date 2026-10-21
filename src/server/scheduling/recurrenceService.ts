@@ -104,9 +104,11 @@ export class RecurrenceService {
   async previewConflicts(first: ShiftRecord, repeat: RepeatFields, zone: string, horizonMonths: number, now: Date): Promise<{ date: string; conflicts: Conflict[] }[]> {
     const rule = ruleFrom(repeat, zone, first);
     const until = DateTime.fromJSDate(now, { zone }).plus({ months: horizonMonths }).toJSDate();
-    const steps = occurrences(rule, 0, until);
+    // Step 0 is `first` itself and is always created (see createSeries), even when it lies beyond the horizon, so it
+    // is always checked here too; the generator is only asked for the future steps (index >= 1).
+    const candidates = [{ start: first.start, end: first.end }, ...occurrences(rule, 1, until)];
     const out: { date: string; conflicts: Conflict[] }[] = [];
-    for (const step of steps) {
+    for (const step of candidates) {
       const candidate: ShiftRecord = { ...first, start: step.start, end: step.end };
       // eslint-disable-next-line no-await-in-loop -- pool-level checks, one shift's time range at a time (same pattern as ShiftService.guardConflicts)
       const conflicts = await this.context.conflictsFor(candidate);
@@ -129,7 +131,9 @@ export class RecurrenceService {
   ): Promise<{ seriesId: string; created: number }> {
     const rule = ruleFrom(repeat, zone, first);
     const until = DateTime.fromJSDate(now, { zone }).plus({ months: horizonMonths }).toJSDate();
-    const steps = occurrences(rule, 0, until);
+    // Only future recurrences come from the generator: step 0 IS `first` and is always created, even when it starts
+    // at or beyond the horizon (otherwise the request would save a series with no shift at all).
+    const futureSteps = occurrences(rule, 1, until);
     const seriesId = randomUUID();
 
     const series: SeriesRecord = {
@@ -140,21 +144,29 @@ export class RecurrenceService {
     };
     await scope.recurrences.insert(series, now);
 
-    const rows: ShiftRecord[] = steps.map((step) => {
-      const date = localDate(step.start.getTime(), zone);
-      const flagged = ack !== null && conflictingDates.has(date);
-      return {
-        ...first, id: step.index === 0 ? first.id : randomUUID(), start: step.start, end: step.end,
-        recurrenceId: seriesId, recurrenceIndex: step.index,
-        ackBy: flagged ? ack!.by : null, ackAt: flagged ? ack!.at : null,
-      };
-    });
+    const firstFlagged = ack !== null && conflictingDates.has(localDate(first.start.getTime(), zone));
+    const rows: ShiftRecord[] = [
+      {
+        ...first, recurrenceId: seriesId, recurrenceIndex: 0,
+        ackBy: firstFlagged ? ack!.by : null, ackAt: firstFlagged ? ack!.at : null,
+      },
+      ...futureSteps.map((step) => {
+        const date = localDate(step.start.getTime(), zone);
+        const flagged = ack !== null && conflictingDates.has(date);
+        return {
+          ...first, id: randomUUID(), start: step.start, end: step.end,
+          recurrenceId: seriesId, recurrenceIndex: step.index,
+          ackBy: flagged ? ack!.by : null, ackAt: flagged ? ack!.at : null,
+        };
+      }),
+    ];
     const insertedIds = await scope.shifts.insertMany(rows, now);
     return { seriesId, created: insertedIds.length };
   }
 
   /** D5: edits "this and following" / "all" — not-started, draft, attached, live shifts from fromIndex on; also keeps the series row current so later generation uses the new values. */
   async applyToSeries(scope: WriteScope, seriesId: string, fromIndex: number, changes: SeriesChanges, now: Date, excludeId?: string): Promise<number> {
+    await scope.lockSeries(seriesId); // serialised against extendOne, so neither overwrites the other's series row
     const series = await scope.recurrences.find(seriesId);
     if (!series) return 0;
     // The DATE part of firstStartLocal never changes here (it anchors which calendar dates get generated) — only
@@ -188,11 +200,15 @@ export class RecurrenceService {
   async splitSeries(
     scope: WriteScope, seriesId: string, atIndex: number, pattern: RepeatFields, from: ShiftRecord, horizonMonths: number, now: Date,
   ): Promise<{ newSeriesId: string; removed: number; created: number }> {
+    await scope.lockSeries(seriesId); // serialised against extendOne, so neither overwrites the other's series row
     const old = await scope.recurrences.find(seriesId);
     if (!old) throw new Error('Series not found.');
 
     await scope.recurrences.update({ ...old, lastIndex: atIndex - 1 }, now);
     const removed = await scope.shifts.hardDeleteSeriesShiftsFrom(seriesId, atIndex, now, from.id);
+    // Dates the old series still holds from atIndex on (published or detached shifts left in place, and deleted
+    // occurrences, D4): the new series must not put a second shift on them, nor bring a deleted one back.
+    const occupied = await scope.shifts.occupiedLocalDates(seriesId, atIndex, from.id, old.timezone);
 
     const newSeriesId = randomUUID();
     const until = DateTime.fromJSDate(now, { zone: old.timezone }).plus({ months: horizonMonths }).toJSDate();
@@ -212,7 +228,8 @@ export class RecurrenceService {
       interval: newSeries.interval, unit: newSeries.unit, ends: newSeries.ends, untilDate: newSeries.untilDate, count: newSeries.count,
       timezone: newSeries.timezone, firstStartLocal: newSeries.firstStartLocal, durationMinutes: newSeries.durationMinutes, lastIndex: newSeries.lastIndex,
     };
-    const steps = occurrences(rule, 1, until);
+    // A skipped date leaves its index unused for good: extendOne resumes from max(existing index) + 1, never backfills.
+    const steps = occurrences(rule, 1, until).filter((step) => !occupied.has(localDate(step.start.getTime(), old.timezone)));
     const rows: ShiftRecord[] = steps.map((step) => ({
       id: randomUUID(), employeeRef: newSeries.employeeRef, roleId: newSeries.roleId, start: step.start, end: step.end,
       breakMinutes: newSeries.breakMinutes, percent: newSeries.percent, note: newSeries.note, state: 'draft', publishedAt: null,
@@ -225,6 +242,7 @@ export class RecurrenceService {
 
   /** D7: soft-deletes every not-started shift of a series from `fromIndex` on, queues a deletion notice (after UNDO_MS) for each published one with an employee, and ends the series there. Series deletes have no undo. */
   async deleteFrom(scope: WriteScope, seriesId: string, fromIndex: number, by: string, now: Date, undoMs: number): Promise<number> {
+    await scope.lockSeries(seriesId); // serialised against extendOne, so neither overwrites the other's series row
     const series = await scope.recurrences.find(seriesId);
     if (!series) return 0;
     const deleted = await scope.shifts.softDeleteSeriesShiftsFrom(seriesId, fromIndex, by, now);
@@ -234,7 +252,9 @@ export class RecurrenceService {
         await scope.outbox.add('shift_deleted', shift.employeeRef, shift.id, { shift_id: shift.id, start_at: iso(shift.start), end_at: iso(shift.end) }, new Date(now.getTime() + undoMs), now);
       }
     }
-    await scope.recurrences.update({ ...series, lastIndex: fromIndex - 1 }, now);
+    // Never moves an earlier end (from a previous split or delete) later.
+    const lastIndex = series.lastIndex !== null ? Math.min(series.lastIndex, fromIndex - 1) : fromIndex - 1;
+    await scope.recurrences.update({ ...series, lastIndex }, now);
     return deleted.length;
   }
 
@@ -266,7 +286,8 @@ export class RecurrenceService {
       // already produced every occurrence it ever will (occurrences() then returns an empty `steps`, so nothing is
       // actually inserted). That means generatedUntil can drift to mean "the last time a sweep touched this series",
       // not "real occurrences exist up to here" — do not read it as a signal that the series is still active/generating.
-      await scope.recurrences.update({ ...series, generatedUntil: until }, now);
+      // Only generated_until is written, never the whole (possibly stale) row, so a concurrent series edit is never lost.
+      await scope.recurrences.touchGeneratedUntil(id, until, now);
       return insertedIds.length;
     });
   }

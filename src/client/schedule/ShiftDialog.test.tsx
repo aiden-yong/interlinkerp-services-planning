@@ -149,13 +149,33 @@ describe('ShiftDialog', () => {
     const { onClose, onSaved } = dialog(shift());
 
     fireEvent.click(screen.getByRole('button', { name: 'Split' }));
-    fireEvent.change(screen.getByLabelText('Split at'), { target: { value: '05:00' } });
+    fireEvent.change(screen.getByLabelText('Split at'), { target: { value: '13:00' } }); // the shift runs 09:00-17:00 local
     fireEvent.click(screen.getByRole('button', { name: 'Split here' }));
 
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     const post = fetchMock.mock.calls.find(([p, i]) => p === '/api/shift-splits' && (i as RequestInit)?.method === 'POST')!;
-    expect(JSON.parse(String((post[1] as RequestInit).body))).toEqual({ shift_id: 's1', version: 1, at: '2026-10-13T21:00:00Z' });
+    expect(JSON.parse(String((post[1] as RequestInit).body))).toEqual({ shift_id: 's1', version: 1, at: '2026-10-14T05:00:00Z' });
     expect(onClose).toHaveBeenCalled();
     expect(await screen.findByText('Shift split into two.')).toBeTruthy();
+  });
+
+  it('splits an overnight shift on the next day when the time is earlier than its start', async () => {
+    const fetchMock = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/api/shift-templates') return new Response(JSON.stringify({ templates: [] }), { status: 200 });
+      if (path === '/api/shift-splits') return new Response(JSON.stringify({ shifts: [shift(), shift({ id: 's2' })] }), { status: 201 });
+      return new Response(null, { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    // 22:00 on 14 Oct to 06:00 on 15 Oct, Asia/Kuala_Lumpur (+08:00)
+    const { onSaved } = dialog(shift({ start_at: '2026-10-14T14:00:00Z', end_at: '2026-10-14T22:00:00Z' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Split' }));
+    fireEvent.change(screen.getByLabelText('Split at'), { target: { value: '02:00' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Split here' }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const post = fetchMock.mock.calls.find(([p, i]) => p === '/api/shift-splits' && (i as RequestInit)?.method === 'POST')!;
+    // 02:00 on 15 Oct local, not 02:00 on 14 Oct (which would be before the shift starts)
+    expect(JSON.parse(String((post[1] as RequestInit).body)).at).toBe('2026-10-14T18:00:00Z');
   });
 });

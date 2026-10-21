@@ -198,6 +198,17 @@ export class ShiftRepository {
     return deleted.length;
   }
 
+  /**
+   * D6: calendar dates (in `zone`) already occupied by a shift of this series at index >= fromIndex, soft-deleted ones
+   * included (no live filter, on purpose: D4), excluding `exceptId`. Call this AFTER hardDeleteSeriesShiftsFrom, so
+   * the untouched drafts it just removed are gone — only surviving (published/detached) and deleted rows count.
+   */
+  async occupiedLocalDates(seriesId: string, fromIndex: number, exceptId: string, zone: string): Promise<Set<string>> {
+    const rows = await this.db.select({ startAt: shifts.startAt }).from(shifts)
+      .where(and(eq(shifts.organisationId, this.org), eq(shifts.recurrenceId, seriesId), gte(shifts.recurrenceIndex, fromIndex), ne(shifts.id, exceptId)));
+    return new Set(rows.map((r) => localDate(r.startAt.getTime(), zone)));
+  }
+
   /** D6: moves one shift onto a new series at a given step, re-attaching it. No version check: this always runs right after that same row was already version-checked and updated once in the same transaction. */
   async reassignSeries(id: string, recurrenceId: string, recurrenceIndex: number, now: Date): Promise<void> {
     await this.db.update(shifts).set({ recurrenceId, recurrenceIndex, recurrenceDetached: false, updatedAt: now })

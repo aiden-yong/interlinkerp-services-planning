@@ -84,6 +84,13 @@ export class RecurrenceRepository {
     }).where(and(eq(recurrences.organisationId, this.org), eq(recurrences.id, s.id)));
   }
 
+  /** Advances generated_until only — never overwrites the rest of the row, so a concurrent edit (applyToSeries,
+   * splitSeries, deleteFrom) committed between this call's read and write is never clobbered. */
+  async touchGeneratedUntil(id: string, until: Date, now: Date): Promise<void> {
+    await this.db.update(recurrences).set({ generatedUntil: until, updatedAt: now })
+      .where(and(eq(recurrences.organisationId, this.org), eq(recurrences.id, id)));
+  }
+
   /**
    * Ids with generated_until < before. Does not additionally filter out series that have already produced every
    * occurrence they ever will (ends: 'on' / 'after' fully generated) — `occurrences()` is self-limiting for those,

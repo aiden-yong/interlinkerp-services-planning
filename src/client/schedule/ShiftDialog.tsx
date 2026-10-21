@@ -1,5 +1,6 @@
 'use client';
 
+import { DateTime } from 'luxon';
 import { type FormEvent, useState } from 'react';
 import { api, ApiError } from '../api';
 import { Modal, useFeedback } from '../feedback';
@@ -78,7 +79,11 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
     setSplitError('');
     try {
       const startWall = isoToWall(shift.start_at, zone);
-      const at = wallToIso(startWall.date, splitTime, zone);
+      // A time earlier than the start's time of day is on the next calendar day (the second half of an overnight shift).
+      const atDate = splitTime < startWall.time
+        ? DateTime.fromISO(startWall.date, { zone }).plus({ days: 1 }).toISODate()!
+        : startWall.date;
+      const at = wallToIso(atDate, splitTime, zone);
       await api<{ shifts: [unknown, unknown] }>('POST', '/api/shift-splits', { shift_id: shift.id, version: shift.version, at });
       setSplitFormOpen(false);
       setSplitTime('');
