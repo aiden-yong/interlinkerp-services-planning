@@ -145,7 +145,7 @@ export function plannedHours(d: ReportData, group: Group, bucket: Bucket): { row
   const rows: PlannedHoursRow[] = [];
   for (const [key, acc] of accumulators) {
     const row: PlannedHoursRow = { key, label: acc.label, left: acc.left, ...cellOf(acc.draft.values(), acc.published.values(), sum(acc.starts.values())) };
-    if (group === 'employee' && row.total_hours <= 0) continue;
+    if (row.total_hours <= 0 && (group === 'employee' || row.shifts === 0)) continue; // e.g. only a shift in the margin around the period
     if (bucket === 'month') {
       const months = [...new Set([...acc.draft.keys(), ...acc.published.keys(), ...acc.starts.keys()].map(monthOf))].sort();
       const inMonth = (m: Map<string, number>, month: string) => [...m].filter(([date]) => monthOf(date) === month).map(([, v]) => v);
@@ -213,6 +213,6 @@ export function openShifts(d: ReportData, publishedOnly: boolean) {
       if (!s.employeeRef) cell.open += 1;
     }
   }
-  const rows = [...byRole].map(([role_id, v]) => ({ role_id, ...v })).sort((a, b) => a.label.localeCompare(b.label));
+  const rows = [...byRole].map(([role_id, v]) => ({ role_id, ...v })).sort((a, b) => Number(a.role_id === null) - Number(b.role_id === null) || a.label.localeCompare(b.label));
   return { days, rows, totals };
 }

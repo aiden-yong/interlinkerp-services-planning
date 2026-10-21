@@ -71,6 +71,17 @@ describe('plannedHours', () => {
   });
 });
 
+describe('plannedHours margins', () => {
+  it('makes no row for shifts wholly outside the period', () => {
+    const d = data({
+      employees: [employee('E1', { departmentId: 'D1', departmentName: 'Front' })],
+      shifts: [shift('E1', '2026-10-09T09:00', 4, { roleId: 'A' }), shift(null, '2026-10-09T09:00', 4, { roleId: 'B' })],
+    });
+    expect(plannedHours(d, 'role', 'none').rows).toEqual([]);
+    expect(plannedHours(d, 'department', 'none').rows).toEqual([]);
+  });
+});
+
 describe('utilisation', () => {
   const weekdays = parseWorkingHours({ mon: [['09:00', '17:00']], tue: [['09:00', '17:00']] });
 
@@ -121,6 +132,7 @@ describe('openShifts', () => {
     expect(all.rows.find((r) => r.role_id === 'A')!.cells['2026-10-13']).toEqual({ open: 2, total: 3 });
     expect(all.rows.find((r) => r.role_id === null)).toMatchObject({ label: 'No role', cells: { '2026-10-14': { open: 1, total: 1 } } });
     expect(all.totals['2026-10-13']).toEqual({ open: 2, total: 3 });
+    expect(all.rows.map((r) => r.label)).toEqual(['Barista', 'No role']);
     const published = openShifts(d, true);
     expect(published.rows.map((r) => r.role_id)).toEqual(['A']);
     expect(published.rows[0].cells['2026-10-13']).toEqual({ open: 1, total: 2 });

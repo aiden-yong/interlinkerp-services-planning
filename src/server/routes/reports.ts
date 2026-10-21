@@ -94,7 +94,7 @@ export function register(r: Router, app: App): void {
     const data = await app.reports().load(c.from, c.to, c.zone, c.roleId, departmentId ?? undefined);
     const rows = utilisation(data, bucket);
     if (c.format === 'csv') {
-      const lines = rows.map((x) => [withLeft(x.name, x.left), x.allocated_hours, x.available_hours, x.utilisation_percent, x.over_allocated_days.join('; ')]);
+      const lines = rows.map((x) => [withLeft(x.name, x.left), x.allocated_hours, x.available_hours, x.utilisation_percent === null ? null : x.utilisation_percent.toFixed(1), x.over_allocated_days.join('; ')]);
       return csv(toCsv(['Employee', 'Allocated hours', 'Available hours', 'Utilisation %', 'Over-allocated days'], lines), 'utilisation', c.from, c.to);
     }
     return json(200, { period: periodOf(c.from, c.to, data.period), rows });
@@ -110,8 +110,9 @@ export function register(r: Router, app: App): void {
     const data = await app.reports().load(c.from, c.to, c.zone, c.roleId);
     const report = openShifts(data, publishedOnly);
     if (c.format === 'csv') {
-      const lines = report.rows.map((x) => [x.label, ...report.days.map((d) => `${x.cells[d].open}/${x.cells[d].total}`)]);
-      lines.push(['Total', ...report.days.map((d) => `${report.totals[d].open}/${report.totals[d].total}`)]);
+      const cell = (c: { open: number; total: number }) => (c.total === 0 ? '' : `${c.open}/${c.total}`); // a day with no shifts is blank
+      const lines = report.rows.map((x) => [x.label, ...report.days.map((d) => cell(x.cells[d]))]);
+      lines.push(['Total', ...report.days.map((d) => cell(report.totals[d]))]);
       return csv(toCsv(['Role', ...report.days], lines), 'open-shifts', c.from, c.to);
     }
     return json(200, { period: periodOf(c.from, c.to, data.period), ...report });

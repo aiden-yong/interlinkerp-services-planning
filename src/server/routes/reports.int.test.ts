@@ -86,6 +86,8 @@ describe('reports', () => {
     expect(rows.map((r: { employee_ref: string }) => r.employee_ref)).toEqual(['E1', 'E2']);
     expect(rows[0]).toMatchObject({ allocated_hours: 12, available_hours: 40, utilisation_percent: 30, over_allocated_days: ['2026-10-12'], flexible: false });
     expect(rows[1]).toMatchObject({ utilisation_percent: 10, over_allocated_days: [] });
+    const csv = await h.app.kernel().handle(new Request('http://localhost/api/reports/utilisation?from=2026-10-12&to=2026-10-18&format=csv'));
+    expect(await csv.text()).toContain('Ana Lim,12.00,40.00,30.0,2026-10-12\r\n');
   });
 
   it('counts unfilled open shifts per role per day (FR-RPT-04)', async () => {
@@ -101,6 +103,8 @@ describe('reports', () => {
     expect(report.rows[0]).toMatchObject({ role_id: roleA, label: 'Barista' });
     expect(report.rows[0].cells['2026-10-13']).toEqual({ open: 2, total: 3 });
     expect(report.totals['2026-10-13']).toEqual({ open: 2, total: 3 });
+    const csv = await h.app.kernel().handle(new Request('http://localhost/api/reports/open-shifts?from=2026-10-12&to=2026-10-14&format=csv'));
+    expect(await csv.text()).toBe('Role,2026-10-12,2026-10-13,2026-10-14\r\nBarista,,2/3,\r\nTotal,,2/3,\r\n');
     expect((await get('open-shifts', { published_only: 'true' })).rows).toEqual([]);
   });
 
