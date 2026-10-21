@@ -8,7 +8,8 @@ import type { Settings } from '../types';
 import { describeError, useBusy, useLoad } from './common';
 import { FieldError, FormError, invalid } from '../fields';
 
-const FIELDS = ['country_code', 'region_code', 'timezone', 'give_up_mode', 'unassign_window_days', 'recurrence_horizon_months'];
+const FIELDS = ['country_code', 'region_code', 'timezone', 'give_up_mode', 'unassign_window_days', 'recurrence_horizon_months', 'reminder_lead_minutes'];
+const LEAD_OPTIONS = [[0, 'Off'], [30, '30 minutes'], [60, '1 hour'], [120, '2 hours'], [240, '4 hours'], [720, '12 hours'], [1440, '24 hours']] as const;
 const MODES = [{ value: 'switch', label: 'Switch' }, { value: 'unassign', label: 'Unassign' }] as const;
 
 export function GeneralTab() {
@@ -57,6 +58,7 @@ export function GeneralTab() {
           give_up_mode: form.give_up_mode,
           unassign_window_days: unassign ? days : form.unassign_window_days,
           recurrence_horizon_months: horizonMonths,
+          reminder_lead_minutes: form.reminder_lead_minutes,
         });
         setSaved(result.settings);
         setForm(result.settings);
@@ -98,6 +100,11 @@ export function GeneralTab() {
       )}
       <label className="wide">Recurrence horizon (months)<input {...invalid(fe.recurrence_horizon_months, 'general-recurrence_horizon_months-error')} type="number" min={1} max={24} step={1} value={horizonText} onChange={(e) => setHorizonText(e.target.value)} />
         <FieldError id="general-recurrence_horizon_months-error" message={fe.recurrence_horizon_months} /></label>
+      <label className="wide">Remind employees before their shifts
+        <select {...invalid(fe.reminder_lead_minutes, 'general-reminder_lead_minutes-error')} value={form.reminder_lead_minutes} onChange={(e) => setForm({ ...form, reminder_lead_minutes: Number(e.target.value) })}>
+          {LEAD_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+        <FieldError id="general-reminder_lead_minutes-error" message={fe.reminder_lead_minutes} /></label>
       <p className="wide muted">How far ahead repeated shifts are generated before the schedule needs to extend them again.</p>
       <p className="wide muted">The country and region decide which public holidays are loaded. Employees without their own time zone use this one.</p>
       <FormError message={problem} className="wide" />

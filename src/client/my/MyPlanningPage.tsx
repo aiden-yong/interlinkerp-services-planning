@@ -8,6 +8,7 @@ import { Stepper } from '../Stepper';
 import type { Me, MyShiftsPayload } from '../types';
 import { groupByDay } from './days';
 import { AvailableShifts } from './AvailableShifts';
+import { CalendarFeed } from './CalendarFeed';
 import { GiveUpButton } from './GiveUpButton';
 import { useOpenShifts } from './openShifts';
 
@@ -79,6 +80,7 @@ export function MyPlanningPage({ me }: { me: Me }) {
         </>
       )}
       <AvailableShifts data={openShifts.data} onChanged={reloadAll} />
+      <CalendarFeed />
     </section>
   );
 }

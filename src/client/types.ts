@@ -96,7 +96,11 @@ export interface EmployeeProfile {
   working_hours: WorkingHoursMap | null;
 }
 
-export interface Settings { country_code: string | null; region_code: string | null; timezone: string; give_up_mode: 'switch' | 'unassign'; unassign_window_days: number; recurrence_horizon_months: number }
+export interface Settings { country_code: string | null; region_code: string | null; timezone: string; give_up_mode: 'switch' | 'unassign'; unassign_window_days: number; recurrence_horizon_months: number; reminder_lead_minutes: number }
+export interface HistoryEntry {
+  action: string; actor: string | null; actor_kind: 'manager' | 'employee' | 'system'; actor_name: string;
+  changes: Record<string, [unknown, unknown]> | null; at: string;
+}
 export interface Template { id: string; name: string; role_id: string | null; start_time: string; duration_minutes: number; break_minutes: number }
 export interface TimeOff { id: string; employee_ref: string; start_at: string; end_at: string; reason: string }
 export interface Holiday { id: string; date: string; name: string; source: 'manual' | 'provider'; hidden: boolean; edited: boolean }
