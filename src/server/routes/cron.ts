@@ -30,7 +30,7 @@ export function register(r: Router, app: App): void {
     requireCronSecret(app, request);
     const now = app.clock().now();
     const extended = await app.recurrences().extendAll(now);
-    const reminded = await app.reminders().queueDue(now);
+    const reminded = await app.queueReminders(now);
     const report = await app.delivery().deliverDue();
     return json(200, { reminded, ...report, pruned: await app.retention().run(now), alerts: await app.opsCheck().run(now), extended });
   });
@@ -40,6 +40,6 @@ export function register(r: Router, app: App): void {
     requireCronSecret(app, request);
     const now = app.clock().now();
     await app.jobRuns().claim('sweep', now, 0);
-    return json(200, { reminded: await app.reminders().queueDue(now), ...await app.delivery().deliverDue() });
+    return json(200, { reminded: await app.queueReminders(now), ...await app.delivery().deliverDue() });
   });
 }

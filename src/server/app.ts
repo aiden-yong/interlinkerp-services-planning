@@ -236,7 +236,7 @@ export class App {
     // FR-NTF-05: each sweep queues due reminders first, so they are delivered in the same pass.
     const sweeping = {
       deliverDue: async () => {
-        await this.reminders().queueDue(this.clock().now());
+        await this.queueReminders(this.clock().now());
         return this.delivery().deliverDue();
       },
       pushBadges: (touched: Touched) => this.delivery().pushBadges(touched),
@@ -247,6 +247,16 @@ export class App {
 
   emailPreferences(): EmailPreferences {
     return this.once('emailPreferences', () => new EmailPreferences(this.database().db, this.organisationId()));
+  }
+
+  /** FR-NTF-05: queues due reminders; a failure is logged (no personal data) and counts as 0, so delivery still runs. */
+  async queueReminders(now: Date): Promise<number> {
+    try {
+      return await this.reminders().queueDue(now);
+    } catch (error) {
+      this.log(`[reminders] queueing failed: ${error instanceof Error ? error.message : String(error)}`);
+      return 0;
+    }
   }
 
   reminders(): ReminderService {

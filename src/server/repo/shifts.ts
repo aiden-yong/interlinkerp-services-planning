@@ -288,7 +288,7 @@ export class ShiftRepository {
 
   /** NFR-04: takes an open published shift that has not started and is still at `expectedVersion`. null = someone else got it first, or it changed. */
   async claim(id: string, ref: string, expectedVersion: number, now: Date): Promise<ShiftRecord | null> {
-    return one(await this.db.update(shifts).set({ employeeRef: ref, version: sql`${shifts.version} + 1`, updatedAt: now })
+    return one(await this.db.update(shifts).set({ employeeRef: ref, remindedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
       .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), isNull(shifts.employeeRef), eq(shifts.state, 'published'), gt(shifts.startAt, now))).returning());
   }
 
@@ -297,7 +297,7 @@ export class ShiftRepository {
    * `expectedVersion`; bumps the version. `detach` marks a series occurrence as individually edited. null = it changed.
    */
   async assign(id: string, ref: string, expectedVersion: number, detach: boolean, now: Date): Promise<ShiftRecord | null> {
-    return one(await this.db.update(shifts).set({ employeeRef: ref, version: sql`${shifts.version} + 1`, updatedAt: now, ...(detach ? { recurrenceDetached: true } : {}) })
+    return one(await this.db.update(shifts).set({ employeeRef: ref, remindedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now, ...(detach ? { recurrenceDetached: true } : {}) })
       .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), isNull(shifts.employeeRef), eq(shifts.state, 'draft'))).returning());
   }
 
@@ -329,7 +329,7 @@ export class ShiftRepository {
 
   /** BR-06: only shifts starting after `earliestStart` (now + window) can be given up. */
   async unassign(id: string, ref: string, earliestStart: Date, expectedVersion: number, now: Date): Promise<ShiftRecord | null> {
-    return one(await this.db.update(shifts).set({ employeeRef: null, switchRequestedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
+    return one(await this.db.update(shifts).set({ employeeRef: null, switchRequestedAt: null, remindedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
       .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), eq(shifts.employeeRef, ref), eq(shifts.state, 'published'), gt(shifts.startAt, earliestStart)))
       .returning());
   }

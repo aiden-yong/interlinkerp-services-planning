@@ -8,9 +8,9 @@ import { MAX_OUTBOX_ATTEMPTS } from './deliveryService';
 
 /** Backlog item 9: how stale the cached directory may get before someone should look (the refresh runs daily). */
 export const DIRECTORY_ALERT_HOURS = 48;
-/** The daily cron looks back a little over a day, so every failure is reported once. Retries finish within an hour. */
 /** FR-NTF-05: the external scheduler calls the sweep every 5 minutes; this long without a run is worth an alert. */
 export const SWEEP_ALERT_MINUTES = 30;
+/** The daily cron looks back a little over a day, so every failure is reported once. Retries finish within an hour. */
 const WINDOW_MS = 25 * 3600_000;
 
 /**

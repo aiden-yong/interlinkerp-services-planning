@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { App } from '../app';
 import { notifications, shifts } from '../db/schema';
 import { useApiHarness } from '../test/harness';
@@ -77,6 +77,36 @@ describe('shift reminders (FR-NTF-05)', () => {
     expect(await h.app.reminders().queueDue(h.clock.now())).toBe(0);
     expect((await h.call('PATCH', '/api/settings', { reminder_lead_minutes: 60 })).status).toBe(200);
     expect(await h.app.reminders().queueDue(h.clock.now())).toBe(1);
+  });
+
+  it('reminds the person who claims a shift after the first owner gave it up', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    await h.addEmployee('E2', 'Bo Tan');
+    expect((await h.call('PATCH', '/api/settings', { reminder_lead_minutes: 1440 })).status).toBe(200);
+    const id = await shiftFor('E1', 50);
+    expect(await h.app.reminders().queueDue(h.clock.now())).toBe(1);
+    expect((await h.call('PATCH', '/api/settings', { give_up_mode: 'unassign', unassign_window_days: 0 })).status).toBe(200);
+    const gaveUp = await h.callAs('E1', 'ana@example.com', 'POST', '/api/unassignments', { shift_id: id });
+    expect(gaveUp.status, JSON.stringify(gaveUp.body)).toBe(201);
+    const claimed = await h.callAs('E2', 'bo@example.com', 'POST', '/api/shift-claims', { shift_id: id });
+    expect(claimed.status, JSON.stringify(claimed.body)).toBe(201);
+    expect(await remindedAt(id)).toBeNull();
+    expect(await h.app.reminders().queueDue(h.clock.now())).toBe(1);
+  });
+
+  it('still delivers when queueing reminders fails', async () => {
+    await h.addEmployee('E1', 'Ana Lim');
+    await shiftFor('E1', 3 * 24 * 60);
+    const lines: string[] = [];
+    const app = new App({ ...h.app.deps, cronSecret: 'right', logger: (l) => lines.push(l) });
+    vi.spyOn(app.reminders(), 'queueDue').mockRejectedValue(new Error('db down'));
+    const ok = await app.kernel().handle(new Request('http://localhost/internal/cron/sweep', { headers: { authorization: 'Bearer right' } }));
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ reminded: 0, notified: 1 });
+    expect(lines.some((l) => l.includes('[reminders] queueing failed: db down'))).toBe(true);
+    const daily = await app.kernel().handle(new Request('http://localhost/internal/cron/notifications', { headers: { authorization: 'Bearer right' } }));
+    expect(daily.status).toBe(200);
+    expect(await daily.json()).toMatchObject({ reminded: 0 });
   });
 
   it('queues reminders ahead of delivery in the after-response sweep', async () => {
