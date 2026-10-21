@@ -5,7 +5,8 @@ import { api, ApiError, query } from '../api';
 import { useFeedback } from '../feedback';
 import { Segmented } from '../Segmented';
 import { Stepper } from '../Stepper';
-import type { Me, SchedulePayload, Shift } from '../types';
+import type { AutoPlanReport, Me, SchedulePayload, Shift } from '../types';
+import { AutoPlanResult } from './AutoPlanResult';
 import { Board, type ShiftChange } from './Board';
 import { newShiftTimes, publishSummary } from './drag';
 import { periodFor, periodLabel, type Scale, step } from './period';
@@ -30,6 +31,8 @@ export function SchedulePage({ me }: { me: Me }) {
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ shift: Shift | null; initial: ShiftForm } | null>(null);
+  const [planResult, setPlanResult] = useState<AutoPlanReport | null>(null);
+  const autoPlanButton = useRef<HTMLButtonElement>(null);
   const period = useMemo(() => periodFor(scale, anchor), [scale, anchor]);
 
   const latest = useRef(0);
@@ -106,6 +109,22 @@ export function SchedulePage({ me }: { me: Me }) {
     await reload();
   }
 
+  async function autoPlan() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (!(await confirm('Fill the draft open shifts in this period?', ['Assigned shifts stay drafts until you publish.'], 'Auto Plan'))) return;
+      try {
+        setPlanResult(await api<AutoPlanReport>('POST', '/api/auto-plans', { from: period.from, to: period.to, timezone: zone }));
+      } catch (e) {
+        report(e); // AUTO_PLAN_RUNNING and other errors show their own message
+      }
+      await reload();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function copyPreviousWeek() {
     if (busy) return;
     setBusy(true);
@@ -149,13 +168,15 @@ export function SchedulePage({ me }: { me: Me }) {
         <span className="spacer" />
         <Segmented label="Scale" value={scale} segments={SCALES} onChange={setScale} />
         <button type="button" onClick={() => openNew(null, null)}>Add shift</button>
+        {/* Year scale (Task 11) joins here: hide the button there or send its own period. */}
+        <button type="button" ref={autoPlanButton} disabled={busy} onClick={() => void autoPlan()}>Auto Plan</button>
         {scale === 'week' && <button type="button" disabled={busy} onClick={() => void copyPreviousWeek()}>Copy previous week</button>}
         <label className="check"><input type="checkbox" checked={notifyOpen} onChange={(e) => setNotifyOpen(e.target.checked)} /> Tell eligible employees about open shifts</label>
         <button type="button" className="primary" disabled={busy} onClick={publish}>Publish</button>
       </div>
       <div className="filters">
         <select aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}>
-          <option value="employee">By employee</option><option value="role">By role</option>
+          <option value="employee">By employee</option><option value="role">By role</option><option value="department">By department</option>
         </select>
         <select aria-label="Filter by role" value={filters.roleId} onChange={(e) => set({ roleId: e.target.value })}>
           <option value="">All roles</option>
@@ -183,6 +204,7 @@ export function SchedulePage({ me }: { me: Me }) {
         />
       ) : !error && <p className="empty">Loading…</p>}
       {editing && data && <ShiftDialog data={data} shift={editing.shift} initial={editing.initial} onClose={() => setEditing(null)} onSaved={reload} />}
+      {planResult && data && <AutoPlanResult report={planResult} data={data} zone={zone} onClose={() => { setPlanResult(null); autoPlanButton.current?.focus(); }} />}
     </section>
   );
 }

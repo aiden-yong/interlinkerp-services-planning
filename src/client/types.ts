@@ -65,6 +65,13 @@ export interface SchedulePayload {
   shifts: Shift[];
 }
 
+export interface AutoPlanReport {
+  filled: { shift_id: string; employee_ref: string }[];
+  unfilled: { shift_id: string; reason_code: string; reason: string }[];
+  skipped_published: string[];
+  skipped_changed: string[];
+}
+
 export interface MyShift { id: string; role_id: string | null; start_at: string; end_at: string; break_minutes: number; allocated_hours: number; note: string | null; switch_requested: boolean }
 export interface MyShiftsPayload { timezone: string; from: string; to: string; roles: Role[]; shifts: MyShift[] }
 
