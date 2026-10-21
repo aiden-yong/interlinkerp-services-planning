@@ -193,7 +193,10 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
             <legend>Repeat</legend>
             <label>Repeat
               <select value={form.repeat} onChange={(e) => set({ repeat: e.target.value as ShiftForm['repeat'] })}>
-                <option value="">Does not repeat</option>
+                {/* Editing an existing series shift has no "stop the series" primitive on the server: only
+                    Delete with scope 'following'/'all' can end one. So this option is withheld here rather
+                    than offering a choice that silently no-ops on save. */}
+                {!(shift && shift.recurrence !== null) && <option value="">Does not repeat</option>}
                 <option value="day">Days</option>
                 <option value="week">Weeks</option>
                 <option value="month">Months</option>
@@ -212,10 +215,10 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
                   </select>
                 </label>
                 {form.repeat_ends === 'on' && (
-                  <label>Until<input type="date" value={form.repeat_until} onChange={(e) => set({ repeat_until: e.target.value })} /></label>
+                  <label>Until<input type="date" required value={form.repeat_until} onChange={(e) => set({ repeat_until: e.target.value })} /></label>
                 )}
                 {form.repeat_ends === 'after' && (
-                  <label>Shifts<input type="number" min={1} value={form.repeat_count} onChange={(e) => set({ repeat_count: e.target.value })} /></label>
+                  <label>Shifts<input type="number" min={1} required value={form.repeat_count} onChange={(e) => set({ repeat_count: e.target.value })} /></label>
                 )}
               </>
             )}

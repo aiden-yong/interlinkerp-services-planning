@@ -73,7 +73,7 @@ describe('ShiftDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     const question = await screen.findByRole('dialog', { name: 'Change a repeated shift' });
-    expect(question.querySelector('button')!.textContent).not.toBe(undefined);
+    expect(Array.from(question.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['Cancel', 'This shift', 'This and following', 'All']);
     fireEvent.click(Array.from(question.querySelectorAll('button')).find((b) => b.textContent === 'All')!);
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(true));
@@ -81,5 +81,21 @@ describe('ShiftDialog', () => {
     const body = JSON.parse(String(patch[1]!.body));
     expect(body.scope).toBe('all');
     expect(body.note).toBe('Updated note');
+  });
+
+  it('never offers "Does not repeat" for an existing series shift, since nothing can act on it', () => {
+    const seriesShift = shift({ recurrence: { id: 'r1', interval: 1, unit: 'week', ends: 'never', until_date: null, count: null, index: 0, detached: false } });
+    dialog(seriesShift);
+    expect(screen.queryByRole('option', { name: /does not repeat/i })).toBeNull();
+  });
+
+  it('offers "Does not repeat" for a brand-new shift', () => {
+    const data = payload({ employees: [employee()] });
+    render(
+      <FeedbackProvider>
+        <ShiftDialog data={data} shift={null} initial={{ ...shiftToForm(shift(), data.period.timezone), repeat: '' }} onClose={() => {}} onSaved={async () => {}} />
+      </FeedbackProvider>,
+    );
+    expect(screen.getByRole('option', { name: /does not repeat/i })).toBeTruthy();
   });
 });
