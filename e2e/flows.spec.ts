@@ -1,4 +1,6 @@
+import { DateTime } from 'luxon';
 import { ANA, actAs, BO, call, deliverNow, expect, nextWednesday, publishedShift, test } from './fixtures';
+import { BASE_URL, ZONE } from './env';
 
 /** Backlog item 21: the four flows people use most, in a real browser. */
 
@@ -99,4 +101,53 @@ test('a manager copies the previous week', async ({ page, request }) => {
   await page.getByRole('button', { name: 'Copy previous week' }).click();
   await page.getByRole('dialog', { name: 'Copy previous week?' }).getByRole('button', { name: 'Copy' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Copied 1 shift.' })).toBeVisible();
+});
+
+test('a manager runs Auto Plan on a week', async ({ page, request }) => {
+  const { role } = await call(request, null, 'POST', '/api/roles', { name: 'Technician', color: '#3B82F6' });
+  const day = [['08:00', '18:00']];
+  await call(request, null, 'PATCH', '/api/employees/E1', { role_ids: [role.id], working_hours: { mon: day, tue: day, wed: day, thu: day, fri: day } });
+  await call(request, null, 'POST', '/api/shifts', { employee_ref: null, role_id: role.id, start_at: nextWednesday(9), end_at: nextWednesday(13) });
+
+  await page.goto('/schedule');
+  await page.getByRole('button', { name: 'Next period' }).click();
+  await page.getByRole('button', { name: 'Auto Plan' }).click();
+  await page.getByRole('dialog', { name: 'Fill the draft open shifts in this period?' }).getByRole('button', { name: 'Auto Plan' }).click();
+  const result = page.getByRole('dialog', { name: 'Filled 1 of 1 open shifts' });
+  await expect(result).toBeVisible();
+  await expect(result.getByText('Ana Lim')).toBeVisible();
+});
+
+test('a manager downloads a planned-hours CSV', async ({ page }) => {
+  await page.goto('/reports');
+  const download = page.waitForEvent('download');
+  await page.getByRole('link', { name: 'Download CSV' }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^planned-hours_/);
+  const chunks: Buffer[] = [];
+  for await (const chunk of await file.createReadStream()) chunks.push(Buffer.from(chunk));
+  const firstLine = Buffer.concat(chunks).toString('utf8').replace(/^﻿/, '').split(/\r?\n/)[0];
+  expect(firstLine).toBe('Group,Draft hours,Published hours,Total hours,Shifts');
+});
+
+test('a manager opens a month from the Year scale', async ({ page }) => {
+  const month = DateTime.now().setZone(ZONE).setLocale('en').toFormat('LLLL yyyy');
+  await page.goto('/schedule');
+  await page.getByRole('radio', { name: 'Year' }).click();
+  await page.getByRole('button', { name: new RegExp(`^Ana Lim, ${month}:`) }).click();
+  await expect(page.getByRole('radio', { name: 'Month' })).toBeChecked();
+  await expect(page.getByRole('heading', { name: month.slice(0, 3) + month.slice(month.indexOf(' ')) })).toBeVisible();
+});
+
+test("an employee's calendar link serves an iCalendar file", async ({ request, playwright }) => {
+  const { url } = await call(request, ANA, 'POST', '/api/my/calendar-feed');
+  const anonymous = await playwright.request.newContext();
+  try {
+    const response = await anonymous.get(`${BASE_URL}${new URL(url).pathname}`);
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toContain('text/calendar');
+    expect(await response.text()).toMatch(/^BEGIN:VCALENDAR/);
+  } finally {
+    await anonymous.dispose();
+  }
 });

@@ -1,8 +1,8 @@
 # Planning: improvement backlog
 
-Status as of 2026-10-21 (main at `891ab34`, service version 0.3.0). Items are ordered from most to least urgent. Effort: **S** is under half a day, **M** is one to three days, **L** is more than three days.
+Status as of 2026-10-21 (service version 0.4.0, M4 built). Items are ordered from most to least urgent. Effort: **S** is under half a day, **M** is one to three days, **L** is more than three days.
 
-Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequirements.md` v0.4, and a check of the current code.
+Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequirements.md` v0.5, and a check of the current code.
 
 ---
 
@@ -307,3 +307,9 @@ Things a milestone design left out or a decision put off. None is a defect. Pick
 - **Area:** Integration
 - **Why:** Planning stores time off itself until an HR leave service exists. Then the time-off reads are replaced with an adapter for that service (DR-03 keeps this contained).
 - **Effort:** M
+
+### 52. Auto Plan is not locked against a manager's concurrent edits
+- **Area:** Correctness (narrow edge case)
+- **Why:** Auto Plan holds its own lock and the candidates' employee locks, so claims and take-overs are serialised. A manager edit or a time-off change made between Auto Plan's data load and its write is not. The schedule still flags any resulting conflict before publishing.
+- **Fix:** Take the employee lock in manager shift writes too, or re-read time off inside the transaction.
+- **Effort:** S–M
