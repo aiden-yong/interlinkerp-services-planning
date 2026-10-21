@@ -10,7 +10,7 @@ Release 1 is built in four milestones. Each one ends with working, deployable so
 |---|---|---|---|
 | M1 | Foundation: sign-in, configuration, shifts, schedule, publishing, My Planning | — | Written |
 | M2 | Open shifts, giving up shifts, notification delivery | M1 | Write when M1 ships |
-| M3 | Recurrence, shift templates, copy previous week, split | M1 (M2 for notifications on generated shifts) | Write when M2 ships |
+| M3 | Recurrence, shift templates, copy previous week, split | M1 (M2 for notifications on generated shifts) | Written |
 | M4 | Reporting, Auto Plan, remaining Should/Could items | M1–M3 | Write when M3 ships |
 
 ---
@@ -67,6 +67,8 @@ Release 1 is built in four milestones. Each one ends with working, deployable so
 **Requirements:** FR-REC-01 to 04, FR-TPL-01 to 04, FR-PUB-04, FR-SHF-06, FR-CFG-06, BR-08.
 
 **Depends on:** M1 shifts; M2 notifications (edits to published recurring shifts notify).
+
+**Status:** built 2026-10-21, merged to `main`.
 
 **Likely adds**
 - Tables: `recurrences` (type, interval, end type, count, until, excluded occurrences, generated_until), `shift_templates` (name, role, start time, duration, break).

@@ -21,7 +21,7 @@ Edit `src/server/db/schema.ts`, run `npm run db:generate`, read the new SQL in `
 ## Tests
 `npm test` runs everything. `npm run test:unit` needs nothing; `npm run test:integration` needs the local `planning_test` database. `npm run typecheck` for types.
 
-Browser tests (Playwright) cover four flows: publish a week, claim an open shift, ask for cover and take it over, and read notices. Run `npx playwright install chromium` once, then `npm run test:e2e`. They start their own `next dev` on port 3200 (building into `.next-e2e`, so your dev server on 3000 is untouched), use `TEST_DATABASE_URL`, and fail if the browser logs a Content-Security-Policy violation.
+Browser tests (Playwright) cover six flows: publish a week, claim an open shift, ask for cover and take it over, read notices, repeat a shift weekly, and copy the previous week. Run `npx playwright install chromium` once, then `npm run test:e2e`. They start their own `next dev` on port 3200 (building into `.next-e2e`, so your dev server on 3000 is untouched), use `TEST_DATABASE_URL`, and fail if the browser logs a Content-Security-Policy violation.
 
 ## Deploying
 1. Neon project in `aws-ap-southeast-1`; apply migrations with its pooled URL (`DATABASE_URL=... npm run db:migrate`).
@@ -35,6 +35,8 @@ Apply the new migrations to the production database BEFORE deploying: `DATABASE_
 - `0002` adds `rate_limits` (each person or program may make 60 changes in a burst, then one a second; over that they get `429` with `Retry-After`) and `job_runs` (one delivery sweep per 30 seconds across all instances). If the code is deployed first, both features fail open and log a line until the migration runs.
 - `0003` adds `email_opt_outs`: people can turn email off per notice type from "Email settings" in the bell. In-app notices always arrive.
 - The daily notifications cron also deletes read notices older than 90 days, finished outbox rows older than 30 days and idle rate-limit buckets. Its response now includes `pruned` counts and `alerts`. Each alert is also logged as a line starting with `[alert]` (failed emails, undeliverable notices, a directory older than 48 hours), so log alerts can match it.
+- `0004` adds `recurrences` and `shift_templates`, four new columns on `shifts` (`recurrence_id`, `recurrence_index`, `recurrence_detached`, `copied_from`), and `organisation_settings.recurrence_horizon_months` (1–24, default 6).
+- Shifts can now repeat daily, weekly or monthly, and an edit or delete on a repeated shift can apply to "this", "this and following" or "all" occurrences. Shift templates (Settings → Templates) fill in a shift's role, time and break in one click. "Copy previous week" on the schedule toolbar duplicates last week's one-off shifts into this week as drafts. A shift can also be split into two from its edit dialog.
 
 ## Upgrading to 0.2.0 (M2)
 Do these in order:
