@@ -1,6 +1,6 @@
 # Planning: improvement backlog
 
-Status as of 2026-10-21 (main at `5790207`, service version 0.2.0). Items are ordered from most to least urgent. Effort: **S** is under half a day, **M** is one to three days, **L** is more than three days.
+Status as of 2026-10-21 (main at `891ab34`, service version 0.3.0). Items are ordered from most to least urgent. Effort: **S** is under half a day, **M** is one to three days, **L** is more than three days.
 
 Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequirements.md` v0.4, and a check of the current code.
 

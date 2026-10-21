@@ -68,7 +68,7 @@ Release 1 is built in four milestones. Each one ends with working, deployable so
 
 **Depends on:** M1 shifts; M2 notifications (edits to published recurring shifts notify).
 
-**Status:** built 2026-10-21 on `feature/m3-recurrence-templates`, pending final review and merge to `main`.
+**Status:** built and merged to `main` 2026-10-21 (commit `891ab34`).
 
 **Likely adds**
 - Tables: `recurrences` (type, interval, end type, count, until, excluded occurrences, generated_until), `shift_templates` (name, role, start time, duration, break).
