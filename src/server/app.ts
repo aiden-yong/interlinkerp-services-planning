@@ -31,6 +31,7 @@ import { TimeOffRepository } from './repo/timeOff';
 import { buildRouter } from './routes';
 import { ConflictContext } from './scheduling/conflictContext';
 import { Eligibility } from './scheduling/eligibility';
+import { AutoPlanService } from './scheduling/autoPlanService';
 import { OpenShiftService } from './scheduling/openShiftService';
 import { PublishService } from './scheduling/publishService';
 import { RecurrenceService } from './scheduling/recurrenceService';
@@ -301,6 +302,10 @@ export class App {
     return this.once('reports', () => new ReportService(
       this.shifts(), this.profiles(), this.roles(), this.directory(), this.directoryRefresher(), this.timeOff(), this.holidays(), this.settings(), this.clock(), this.recurrences(),
     ));
+  }
+
+  autoPlans(): AutoPlanService {
+    return this.once('autoPlans', () => new AutoPlanService(this.reports(), this.unitOfWork()));
   }
 
   holidayProvider(): HolidayProvider {

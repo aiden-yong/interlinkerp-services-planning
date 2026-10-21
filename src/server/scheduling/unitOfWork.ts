@@ -24,6 +24,8 @@ export interface WriteScope {
   lockSettings(): Promise<void>;
   /** Serialises two extensions of the same series until the transaction ends (Review Focus 4). */
   lockSeries(id: string): Promise<void>;
+  /** Auto Plan (D14): takes the organisation's Auto Plan lock until the transaction ends; false when another run holds it. */
+  tryLockAutoPlan(): Promise<boolean>;
 }
 
 /**
@@ -56,6 +58,10 @@ export class UnitOfWork {
         },
         lockSeries: async (id) => {
           await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`${this.org}:series:${id}`}))`);
+        },
+        tryLockAutoPlan: async () => {
+          const result = await db.execute<{ locked: boolean }>(sql`select pg_try_advisory_xact_lock(hashtext(${`${this.org}:auto-plan`})) as locked`);
+          return result.rows[0]?.locked === true;
         },
       });
     }, { isolationLevel: 'read committed' });

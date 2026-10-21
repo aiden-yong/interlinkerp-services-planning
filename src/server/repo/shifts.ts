@@ -289,6 +289,15 @@ export class ShiftRepository {
       .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), isNull(shifts.employeeRef), eq(shifts.state, 'published'), gt(shifts.startAt, now))).returning());
   }
 
+  /**
+   * Auto Plan (D13, D14): gives a draft open shift to `ref` only if it is still open, still a draft and still at
+   * `expectedVersion`; bumps the version. `detach` marks a series occurrence as individually edited. null = it changed.
+   */
+  async assign(id: string, ref: string, expectedVersion: number, detach: boolean, now: Date): Promise<ShiftRecord | null> {
+    return one(await this.db.update(shifts).set({ employeeRef: ref, version: sql`${shifts.version} + 1`, updatedAt: now, ...(detach ? { recurrenceDetached: true } : {}) })
+      .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), isNull(shifts.employeeRef), eq(shifts.state, 'draft'))).returning());
+  }
+
   /** BR-07: ends every active switch request on a shift that has not started; returns the shifts whose owners must be told. Bumps the version so an in-flight take-over is caught. */
   async clearSwitchRequests(now: Date): Promise<ShiftRecord[]> {
     const rows = await this.db.update(shifts).set({ switchRequestedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
