@@ -4,7 +4,7 @@
 
 **Stack (decided 2026-10-15):** Next.js 16 App Router, React 19 and TypeScript; Drizzle ORM on PostgreSQL (18 locally, Neon `aws-ap-southeast-1` in production); Vercel region `sin1`. No separate backend service: the JSON API runs in Next.js route handlers.
 
-Release 1 is built in four milestones. Each one ends with working, deployable software and gets its own detailed implementation plan, written when the milestone starts so it is based on the real code. Only M1 has a detailed plan so far: [2026-10-13-planning-m1-foundation.md](2026-10-13-planning-m1-foundation.md).
+Release 1 is built in four milestones. Each one ends with working, deployable software and gets its own detailed implementation plan, written when the milestone starts so it is based on the real code. M1 and M3 have detailed plans so far: [2026-10-13-planning-m1-foundation.md](2026-10-13-planning-m1-foundation.md) and [2026-10-20-planning-m3.md](2026-10-20-planning-m3.md) (spec: [2026-10-20-planning-m3-design.md](../specs/2026-10-20-planning-m3-design.md)).
 
 | Milestone | Theme | Depends on | Detailed plan |
 |---|---|---|---|

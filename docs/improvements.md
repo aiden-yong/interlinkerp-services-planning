@@ -204,3 +204,9 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Area:** Housekeeping
 - **Done:** The leftover `.worktrees` folder is deleted. Its two links pointed into the removed worktree.
 - **Effort:** S
+
+### 34. "Add shift" silently does nothing right after changing the schedule's period
+- **Area:** UX
+- **Why:** `SchedulePage.tsx`'s `openNew()` guards with `if (!data) return;`, but the toolbar's "Add shift", "Publish" and "Copy previous week" buttons are never disabled while a period change's `GET /api/schedule` is still in flight. A manager who clicks fast enough after "Next period" gets no dialog, no toast, nothing — a silent dead click. Found while writing M3's browser tests (the repeat-setup test needed to wait for the board to render before clicking "Add shift").
+- **Fix:** Disable those three buttons while `data === null`, or give `openNew()`/the others a toast when they no-op.
+- **Effort:** S
