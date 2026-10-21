@@ -30,6 +30,7 @@ export interface ShiftRecord {
   recurrenceIndex: number | null;
   recurrenceDetached: boolean;
   copiedFrom: string | null;
+  remindedAt: Date | null;
 }
 
 const toRecord = (r: typeof shifts.$inferSelect): ShiftRecord => ({
@@ -38,6 +39,7 @@ const toRecord = (r: typeof shifts.$inferSelect): ShiftRecord => ({
   version: r.version, createdBy: r.createdBy, deletedAt: r.deletedAt,
   switchRequestedAt: r.switchRequestedAt,
   recurrenceId: r.recurrenceId, recurrenceIndex: r.recurrenceIndex, recurrenceDetached: r.recurrenceDetached, copiedFrom: r.copiedFrom,
+  remindedAt: r.remindedAt,
 });
 
 const one = (rows: (typeof shifts.$inferSelect)[]): ShiftRecord | null => (rows.length === 1 ? toRecord(rows[0]!) : null);

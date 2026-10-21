@@ -63,7 +63,7 @@ export class ShiftService {
     const draft: ShiftRecord = {
       id: randomUUID(), employeeRef, roleId, start: start!, end: end!, breakMinutes, percent, note, state: 'draft', publishedAt: null,
       ackBy: null, ackAt: null, version: 1, createdBy: actorId(by), deletedAt: null, switchRequestedAt: null,
-      recurrenceId: null, recurrenceIndex: repeat ? 0 : null, recurrenceDetached: false, copiedFrom: null,
+      recurrenceId: null, recurrenceIndex: repeat ? 0 : null, recurrenceDetached: false, copiedFrom: null, remindedAt: null,
     };
 
     if (repeat) {
@@ -233,7 +233,7 @@ export class ShiftService {
     const secondRecord: ShiftRecord = {
       ...current, id: secondId, start: at!, breakMinutes: breakGoesToFirst ? 0 : current.breakMinutes,
       version: 1, createdBy: actorId(by), ackBy: null, ackAt: null, switchRequestedAt: null, deletedAt: null,
-      recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null,
+      recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null, remindedAt: null,
     };
 
     const [first, second] = await this.unit.run(async (scope) => {
@@ -314,7 +314,7 @@ export class ShiftService {
     const copy: ShiftRecord = {
       ...source, id: randomUUID(), start: copyStart, end: copyEnd,
       state: 'draft', publishedAt: null, version: 1, createdBy: actorId(by), deletedAt: null, switchRequestedAt: null,
-      recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null,
+      recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null, remindedAt: null,
     };
     const result = await this.guardConflicts(copy, acknowledged, by, now);
     await this.unit.run(({ shifts }) => shifts.insert(result.shift, now));

@@ -5,14 +5,14 @@ const h = useApiHarness();
 
 describe('settings API', () => {
   it('defaults to the configured time zone', async () => {
-    expect((await h.call('GET', '/api/settings')).body.settings).toEqual({ country_code: null, region_code: null, timezone: 'Asia/Kuala_Lumpur', give_up_mode: 'switch', unassign_window_days: 2, recurrence_horizon_months: 6 });
+    expect((await h.call('GET', '/api/settings')).body.settings).toEqual({ country_code: null, region_code: null, timezone: 'Asia/Kuala_Lumpur', give_up_mode: 'switch', unassign_window_days: 2, recurrence_horizon_months: 6, reminder_lead_minutes: 60 });
   });
 
   it('saves and keeps absent fields', async () => {
     await h.call('PATCH', '/api/settings', { country_code: 'MY', region_code: 'MY-10' });
     const { status, body } = await h.call('PATCH', '/api/settings', { timezone: 'Asia/Singapore' });
     expect(status).toBe(200);
-    expect(body.settings).toEqual({ country_code: 'MY', region_code: 'MY-10', timezone: 'Asia/Singapore', give_up_mode: 'switch', unassign_window_days: 2, recurrence_horizon_months: 6 });
+    expect(body.settings).toEqual({ country_code: 'MY', region_code: 'MY-10', timezone: 'Asia/Singapore', give_up_mode: 'switch', unassign_window_days: 2, recurrence_horizon_months: 6, reminder_lead_minutes: 60 });
   });
 
   it('reads and saves the recurrence horizon (FR-CFG-06, BR-08)', async () => {
@@ -21,6 +21,15 @@ describe('settings API', () => {
     for (const bad of [0, 25, 1.5, '6']) {
       const { status, body } = await h.call('PATCH', '/api/settings', { recurrence_horizon_months: bad });
       expect([status, Object.keys(body.error.details)]).toEqual([422, ['recurrence_horizon_months']]);
+    }
+  });
+
+  it('reads and saves the reminder lead time (FR-NTF-05, D24)', async () => {
+    expect((await h.call('GET', '/api/settings')).body.settings.reminder_lead_minutes).toBe(60);
+    expect((await h.call('PATCH', '/api/settings', { reminder_lead_minutes: 0 })).body.settings.reminder_lead_minutes).toBe(0);
+    for (const bad of [15, -30, 1441, '60', 60.5]) {
+      const { status, body } = await h.call('PATCH', '/api/settings', { reminder_lead_minutes: bad });
+      expect([status, Object.keys(body.error.details)]).toEqual([422, ['reminder_lead_minutes']]);
     }
   });
 

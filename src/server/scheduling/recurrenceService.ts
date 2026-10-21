@@ -234,7 +234,7 @@ export class RecurrenceService {
       id: randomUUID(), employeeRef: newSeries.employeeRef, roleId: newSeries.roleId, start: step.start, end: step.end,
       breakMinutes: newSeries.breakMinutes, percent: newSeries.percent, note: newSeries.note, state: 'draft', publishedAt: null,
       ackBy: null, ackAt: null, version: 1, createdBy: newSeries.createdBy, deletedAt: null, switchRequestedAt: null,
-      recurrenceId: newSeriesId, recurrenceIndex: step.index, recurrenceDetached: false, copiedFrom: null,
+      recurrenceId: newSeriesId, recurrenceIndex: step.index, recurrenceDetached: false, copiedFrom: null, remindedAt: null,
     }));
     const insertedIds = await scope.shifts.insertMany(rows, now);
     return { newSeriesId, removed, created: insertedIds.length };
@@ -279,7 +279,7 @@ export class RecurrenceService {
         id: randomUUID(), employeeRef: series.employeeRef, roleId: series.roleId, start: step.start, end: step.end,
         breakMinutes: series.breakMinutes, percent: series.percent, note: series.note, state: 'draft', publishedAt: null,
         ackBy: null, ackAt: null, version: 1, createdBy: series.createdBy, deletedAt: null, switchRequestedAt: null,
-        recurrenceId: id, recurrenceIndex: step.index, recurrenceDetached: false, copiedFrom: null,
+        recurrenceId: id, recurrenceIndex: step.index, recurrenceDetached: false, copiedFrom: null, remindedAt: null,
       }));
       const insertedIds = await scope.shifts.insertMany(rows, now);
       // generatedUntil always advances to `until` here, even for a bounded (ends: 'on'/'after') series that has
