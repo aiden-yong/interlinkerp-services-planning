@@ -34,6 +34,7 @@ import { Eligibility } from './scheduling/eligibility';
 import { OpenShiftService } from './scheduling/openShiftService';
 import { PublishService } from './scheduling/publishService';
 import { RecurrenceService } from './scheduling/recurrenceService';
+import { ReportService } from './reports/reportService';
 import { ScheduleService } from './scheduling/scheduleService';
 import { ShiftService } from './scheduling/shiftService';
 import { UnitOfWork } from './scheduling/unitOfWork';
@@ -292,6 +293,12 @@ export class App {
 
   scheduleService(): ScheduleService {
     return this.once('scheduleService', () => new ScheduleService(
+      this.shifts(), this.profiles(), this.roles(), this.directory(), this.directoryRefresher(), this.timeOff(), this.holidays(), this.settings(), this.clock(), this.recurrences(),
+    ));
+  }
+
+  reports(): ReportService {
+    return this.once('reports', () => new ReportService(
       this.shifts(), this.profiles(), this.roles(), this.directory(), this.directoryRefresher(), this.timeOff(), this.holidays(), this.settings(), this.clock(), this.recurrences(),
     ));
   }

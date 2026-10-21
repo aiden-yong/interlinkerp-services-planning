@@ -2,7 +2,7 @@ import { overAllocatedDays } from '../domain/allocation';
 import { type Conflict, conflictsForEmployee } from '../domain/conflicts';
 import { Interval } from '../domain/interval';
 import { workingIntervals } from '../domain/workingHours';
-import { allocatedInPeriod, availableInPeriod, type ReportEmployee, type ReportPeriod } from '../reports/hours';
+import { allocatedInPeriod, availableInPeriod, reportEmployee, type ReportPeriod } from '../reports/hours';
 import type { DirectoryRepository, DirectoryRow } from '../repo/directory';
 import type { HolidayRepository } from '../repo/holidays';
 import { blankProfile, type ProfileRepository } from '../repo/profiles';
@@ -82,12 +82,8 @@ export class ScheduleService {
 
       const working = profile.workingHours ? workingIntervals(profile.workingHours, from, to, zone) : [];
       const periodSpans = spans.filter((s) => s.interval.overlaps(period));
-      const reportEmployee: ReportEmployee = {
-        ref, name: directory.get(ref)?.displayName ?? 'Unknown employee', onRoster: directory.has(ref),
-        departmentId: directory.get(ref)?.departmentId ?? null, departmentName: directory.get(ref)?.departmentName ?? null,
-        zone, workingHours: profile.workingHours, roleIds: profile.roleIds, defaultRoleId: profile.defaultRoleId, away: spans,
-      };
-      const available = availableInPeriod(reportEmployee, reportPeriod);
+      const reportEmp = reportEmployee(ref, directory.get(ref), profile, zone, spans);
+      const available = availableInPeriod(reportEmp, reportPeriod);
       const allocated = allocatedInPeriod(facts, zone, reportPeriod);
       const d = directory.get(ref);
 

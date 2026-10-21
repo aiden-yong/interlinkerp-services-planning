@@ -3,6 +3,8 @@ import { allocatedByDay, availableByDay, type ShiftFacts } from '../domain/alloc
 import type { UnavailableSpan } from '../domain/conflicts';
 import { Interval } from '../domain/interval';
 import { workingIntervals } from '../domain/workingHours';
+import type { DirectoryRow } from '../repo/directory';
+import type { Profile } from '../repo/profiles';
 import { localDate } from '../support/time';
 
 /** Epoch ms, [from, to). `viewZone` is the viewer's zone that the period's days were cut in. */
@@ -44,3 +46,12 @@ export function availableInPeriod(e: ReportEmployee, period: ReportPeriod): Reco
 
 export type Bucket = 'none' | 'month';
 export const monthOf = (date: string) => date.slice(0, 7); // 'YYYY-MM'
+
+/** The one way an employee becomes a ReportEmployee, so the schedule and the reports agree. `away` is time off and holidays in `zone`. */
+export function reportEmployee(ref: string, directory: DirectoryRow | undefined, profile: Profile, zone: string, away: UnavailableSpan[]): ReportEmployee {
+  return {
+    ref, name: directory?.displayName ?? 'Unknown employee', onRoster: directory !== undefined,
+    departmentId: directory?.departmentId ?? null, departmentName: directory?.departmentName ?? null,
+    zone, workingHours: profile.workingHours, roleIds: profile.roleIds, defaultRoleId: profile.defaultRoleId, away,
+  };
+}

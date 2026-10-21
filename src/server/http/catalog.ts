@@ -99,6 +99,14 @@ export const catalog = {
       best_for: 'Showing people what changed without them checking the schedule.',
       endpoints: ['GET /api/notifications', 'POST /api/notification-reads', 'GET /api/my/notification-preferences', 'PATCH /api/my/notification-preferences'],
     },
+    {
+      name: 'Report on Planning',
+      icon: '📊',
+      description: 'Planned hours, utilisation and unfilled open shifts over any period, with CSV export.',
+      does: ['Total planned hours by employee, role or department, draft and published apart', 'Compare allocated with available hours and find over-allocated days', 'Count open shifts per role per day', 'Download any report as CSV'],
+      best_for: 'Managers reviewing capacity and coverage across weeks, months or a year.',
+      endpoints: ['GET /api/reports/planned-hours', 'GET /api/reports/utilisation', 'GET /api/reports/open-shifts'],
+    },
   ] as Capability[],
   workflows: [
     { name: 'Plan and publish a week', steps: ['GET /api/schedule', 'POST /api/shifts', 'PATCH /api/shifts/{id}', 'POST /api/publications'] },
