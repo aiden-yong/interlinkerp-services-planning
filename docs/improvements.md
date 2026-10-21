@@ -240,3 +240,70 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Why:** The "all" + pattern-change guard (item 2's fix) checks that the edited shift is the series' first not-started occurrence once, outside the transaction. If an earlier occurrence is restored via `POST /api/shift-restorations` (available for 30 seconds after a delete) in the narrow window between that check and the transaction committing, the original item-2 bug (deleting drafts before the edited shift without regenerating them) could still occur. Needs a concurrent restore landing in that exact window.
 - **Fix:** recompute `firstNotStartedIndex` inside the transaction (after `lockSeries`) and compare it there instead of trusting the pool-level check. Same narrow-race class as item 31.
 - **Effort:** S
+
+---
+
+## P4: Skipped on purpose (deferred features and open decisions)
+
+Things a milestone design left out or a decision put off. None is a defect. Pick them up when a customer asks or a later milestone needs them.
+
+### 40. External scheduler for the notification sweep (M4 D26)
+- **Area:** Operations
+- **Why:** Vercel Hobby crons run once a day, but shift reminders (FR-NTF-05) need a sweep every few minutes. Decided 2026-10-21: a free external scheduler (for example cron-job.org) calls `/internal/cron/sweep` with `CRON_SECRET` every 5 minutes.
+- **Fix:** Set it up once M4 is deployed. If hosting moves (Hostinger is being considered; see item 8), point that host's scheduler at the same route instead.
+- **Effort:** S
+
+### 41. Undo an Auto Plan run (M4 D15)
+- **Area:** Feature
+- **Why:** Every result is a draft the manager can change before publishing, so undo was left out of the first version.
+- **Effort:** M
+
+### 42. Auto Plan options (M4)
+- **Area:** Feature
+- **Why:** Auto Plan runs on the period on screen only and always spreads load evenly (OI-04). Not offered: several periods at once, or "fill one person first".
+- **Effort:** M
+
+### 43. Reporting extras (M4)
+- **Area:** Feature
+- **Why:** Reports group by one level only and show tables only. Not offered: nested grouping (for example department, then role) and charts.
+- **Effort:** M
+
+### 44. Organisation-wide audit log screen (M4 D17)
+- **Area:** Feature
+- **Why:** The audit trail shows per shift in the shift dialog. There is no screen to search all changes.
+- **Effort:** M
+
+### 45. Per-employee reminder lead times (M4 D24)
+- **Area:** Feature
+- **Why:** There is one organisation-wide lead time. Employees can only turn reminder emails off, not choose their own lead time.
+- **Effort:** S
+
+### 46. Repeat on chosen weekdays (M3)
+- **Area:** Feature
+- **Why:** A repeat follows one interval (every N days, weeks or months). "Monday, Wednesday and Friday" needs three weekly series today. A weekday list can be added without changing how deleted occurrences are kept from coming back (M3 D4).
+- **Effort:** M
+
+### 47. Undo for series deletes (M3 D7)
+- **Area:** Feature
+- **Why:** Deleting "this and following" or "all" is confirmed but has no undo, unlike a single shift's 30-second undo.
+- **Effort:** M
+
+### 48. Templates that span several shifts (M3)
+- **Area:** Feature
+- **Why:** A template makes one shift. A whole day's pattern (for example opening, middle and closing shifts) is not supported.
+- **Effort:** M
+
+### 49. Push notifications and a gateway "nudge" (M2)
+- **Area:** Feature
+- **Why:** Notices arrive in the app inbox, as gateway badges and by email. Browser push and a gateway pop-up wait on the gateway's notification protocol (OI-07).
+- **Effort:** M
+
+### 50. Automatic public holidays (OI-02)
+- **Area:** Integration
+- **Why:** Only manual holidays work until a provider is chosen. Nager.Date has no Malaysia data; Calendarific and others need checking for state-level coverage and cost. Choosing one completes FR-CFG-04 AC1 (one adapter class plus its environment variables).
+- **Effort:** S once a provider is chosen
+
+### 51. HR leave service (OI-01)
+- **Area:** Integration
+- **Why:** Planning stores time off itself until an HR leave service exists. Then the time-off reads are replaced with an adapter for that service (DR-03 keeps this contained).
+- **Effort:** M
