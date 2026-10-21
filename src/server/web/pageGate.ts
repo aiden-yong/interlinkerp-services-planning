@@ -7,7 +7,7 @@ import type { Roster } from '../roster/roster';
 import type { Clock } from '../support/clock';
 
 export const RETURN_COOKIE = 'planning_return_to';
-export const PAGE_PATHS = ['/', '/schedule', '/my', '/settings', '/not-on-roster'];
+export const PAGE_PATHS = ['/', '/schedule', '/reports', '/my', '/settings', '/not-on-roster'];
 
 export type GateResult =
   | { kind: 'pass'; cookies: string[] }

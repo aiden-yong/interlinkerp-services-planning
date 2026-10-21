@@ -97,3 +97,20 @@ export interface ManagerGrant { email: string; granted_by: string; granted_at: s
 
 export interface NotificationItem { id: number; kind: string; title: string; body: string; link: string; shift_id: string | null; created_at: string; read_at: string | null }
 export interface NotificationsPayload { notifications: NotificationItem[]; unread_count: number }
+
+// Reports (GET /api/reports/*). Hours are decimals; the page shows one decimal.
+export interface ReportPeriod { from: string; to: string; timezone: string; from_at: string; to_at: string }
+export interface HoursCell { draft_hours: number; published_hours: number; total_hours: number; shifts: number }
+export interface PlannedHoursRow extends HoursCell { key: string; label: string; left: boolean }
+export interface PlannedHoursReport { period: ReportPeriod; group: 'employee' | 'role' | 'department'; rows: PlannedHoursRow[]; totals: HoursCell }
+export interface UtilisationRow {
+  employee_ref: string; name: string; left: boolean; flexible: boolean;
+  allocated_hours: number; available_hours: number | null; utilisation_percent: number | null; over_allocated_days: string[];
+}
+export interface UtilisationReport { period: ReportPeriod; rows: UtilisationRow[] }
+export interface OpenShiftCell { open: number; total: number }
+export interface OpenShiftsReport {
+  period: ReportPeriod; days: string[];
+  rows: { role_id: string | null; label: string; cells: Record<string, OpenShiftCell> }[];
+  totals: Record<string, OpenShiftCell>;
+}

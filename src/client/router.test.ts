@@ -21,6 +21,11 @@ describe('screen access (FR-ACC-02)', () => {
     expect(access('schedule', me({ is_manager: true }))).toBe('ok');
   });
 
+  it('reports is for managers only', () => {
+    expect(access('reports', me({ is_manager: true }))).toBe('ok');
+    expect(access('reports', me({ employee_ref: 'E1' }))).toBe('forbidden');
+  });
+
   it('needs a roster reference for My Planning', () => {
     expect(access('my', me({ is_manager: true }))).toBe('not-on-roster');
     expect(access('my', me({ employee_ref: 'E1' }))).toBe('ok');
