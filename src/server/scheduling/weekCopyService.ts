@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { DateTime } from 'luxon';
+import { managerActor } from '../repo/audit';
 import type { DirectoryRepository } from '../repo/directory';
 import type { SettingsRepository } from '../repo/settings';
 import type { ShiftRecord, ShiftRepository } from '../repo/shifts';
@@ -78,7 +79,12 @@ export class WeekCopyService {
     }
     report.created = copies.length;
 
-    if (!dryRun && copies.length > 0) await this.unit.run(({ shifts }) => shifts.insertMany(copies, now));
+    if (!dryRun && copies.length > 0) {
+      await this.unit.run(async ({ shifts, audit }) => {
+        const ids = await shifts.insertMany(copies, now);
+        await audit.record(ids.map((shiftId) => ({ shiftId, action: 'copied', ...managerActor(by) })), now);
+      });
+    }
     return report;
   }
 }

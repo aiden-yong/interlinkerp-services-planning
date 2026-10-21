@@ -5,10 +5,20 @@ import { HttpError } from '../http/errors';
 import { Input } from '../http/input';
 import { json, noContent } from '../http/responses';
 import type { Router } from '../http/router';
+import type { ActorKind } from '../repo/audit';
 import { seriesToApi } from '../repo/recurrences';
 import { shiftToApi } from '../repo/shifts';
+import { iso } from '../support/time';
 
 export const actor = (p: Principal | null): Principal => p ?? (() => { throw HttpError.unauthorized('Sign in through the InterlinkERP gateway first.'); })();
+
+/** D17: employees by their current directory name, managers by email; null is a back-filled entry nobody is known for. */
+function actorName(actorValue: string | null, kind: ActorKind, names: ReadonlyMap<string, string>): string {
+  if (actorValue === null) return 'Unknown';
+  if (kind === 'employee') return names.get(actorValue) ?? 'Unknown employee';
+  if (kind === 'system') return 'System';
+  return actorValue;
+}
 
 export function register(r: Router, app: App): void {
   r.add('POST', '/api/shifts', 'manager', 'Create a draft shift, or duplicate an existing one.', async ({ body, principal }) => {
@@ -26,6 +36,20 @@ export function register(r: Router, app: App): void {
     return json(200, { shift: shiftToApi(shift, await app.conflictContext().conflictsFor(shift), recurrence) });
   }, op('Read Shift', 'See one shift in detail', ['Opening a shift to edit it'], ['Listing a week of shifts'],
     ['id'], ['shift'], ['Planning Manager'], ['PATCH /api/shifts/{id}', 'GET /api/schedule'], ['shift', 'details']));
+
+  r.add('GET', '/api/shifts/{id}/history', 'manager', 'Read who created, changed, published or deleted a shift, newest first.', async ({ params }) => {
+    const shift = (await app.shifts().find(params.id, true)) ?? (() => { throw HttpError.notFound('No shift with that id.'); })();
+    const entries = await app.audit().forShift(shift.id);
+    const refs = [...new Set(entries.flatMap((e) => (e.actorKind === 'employee' && e.actor ? [e.actor] : [])))];
+    const names = new Map((await Promise.all(refs.map((ref) => app.directory().find(ref)))).flatMap((p) => (p ? [[p.employeeRef, p.displayName] as const] : [])));
+    return json(200, {
+      entries: entries.map((e) => ({
+        action: e.action, actor: e.actor, actor_kind: e.actorKind, actor_name: actorName(e.actor, e.actorKind, names), changes: e.changes ?? null, at: iso(e.at),
+      })),
+    });
+  }, op('Shift History', 'See who did what to a shift and when', ['Finding out who moved or reassigned a shift', 'Checking when a shift was published'], ['Listing the schedule'],
+    ['id'], ['entries[].action', 'entries[].actor', 'entries[].actor_kind', 'entries[].actor_name', 'entries[].changes', 'entries[].at'], ['Planning Manager'],
+    ['GET /api/shifts/{id}'], ['history', 'audit', 'who changed', 'log']));
 
   r.add('PATCH', '/api/shifts/{id}', 'manager', 'Move, resize, reassign or edit a shift.', async ({ params, body, principal }) => {
     const { shift, conflicts, updated } = await app.shiftService().update(params.id, await body(), actor(principal));

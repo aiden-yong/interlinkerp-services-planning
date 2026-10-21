@@ -1,8 +1,10 @@
 import type { App } from '../app';
+import { actorId } from '../auth/principal';
 import { op } from '../http/doc';
 import { Input } from '../http/input';
 import { json } from '../http/responses';
 import type { Router } from '../http/router';
+import { actor } from './shifts';
 import { REMINDER_LEAD_MINUTES } from '../db/schema';
 import type { GiveUpMode } from '../repo/settings';
 import { isTimezone } from '../support/time';
@@ -14,7 +16,7 @@ export function register(r: Router, app: App): void {
       ['Planning Manager'], ['PATCH /api/settings'],
       ['settings', 'configuration', 'time zone', 'country']));
 
-  r.add('PATCH', '/api/settings', 'manager', 'Change organisation planning settings.', async ({ body }) => {
+  r.add('PATCH', '/api/settings', 'manager', 'Change organisation planning settings.', async ({ body, principal }) => {
     const current = await app.settings().get();
     const input = new Input(await body());
     const country = input.has('country_code') ? input.string('country_code', 2) : current.country_code;
@@ -37,7 +39,7 @@ export function register(r: Router, app: App): void {
     input.check();
     await app.openShifts().applySettings({
       country_code: country, region_code: region, timezone: timezone!, give_up_mode: mode as GiveUpMode, unassign_window_days: windowDays!, recurrence_horizon_months: horizonMonths!, reminder_lead_minutes: reminderLead,
-    });
+    }, actorId(actor(principal)));
     return json(200, { settings: await app.settings().get() });
   }, op('Update Settings', 'Set the organisation country, region and time zone', ['Choosing which public holidays apply', 'Changing the default time zone'], ["Changing one employee's time zone"],
     ['country_code', 'region_code', 'timezone', 'give_up_mode', 'unassign_window_days', 'recurrence_horizon_months', 'reminder_lead_minutes'], ['settings'], ['Planning Manager'], ['GET /api/settings', 'POST /api/holiday-syncs'],

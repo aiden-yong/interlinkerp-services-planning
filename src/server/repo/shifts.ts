@@ -141,7 +141,8 @@ export class ShiftRepository {
    * fromIndex (excluding `excludeId`, the shift already saved by the caller). Each row keeps its own local calendar
    * date (only startTimeLocal's time-of-day moves it) and its own existing duration unless durationMinutes is given.
    * A row whose version changed between the SELECT and the UPDATE (rare) is skipped silently, not retried: this is
-   * a best-effort bulk operation and a single lost row here is never a correctness problem.
+   * a best-effort bulk operation and a single lost row here is never a correctness problem. Returns each saved row
+   * with how it was before, for the audit trail.
    */
   async updateSeriesShifts(
     seriesId: string, fromIndex: number, now: Date,
@@ -150,7 +151,7 @@ export class ShiftRepository {
       startTimeLocal?: string; durationMinutes?: number; zone?: string;
     },
     excludeId?: string,
-  ): Promise<number> {
+  ): Promise<{ before: ShiftRecord; after: ShiftRecord }[]> {
     const conditions = [
       this.live(), eq(shifts.recurrenceId, seriesId), gte(shifts.recurrenceIndex, fromIndex),
       eq(shifts.state, 'draft'), eq(shifts.recurrenceDetached, false), gt(shifts.startAt, now),
@@ -158,7 +159,7 @@ export class ShiftRepository {
     if (excludeId) conditions.push(ne(shifts.id, excludeId));
     const rows = await this.db.select().from(shifts).where(and(...conditions));
 
-    let count = 0;
+    const saved: { before: ShiftRecord; after: ShiftRecord }[] = [];
     for (const raw of rows) {
       const row = toRecord(raw);
       const newStart = patch.startTimeLocal
@@ -177,10 +178,10 @@ export class ShiftRepository {
         note: patch.note !== undefined ? patch.note : row.note,
       };
       // eslint-disable-next-line no-await-in-loop -- sequential on the transaction's own connection, same pattern as recurrenceService.ts's previewConflicts/extendAll
-      const saved = await this.update(next, row.version, now);
-      if (saved) count += 1;
+      const after = await this.update(next, row.version, now);
+      if (after) saved.push({ before: row, after });
     }
-    return count;
+    return saved;
   }
 
   /** Soft-deletes every not-started, not-already-deleted shift of a series from `fromIndex` on (any state, detached included). Returns the deleted rows. */

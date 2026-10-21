@@ -1,6 +1,7 @@
 import type { ShiftFacts } from '../domain/allocation';
 import { type Candidate, type OpenDraft, planAutoAssignments, REASON_TEXT, type UnfilledReason } from '../domain/autoPlan';
 import { HttpError } from '../http/errors';
+import { managerActor } from '../repo/audit';
 import { factsOf } from '../repo/shifts';
 import type { ReportService } from '../reports/reportService';
 import type { UnitOfWork } from './unitOfWork';
@@ -62,6 +63,9 @@ export class AutoPlanService {
         if (saved) report.filled.push({ shift_id: shift.id, employee_ref: a.employeeRef });
         else report.skipped_changed.push(shift.id);
       }
+      await scope.audit.record(report.filled.map((f) => ({
+        shiftId: f.shift_id, action: 'auto_planned', ...managerActor(by), changes: { employee_ref: [null, f.employee_ref] },
+      })), now);
       return report;
     });
   }

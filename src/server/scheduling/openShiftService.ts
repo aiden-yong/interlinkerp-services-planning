@@ -1,6 +1,7 @@
 import type { Principal } from '../auth/principal';
 import { HttpError } from '../http/errors';
 import { Input } from '../http/input';
+import { changesOf, employeeActor } from '../repo/audit';
 import type { DirectoryRepository } from '../repo/directory';
 import type { ProfileRepository } from '../repo/profiles';
 import type { RoleRepository } from '../repo/roles';
@@ -94,6 +95,7 @@ export class OpenShiftService {
       if (!shift || shift.state !== 'published') throw HttpError.notFound('No published shift with that id.');
       await requireEligible(scope.eligibility, shift, ref);
       const claimed = (await scope.shifts.claim(shift.id, ref, shift.version, now)) ?? (await whyNotClaimed(scope, shift.id, now));
+      await scope.audit.record([{ shiftId: claimed.id, action: 'claimed', ...employeeActor(ref), changes: changesOf(shift, claimed) }], now);
       await scope.outbox.addForManagers('shift_claimed', shift.id, { shift_id: shift.id, employee_ref: ref }, now);
       return claimed;
     });
@@ -112,7 +114,10 @@ export class OpenShiftService {
       if ((await scope.settings.get()).give_up_mode !== 'switch') throw modeOff('switch');
       if (shift.switchRequestedAt) throw alreadyUp();
       const row = await scope.shifts.requestSwitch(shift.id, ref, shift.version, now);
-      if (row) return row;
+      if (row) {
+        await scope.audit.record([{ shiftId: row.id, action: 'switch_requested', ...employeeActor(ref) }], now);
+        return row;
+      }
       const fresh = await ownFresh(scope, id, ref);
       if (fresh.start <= now) throw started();
       if (fresh.switchRequestedAt) throw alreadyUp();
@@ -126,7 +131,10 @@ export class OpenShiftService {
     await this.unit.run(async (scope) => {
       const shift = await ownFresh(scope, id, ref);
       if (!shift.switchRequestedAt) throw notUp();
-      if (await scope.shifts.cancelSwitch(shift.id, ref, shift.version, now)) return;
+      if (await scope.shifts.cancelSwitch(shift.id, ref, shift.version, now)) {
+        await scope.audit.record([{ shiftId: shift.id, action: 'switch_cancelled', ...employeeActor(ref) }], now);
+        return;
+      }
       const fresh = await ownFresh(scope, id, ref);
       if (!fresh.switchRequestedAt) throw notUp();
       throw changed();
@@ -158,6 +166,7 @@ export class OpenShiftService {
         if (!fresh.switchRequestedAt) throw notUp();
         throw changed();
       }
+      await scope.audit.record([{ shiftId: row.id, action: 'taken_over', ...employeeActor(ref), changes: changesOf(shift, row) }], now);
       await scope.outbox.add('switch_taken', owner, shift.id, { shift_id: shift.id, taker_ref: ref }, now, now);
       await scope.outbox.add('shift_assigned', ref, shift.id, { shift_id: shift.id }, now, now);
       await scope.outbox.addForManagers('shift_switched', shift.id, { shift_id: shift.id, from_ref: owner, to_ref: ref }, now);
@@ -184,13 +193,17 @@ export class OpenShiftService {
         if (fresh.start <= earliest) throw outsideWindow(settings.unassign_window_days);
         throw changed();
       }
+      await scope.audit.record([{ shiftId: row.id, action: 'unassigned', ...employeeActor(ref), changes: changesOf(shift, row) }], now);
       await scope.outbox.addForManagers('shift_given_up', shift.id, { shift_id: shift.id, employee_ref: ref }, now);
       return row;
     });
   }
 
-  /** Saves settings; switching to Unassign cancels pending switch requests and tells their owners, in one transaction (BR-07). */
-  async applySettings(next: OrgSettings): Promise<number> {
+  /**
+   * Saves settings; switching to Unassign cancels pending switch requests and tells their owners, in one transaction (BR-07).
+   * `by` is the manager making the change, recorded on each cancelled request (DR-04); null only when no person is known.
+   */
+  async applySettings(next: OrgSettings, by: string | null = null): Promise<number> {
     const now = this.clock.now();
     return this.unit.run(async (scope) => {
       await scope.lockSettings();
@@ -198,6 +211,7 @@ export class OpenShiftService {
       await scope.settings.save(next, now);
       if (previous.give_up_mode !== 'switch' || next.give_up_mode !== 'unassign') return 0;
       const cancelled = await scope.shifts.clearSwitchRequests(now);
+      await scope.audit.record(cancelled.map((shift) => ({ shiftId: shift.id, action: 'switch_cancelled', actor: by, actorKind: 'manager' as const })), now);
       for (const shift of cancelled) await scope.outbox.add('switch_cancelled', shift.employeeRef!, shift.id, { shift_id: shift.id }, now, now);
       return cancelled.length;
     });

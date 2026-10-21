@@ -12,6 +12,7 @@ import { type AccessGuard, Kernel, type Logger } from './http/kernel';
 import { buildOpenApi } from './http/openapi';
 import type { Router } from './http/router';
 import { HolidayProvider, nullHolidayProvider } from './holidays/provider';
+import { AuditRepository } from './repo/audit';
 import { HolidayRepository } from './repo/holidays';
 import { DirectoryRepository } from './repo/directory';
 import { type BadgePublisher, GatewayBadgePublisher, noBadges } from './notifications/badges';
@@ -181,6 +182,11 @@ export class App {
 
   holidays(): HolidayRepository {
     return this.once('holidays', () => new HolidayRepository(this.database().db, this.organisationId()));
+  }
+
+  /** Pool-backed: for reading history. Entries are written through `scope.audit`. */
+  audit(): AuditRepository {
+    return this.once('audit', () => new AuditRepository(this.database().db, this.organisationId()));
   }
 
   shifts(): ShiftRepository {
