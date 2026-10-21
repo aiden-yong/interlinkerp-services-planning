@@ -4,6 +4,7 @@ import { notificationOutbox, shifts } from '../db/schema';
 import { ShiftRepository } from '../repo/shifts';
 import { ORG } from '../test/db';
 import { useApiHarness } from '../test/harness';
+import { whileLocked } from '../test/races';
 
 const h = useApiHarness();
 const WEEK = { from: '2026-10-19', to: '2026-10-25' }; // Monday to Sunday, the week after the harness clock
@@ -122,6 +123,24 @@ describe('Auto Plan (FR-AUT-01, FR-AUT-02)', () => {
     expect(status, JSON.stringify(body)).toBe(201);
     expect(body).toEqual({ filled: [{ shift_id: kept, employee_ref: 'E1' }], unfilled: [], skipped_published: [], skipped_changed: [changed] });
     expect(await row(changed)).toMatchObject({ employeeRef: null, note: 'Edited' });
+  });
+
+  it('waits for a claim in progress, then plans around it (BR-02)', async () => {
+    await employee('E1', 'Ana Lim');
+    const draft = await open('2026-10-20T09:00:00+08:00', '2026-10-20T13:00:00+08:00');
+    const published = await open('2026-10-20T10:00:00+08:00', '2026-10-20T12:00:00+08:00');
+    expect((await h.call('POST', '/api/publications', { shift_ids: [published] })).status).toBe(201);
+
+    // E1 is claiming the overlapping published shift: the claim holds E1's employee lock and commits while Auto Plan waits for it.
+    const { status, body } = await whileLocked(h.database, async (client) => {
+      await client.query('select pg_advisory_xact_lock(hashtext($1))', [`${ORG}:E1`]);
+      await client.query('update shifts set employee_ref = $1, version = version + 1 where id = $2', ['E1', published]);
+    }, () => autoPlan(), 1);
+
+    expect(status, JSON.stringify(body)).toBe(201);
+    expect(body.filled).toEqual([]);
+    expect(body.unfilled).toEqual([{ shift_id: draft, reason_code: 'busy_or_away', reason: 'Everyone with this role is busy or away then' }]);
+    expect((await row(draft)).employeeRef).toBeNull();
   });
 
   it('lets only one run at a time', async () => {

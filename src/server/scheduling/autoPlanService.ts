@@ -26,7 +26,17 @@ export class AutoPlanService {
     return this.unit.run(async (scope) => {
       if (!(await scope.tryLockAutoPlan())) throw HttpError.conflict('AUTO_PLAN_RUNNING', 'Auto Plan is already running for this organisation. Try again in a moment.');
 
-      // Shifts are re-read under the lock, so an edit made since the load above cannot slip a conflict past the planner.
+      // Take every candidate's employee lock, the one claims and take-overs hold while they check eligibility and write.
+      // Those take a single employee lock each, so taking ours in sorted order cannot deadlock with them.
+      const refs = employees.filter((e) => e.onRoster).map((e) => e.ref).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+      // eslint-disable-next-line no-await-in-loop -- locks are taken one at a time, in order, on the transaction's connection
+      for (const ref of refs) await scope.lockEmployee(ref);
+
+      // Shifts are re-read only now. What is guaranteed: no other Auto Plan run, and no claim or take-over, can give a
+      // candidate a shift between this read and the commit, so those cannot create a conflict with what we assign.
+      // Unassigns only take shifts away. Not guaranteed: a manager's own edits to assigned shifts, and time off or
+      // profile changes, made between the load above and the commit are not locked out. This is the same as two
+      // managers editing at once elsewhere; the schedule shows any conflict that results.
       const rows = await scope.shifts.overlapping(new Date(period.from - MARGIN_MS), new Date(period.to + MARGIN_MS));
       const notStartedOpenInPeriod = rows.filter((s) => s.employeeRef === null && s.start > now && s.start.getTime() >= period.from && s.start.getTime() < period.to);
       const open: OpenDraft[] = notStartedOpenInPeriod.filter((s) => s.state === 'draft')
