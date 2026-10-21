@@ -210,3 +210,15 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Why:** `SchedulePage.tsx`'s `openNew()` guards with `if (!data) return;`, but the toolbar's "Add shift", "Publish" and "Copy previous week" buttons are never disabled while a period change's `GET /api/schedule` is still in flight. A manager who clicks fast enough after "Next period" gets no dialog, no toast, nothing — a silent dead click. Found while writing M3's browser tests (the repeat-setup test needed to wait for the board to render before clicking "Add shift").
 - **Fix:** Disable those three buttons while `data === null`, or give `openNew()`/the others a toast when they no-op.
 - **Effort:** S
+
+### 35. A repeating shift's pattern change can resurrect an old date if the recurrence horizon was shrunk first
+- **Area:** Correctness, narrow edge case
+- **Why:** `splitSeries` skips calendar dates already occupied by a surviving (published/detached) or soft-deleted old-series shift, by checking the old series' own current rows (D4's "a deleted occurrence must not come back" promise). But if the horizon was shrunk *after* the old series was generated and *before* the pattern change, the old series' surviving rows only reach as far as whatever horizon was in force when they were made. A later extension of the *new* series has no knowledge of those old dates and can generate onto one of them. Requires: generate a series under a larger horizon, shrink the horizon, split the series with a pattern change, then let the new series extend past the old one's last generated date.
+- **Fix:** either persist a per-series exclusion list, or have `extendOne` check the predecessor series' (if any) occupied dates too, not just its own.
+- **Effort:** M
+
+### 36. A repeat-N-times pattern change can under-count when dates collide with old shifts
+- **Area:** Correctness, narrow edge case
+- **Why:** When `splitSeries` skips a calendar date already occupied by a surviving old-series shift (item 35's mechanism, working as intended), that skipped step still counts against an `ends: 'after'` count budget, because the generator counts every non-month-skipped step regardless of whether `splitSeries` later discards it. A manager asking for "10 more shifts" can get fewer than 10 new drafts when some of those dates were already taken. Never duplicates or resurrects a shift — only under-generates.
+- **Fix:** When filtering occupied dates in `splitSeries`, ask the generator for enough extra steps to make up the difference, or document the behaviour as "up to N, counting dates already covered."
+- **Effort:** S
