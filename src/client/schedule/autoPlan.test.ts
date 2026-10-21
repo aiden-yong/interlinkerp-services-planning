@@ -18,8 +18,16 @@ describe('describeAutoPlan', () => {
       unfilled: [{ shift_id: 'b', reason_code: 'NO_ROLE', reason: 'No one on the roster has this role' }, { shift_id: 'gone', reason_code: 'X', reason: 'Changed while Auto Plan ran' }],
     }), data, zone);
     expect(out.heading).toBe('Filled 1 of 3 open shifts');
-    expect(out.filled).toEqual(['Wed 14 Oct 09:00–17:00 · Technician → Ana Lim']);
-    expect(out.unfilled).toEqual(['Thu 15 Oct 09:00–13:30 · No role · No one on the roster has this role', 'Shift · Changed while Auto Plan ran']);
+    expect(out.filled).toEqual([{ key: 'a', text: 'Wed 14 Oct 09:00–17:00 · Technician → Ana Lim' }]);
+    expect(out.unfilled).toEqual([{ key: 'b', text: 'Thu 15 Oct 09:00–13:30 · No role · No one on the roster has this role' }, { key: 'gone', text: 'Shift · Changed while Auto Plan ran' }]);
+  });
+
+  it('keys identical-looking unfilled shifts by shift id', () => {
+    const twin = payload({ shifts: [shift({ id: 'x', employee_ref: null }), shift({ id: 'y', employee_ref: null })] });
+    const reason = { reason_code: 'NO_ROLE', reason: 'No one on the roster has this role' };
+    const out = describeAutoPlan(report({ unfilled: [{ shift_id: 'x', ...reason }, { shift_id: 'y', ...reason }] }), twin, zone);
+    expect(out.unfilled.map((l) => l.key)).toEqual(['x', 'y']);
+    expect(out.unfilled[0]!.text).toBe(out.unfilled[1]!.text);
   });
 
   it('adds notes only for non-zero skips', () => {

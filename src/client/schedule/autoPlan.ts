@@ -2,7 +2,8 @@ import { DateTime } from 'luxon';
 import type { AutoPlanReport, SchedulePayload } from '../types';
 import { formatTime } from './tz';
 
-export interface AutoPlanSummary { heading: string; filled: string[]; unfilled: string[]; notes: string[] }
+export interface AutoPlanLine { key: string; text: string }
+export interface AutoPlanSummary { heading: string; filled: AutoPlanLine[]; unfilled: AutoPlanLine[]; notes: string[] }
 
 /** Plain-language lines for the Auto Plan result, in the viewer's zone. */
 export function describeAutoPlan(report: AutoPlanReport, data: SchedulePayload, zone: string): AutoPlanSummary {
@@ -16,8 +17,8 @@ export function describeAutoPlan(report: AutoPlanReport, data: SchedulePayload, 
     const role = (s.role_id && roles.get(s.role_id)) || 'No role';
     return `${day} ${formatTime(s.start_at, zone)}–${formatTime(s.end_at, zone)} · ${role}`;
   };
-  const filled = report.filled.map((f) => `${label(f.shift_id)} → ${people.get(f.employee_ref) ?? f.employee_ref}`);
-  const unfilled = report.unfilled.map((u) => `${label(u.shift_id)} · ${u.reason}`);
+  const filled = report.filled.map((f) => ({ key: f.shift_id, text: `${label(f.shift_id)} → ${people.get(f.employee_ref) ?? f.employee_ref}` }));
+  const unfilled = report.unfilled.map((u) => ({ key: u.shift_id, text: `${label(u.shift_id)} · ${u.reason}` }));
   const notes: string[] = [];
   const published = report.skipped_published.length;
   const changed = report.skipped_changed.length;

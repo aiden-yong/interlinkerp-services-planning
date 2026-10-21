@@ -112,16 +112,18 @@ export function SchedulePage({ me }: { me: Me }) {
   async function autoPlan() {
     if (busy) return;
     setBusy(true);
+    let result: AutoPlanReport | null = null;
     try {
       if (!(await confirm('Fill the draft open shifts in this period?', ['Assigned shifts stay drafts until you publish.'], 'Auto Plan'))) return;
       try {
-        setPlanResult(await api<AutoPlanReport>('POST', '/api/auto-plans', { from: period.from, to: period.to, timezone: zone }));
+        result = await api<AutoPlanReport>('POST', '/api/auto-plans', { from: period.from, to: period.to, timezone: zone });
       } catch (e) {
         report(e); // AUTO_PLAN_RUNNING and other errors show their own message
       }
       await reload();
     } finally {
       setBusy(false);
+      setPlanResult(result); // shown once the button is enabled again, so closing it can return focus there
     }
   }
 
