@@ -108,11 +108,12 @@ export interface NotificationsPayload { notifications: NotificationItem[]; unrea
 // Reports (GET /api/reports/*). Hours are decimals; the page shows one decimal.
 export interface ReportPeriod { from: string; to: string; timezone: string; from_at: string; to_at: string }
 export interface HoursCell { draft_hours: number; published_hours: number; total_hours: number; shifts: number }
-export interface PlannedHoursRow extends HoursCell { key: string; label: string; left: boolean }
+export interface PlannedHoursRow extends HoursCell { key: string; label: string; left: boolean; months?: ({ month: string } & HoursCell)[] }
 export interface PlannedHoursReport { period: ReportPeriod; group: 'employee' | 'role' | 'department'; rows: PlannedHoursRow[]; totals: HoursCell }
 export interface UtilisationRow {
   employee_ref: string; name: string; left: boolean; flexible: boolean;
   allocated_hours: number; available_hours: number | null; utilisation_percent: number | null; over_allocated_days: string[];
+  months?: { month: string; allocated_hours: number; available_hours: number | null; over_allocated: boolean }[];
 }
 export interface UtilisationReport { period: ReportPeriod; rows: UtilisationRow[] }
 export interface OpenShiftCell { open: number; total: number }
