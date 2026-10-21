@@ -48,9 +48,9 @@ export function SchedulePage({ me }: { me: Me }) {
     try {
       if (year) {
         // Year is a summary: month buckets from the report endpoints, not the shifts themselves (D20).
-        const base = { from: period.from, to: period.to, bucket: 'month', role_id: yearRole || undefined, timezone: zone };
+        const base = { from: period.from, to: period.to, bucket: 'month', timezone: zone };
         const [planned, util] = await Promise.all([
-          api<PlannedHoursReport>('GET', `/api/reports/planned-hours${query({ ...base, group: 'employee' })}`),
+          api<PlannedHoursReport>('GET', `/api/reports/planned-hours${query({ ...base, role_id: yearRole || undefined, group: 'employee' })}`),
           api<UtilisationReport>('GET', `/api/reports/utilisation${query(base)}`),
         ]);
         if (request !== latest.current) return;
