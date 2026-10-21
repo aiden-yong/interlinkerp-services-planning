@@ -54,6 +54,7 @@ import { ReminderService } from './notifications/reminders';
 import { OpsCheck } from './notifications/opsCheck';
 import { Retention } from './notifications/retention';
 import { EmailPreferences } from './repo/emailPreferences';
+import { CalendarFeedRepository, FEED_LIMIT } from './repo/calendarFeeds';
 import { RateLimiter, type RateLimitPolicy, WRITE_LIMIT } from './repo/rateLimits';
 import { PageGate } from './web/pageGate';
 
@@ -278,6 +279,15 @@ export class App {
   rateLimiter(): RateLimiter | null {
     const policy = this.deps.rateLimit === undefined ? WRITE_LIMIT : this.deps.rateLimit;
     return policy ? this.once('rateLimiter', () => new RateLimiter(this.database().db, this.organisationId(), this.clock(), policy)) : null;
+  }
+
+  calendarFeeds(): CalendarFeedRepository {
+    return this.once('calendarFeeds', () => new CalendarFeedRepository(this.database().db, this.organisationId()));
+  }
+
+  /** Per-token bucket for the public calendar feed (FR-MYP-03). Always on: the feed has no session to limit by. */
+  feedLimiter(): RateLimiter {
+    return this.once('feedLimiter', () => new RateLimiter(this.database().db, this.organisationId(), this.clock(), FEED_LIMIT));
   }
 
   conflictContext(): ConflictContext {

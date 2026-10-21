@@ -96,8 +96,8 @@ describe('paths', () => {
   });
 
   it('leaves bare /api and /internal to the JSON 404, not the route handlers', () => {
-    expect(['/health', '/openapi.json', '/api/me', '/api/shifts/1', '/internal/cron/x'].every(isApiPath)).toBe(true);
-    expect(['/api', '/internal', '/apix', '/internalx', '/'].some(isApiPath)).toBe(false);
+    expect(['/health', '/openapi.json', '/api/me', '/api/shifts/1', '/internal/cron/x', '/feeds/calendar/x.ics'].every(isApiPath)).toBe(true);
+    expect(['/api', '/internal', '/apix', '/internalx', '/feeds', '/'].some(isApiPath)).toBe(false);
   });
 
   it.each([

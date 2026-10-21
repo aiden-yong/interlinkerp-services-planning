@@ -79,9 +79,9 @@ export const catalog = {
       name: 'Share Schedules',
       icon: '📣',
       description: 'Publish planned shifts and let employees see their own.',
-      does: ['Publish a week of shifts', 'See my own shifts', "Copy last week's shifts into this week as drafts"],
+      does: ['Publish a week of shifts', 'See my own shifts', "Copy last week's shifts into this week as drafts", 'Add my shifts to a calendar app through a private link'],
       best_for: 'Getting the plan from the manager to the team.',
-      endpoints: ['POST /api/publications', 'GET /api/my/shifts', 'POST /api/week-copies'],
+      endpoints: ['POST /api/publications', 'GET /api/my/shifts', 'POST /api/week-copies', 'GET /api/my/calendar-feed', 'POST /api/my/calendar-feed', 'DELETE /api/my/calendar-feed', 'GET /feeds/calendar/{file}'],
     },
     {
       name: 'Swap and Pick Up Shifts',

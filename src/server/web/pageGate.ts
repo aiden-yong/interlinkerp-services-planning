@@ -14,9 +14,9 @@ export type GateResult =
   | { kind: 'redirect'; location: string; cookies: string[] }
   | { kind: 'error'; status: number; html: string; cookies: string[] };
 
-/** Paths served by route handlers. Bare /api and /internal have none, so the proxy answers them with the JSON 404. */
+/** Paths served by route handlers. /feeds/ is the public calendar feed (D23). Bare /api and /internal have none, so the proxy answers them with the JSON 404. */
 export function isApiPath(path: string): boolean {
-  return path === '/health' || path === '/openapi.json' || path.startsWith('/api/') || path.startsWith('/internal/');
+  return path === '/health' || path === '/openapi.json' || path.startsWith('/api/') || path.startsWith('/internal/') || path.startsWith('/feeds/');
 }
 
 export function isPagePath(path: string): boolean {
