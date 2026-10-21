@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
+import { useFeedback } from '../feedback';
 import { WarningIcon } from '../icons';
 import { Segmented } from '../Segmented';
 import { dayLabel } from '../schedule/period';
@@ -97,6 +98,7 @@ function OpenShifts({ report }: { report: OpenShiftsReport }) {
 }
 
 export function ReportsPage({ me }: { me: Me }) {
+  const { toast } = useFeedback();
   const zone = me.timezone || me.organisation_timezone; // the same zone as the schedule, so the numbers match
   const [tab, setTab] = useState<ReportName>('planned-hours');
   const [preset, setPreset] = useState<Preset>('this-week');
@@ -107,17 +109,18 @@ export function ReportsPage({ me }: { me: Me }) {
   const [publishedOnly, setPublishedOnly] = useState(false);
   const [roles, setRoles] = useState<Role[]>([]);
   const [departments, setDepartments] = useState<[string, string][]>([]);
-  const [state, setState] = useState<{ report: Report | null; error: string | null; loading: boolean }>({ report: null, error: null, loading: true });
+  const [state, setState] = useState<{ kind: ReportName | null; report: Report | null; error: string | null; loading: boolean }>({ kind: null, report: null, error: null, loading: true });
 
   const range = useMemo(() => (preset === 'custom' ? custom : presetRange(preset, todayIn(zone))), [preset, custom, zone]);
   const valid = Boolean(range.from && range.to && range.from <= range.to);
 
   useEffect(() => {
-    api<{ roles: Role[] }>('GET', '/api/roles').then((r) => setRoles(r.roles), () => {});
+    api<{ roles: Role[] }>('GET', '/api/roles').then((r) => setRoles(r.roles), (e: Error) => toast(`Roles could not be loaded: ${e.message}`, undefined, 6000));
     api<{ employees: EmployeeProfile[] }>('GET', '/api/employees').then((r) => {
       const named = r.employees.filter((e) => e.department_id).map((e) => [e.department_id!, e.department_name ?? e.department_id!] as [string, string]);
       setDepartments([...new Map(named)].sort((a, b) => a[1].localeCompare(b[1])));
-    }, () => {});
+    }, (e: Error) => toast(`Departments could not be loaded: ${e.message}`, undefined, 6000));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filters = {
@@ -133,14 +136,17 @@ export function ReportsPage({ me }: { me: Me }) {
   useEffect(() => {
     if (!jsonUrl) return;
     const request = ++latest.current;
+    const kind = tab;
     setState((s) => ({ ...s, loading: true, error: null }));
     api<Report>('GET', jsonUrl).then(
-      (report) => { if (request === latest.current) setState({ report, error: null, loading: false }); },
-      (e: Error) => { if (request === latest.current) setState({ report: null, error: e.message, loading: false }); },
+      (report) => { if (request === latest.current) setState({ kind, report, error: null, loading: false }); },
+      (e: Error) => { if (request === latest.current) setState({ kind, report: null, error: e.message, loading: false }); },
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jsonUrl]);
 
-  const shown = state.report && !state.loading ? state.report : null;
+  // Only a report that belongs to the active tab is drawn; the previous tab's data is never read as another shape.
+  const shown = valid && state.report && !state.loading && state.kind === tab ? state.report : null;
   return (
     <section className="reports">
       <div className="toolbar">
