@@ -222,3 +222,21 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Why:** When `splitSeries` skips a calendar date already occupied by a surviving old-series shift (item 35's mechanism, working as intended), that skipped step still counts against an `ends: 'after'` count budget, because the generator counts every non-month-skipped step regardless of whether `splitSeries` later discards it. A manager asking for "10 more shifts" can get fewer than 10 new drafts when some of those dates were already taken. Never duplicates or resurrects a shift — only under-generates.
 - **Fix:** When filtering occupied dates in `splitSeries`, ask the generator for enough extra steps to make up the difference, or document the behaviour as "up to N, counting dates already covered."
 - **Effort:** S
+
+### 37. Two managers editing the same repeating series within milliseconds can deadlock
+- **Area:** Reliability, narrow edge case
+- **Why:** `update()`'s transaction locks the edited shift's own row, then (for `following`/`all`) waits on the series' advisory lock inside `applyToSeries`/`splitSeries`. `deleteFrom` takes the series lock first, then needs the edited shift's row lock. Two requests on the same series, one PATCHing and one DELETEing (or two PATCHes) within the same window, can each hold what the other needs. Postgres detects this and aborts one with a deadlock error; there is no handling for that error code, so the aborted request gets a 500 instead of a clean, retryable error. No data is corrupted — the losing transaction never commits.
+- **Fix:** take `lockSeries` in `update()` before the row update (same order `deleteFrom`/`applyToSeries`/`splitSeries` use), or map Postgres's deadlock code to a clean `409`/`503` the client can retry.
+- **Effort:** S
+
+### 38. Resuming (re-patterning) a series whose tail was deleted leaves a calendar gap
+- **Area:** UX, narrow edge case
+- **Why:** If a manager does "Delete this and following" from a later point in a series, then later changes the pattern starting from an earlier, still-live point, item 3's fix (skip dates an old-series shift already occupies, soft-deleted ones included) correctly refuses to resurrect the deleted dates — but it keeps refusing them all the way out to the old horizon, so the new series generates nothing for however many months that spans, then resumes abruptly. No data is lost or duplicated; it is a defensible reading of "a deleted occurrence must not come back," but a manager who intentionally ended a series and later wants to restart its pattern from an earlier point would see a confusing silent gap with no explanation in the UI.
+- **Fix:** when generating the new series, only treat an old date as occupied up to the old series' own `generated_until`/`lastIndex`, not indefinitely — or show the gap explicitly if it's unavoidable.
+- **Effort:** M
+
+### 39. A pattern change with scope "all" has a narrow window where an undone deletion could still land on the wrong shift
+- **Area:** Correctness, narrow edge case
+- **Why:** The "all" + pattern-change guard (item 2's fix) checks that the edited shift is the series' first not-started occurrence once, outside the transaction. If an earlier occurrence is restored via `POST /api/shift-restorations` (available for 30 seconds after a delete) in the narrow window between that check and the transaction committing, the original item-2 bug (deleting drafts before the edited shift without regenerating them) could still occur. Needs a concurrent restore landing in that exact window.
+- **Fix:** recompute `firstNotStartedIndex` inside the transaction (after `lockSeries`) and compare it there instead of trusting the pool-level check. Same narrow-race class as item 31.
+- **Effort:** S
