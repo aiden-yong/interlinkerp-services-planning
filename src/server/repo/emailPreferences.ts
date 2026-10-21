@@ -13,6 +13,7 @@ export const NOTICE_TYPES = [
   { kind: 'switch_taken', audience: 'employee', label: 'A colleague takes a shift I asked cover for' },
   { kind: 'switch_cancelled', audience: 'employee', label: 'My switch request is cancelled' },
   { kind: 'open_shifts_available', audience: 'employee', label: 'Open shifts I can take' },
+  { kind: 'shift_reminder', audience: 'employee', label: 'A reminder before each shift' },
   { kind: 'shift_claimed', audience: 'managers', label: 'An open shift is claimed' },
   { kind: 'shift_switched', audience: 'managers', label: 'A shift is switched between employees' },
   { kind: 'shift_given_up', audience: 'managers', label: 'A shift is given up' },

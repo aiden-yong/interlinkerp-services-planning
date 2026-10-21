@@ -54,6 +54,8 @@ export function render(kind: string, payload: Record<string, unknown>, ctx: Rend
       return { title: ids.length === 1 ? 'Your shift was published' : `Your ${ids.length} shifts were published`, body: ids.map(span).join('\n'), link: my };
     case 'shift_assigned':
       return { title: 'You have a new shift', body: first(), link: my };
+    case 'shift_reminder':
+      return { title: 'Your shift starts soon', body: first(), link: my };
     case 'shift_unassigned':
       return { title: 'A shift is no longer yours', body: first(), link: my };
     case 'shift_changed':

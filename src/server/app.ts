@@ -16,7 +16,7 @@ import { AuditRepository } from './repo/audit';
 import { HolidayRepository } from './repo/holidays';
 import { DirectoryRepository } from './repo/directory';
 import { type BadgePublisher, GatewayBadgePublisher, noBadges } from './notifications/badges';
-import { DeliveryService } from './notifications/deliveryService';
+import { DeliveryService, type Touched } from './notifications/deliveryService';
 import { DeliveryTrigger, MIN_GAP_MS } from './notifications/trigger';
 import { LogMailer, type Mailer, SmtpMailer } from './notifications/mailer';
 import { ManagerRepository } from './repo/managers';
@@ -50,6 +50,7 @@ import { type Clock, systemClock } from './support/clock';
 import { FetchHttpClient, type HttpClient } from './support/http';
 import { isTimezone } from './support/time';
 import { JobRuns } from './repo/jobRuns';
+import { ReminderService } from './notifications/reminders';
 import { OpsCheck } from './notifications/opsCheck';
 import { Retention } from './notifications/retention';
 import { EmailPreferences } from './repo/emailPreferences';
@@ -232,7 +233,15 @@ export class App {
   }
 
   deliveryTrigger(): DeliveryTrigger {
-    return this.once('deliveryTrigger', () => new DeliveryTrigger(this.delivery(), this.clock(), this.log, MIN_GAP_MS,
+    // FR-NTF-05: each sweep queues due reminders first, so they are delivered in the same pass.
+    const sweeping = {
+      deliverDue: async () => {
+        await this.reminders().queueDue(this.clock().now());
+        return this.delivery().deliverDue();
+      },
+      pushBadges: (touched: Touched) => this.delivery().pushBadges(touched),
+    };
+    return this.once('deliveryTrigger', () => new DeliveryTrigger(sweeping, this.clock(), this.log, MIN_GAP_MS,
       (now, gap) => this.jobRuns().claim('delivery', now, gap)));
   }
 
@@ -240,8 +249,12 @@ export class App {
     return this.once('emailPreferences', () => new EmailPreferences(this.database().db, this.organisationId()));
   }
 
+  reminders(): ReminderService {
+    return this.once('reminders', () => new ReminderService(this.database().db, this.organisationId(), this.settings()));
+  }
+
   opsCheck(): OpsCheck {
-    return this.once('opsCheck', () => new OpsCheck(this.database().db, this.organisationId(), this.directory(), this.log));
+    return this.once('opsCheck', () => new OpsCheck(this.database().db, this.organisationId(), this.directory(), this.jobRuns(), this.log));
   }
 
   retention(): Retention {

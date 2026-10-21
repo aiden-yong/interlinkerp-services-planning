@@ -30,7 +30,16 @@ export function register(r: Router, app: App): void {
     requireCronSecret(app, request);
     const now = app.clock().now();
     const extended = await app.recurrences().extendAll(now);
+    const reminded = await app.reminders().queueDue(now);
     const report = await app.delivery().deliverDue();
-    return json(200, { ...report, pruned: await app.retention().run(now), alerts: await app.opsCheck().run(now), extended });
+    return json(200, { reminded, ...report, pruned: await app.retention().run(now), alerts: await app.opsCheck().run(now), extended });
+  });
+
+  // FR-NTF-05: the light route an external scheduler (for example cron-job.org) calls every 5 minutes, with the same bearer secret.
+  r.add('GET', '/internal/cron/sweep', 'internal', 'Queue due shift reminders and deliver due notifications.', async ({ request }) => {
+    requireCronSecret(app, request);
+    const now = app.clock().now();
+    await app.jobRuns().claim('sweep', now, 0);
+    return json(200, { reminded: await app.reminders().queueDue(now), ...await app.delivery().deliverDue() });
   });
 }

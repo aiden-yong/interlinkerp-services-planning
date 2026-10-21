@@ -29,6 +29,13 @@ describe('messages', () => {
     });
   });
 
+  it('reminds an employee of a coming shift, in their zone (FR-NTF-05)', () => {
+    expect(render('shift_reminder', { shift_ids: ['s1'] }, ctx)).toEqual({
+      title: 'Your shift starts soon', body: 'Wed 14 Oct, 09:00–17:00 GMT+8', link: 'https://planning.example.com/my',
+    });
+    expect(render('shift_reminder', { shift_ids: ['s1'] }, { ...ctx, zone: 'Europe/London' }).body).toBe('Wed 14 Oct, 02:00–10:00 GMT+1');
+  });
+
   it('names people in manager notices and links managers to the schedule (FR-NTF-03)', () => {
     expect(render('shift_switched', { shift_id: 's1', from_ref: 'E1', to_ref: 'E2' }, ctx)).toEqual({
       title: 'Shift switched', body: "Bo Tan took over Ana Lim's shift on Wed 14 Oct, 09:00–17:00 GMT+8.", link: 'https://planning.example.com/schedule',

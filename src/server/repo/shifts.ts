@@ -224,6 +224,8 @@ export class ShiftRepository {
       employeeRef: s.employeeRef, roleId: s.roleId, startAt: s.start, endAt: s.end, breakMinutes: s.breakMinutes, allocatedPercent: s.percent,
       note: s.note, conflictAcknowledgedBy: s.ackBy, conflictAcknowledgedAt: s.ackAt, switchRequestedAt: s.switchRequestedAt, version: expectedVersion + 1, updatedAt: now,
       recurrenceDetached: s.recurrenceDetached,
+      // FR-NTF-05: a new start or a new person is reminded afresh; any other edit keeps the mark.
+      remindedAt: sql`case when ${shifts.startAt} is distinct from ${s.start.toISOString()}::timestamptz or ${shifts.employeeRef} is distinct from ${s.employeeRef} then null else ${shifts.remindedAt} end`,
     }).where(and(this.live(), eq(shifts.id, s.id), eq(shifts.version, expectedVersion))).returning();
     return updated.length === 1 ? toRecord(updated[0]!) : null;
   }
@@ -320,7 +322,7 @@ export class ShiftRepository {
 
   /** NFR-04: hands an up-for-switch shift from its owner to the taker. null = someone else took it, or it changed. */
   async takeOver(id: string, ownerRef: string, takerRef: string, expectedVersion: number, now: Date): Promise<ShiftRecord | null> {
-    return one(await this.db.update(shifts).set({ employeeRef: takerRef, switchRequestedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
+    return one(await this.db.update(shifts).set({ employeeRef: takerRef, switchRequestedAt: null, remindedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
       .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), eq(shifts.employeeRef, ownerRef), eq(shifts.state, 'published'), isNotNull(shifts.switchRequestedAt), gt(shifts.startAt, now)))
       .returning());
   }

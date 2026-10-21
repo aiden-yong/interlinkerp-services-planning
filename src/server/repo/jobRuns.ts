@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { jobRuns } from '../db/schema';
 
@@ -16,5 +16,11 @@ export class JobRuns {
       })
       .returning({ job: jobRuns.job });
     return rows.length > 0;
+  }
+
+  /** When `job` last started, or null when it never has. */
+  async lastStarted(job: string): Promise<Date | null> {
+    const [row] = await this.db.select({ startedAt: jobRuns.startedAt }).from(jobRuns).where(and(eq(jobRuns.organisationId, this.org), eq(jobRuns.job, job)));
+    return row?.startedAt ?? null;
   }
 }
