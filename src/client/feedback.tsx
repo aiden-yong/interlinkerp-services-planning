@@ -5,9 +5,11 @@ import { createContext, type ReactNode, useCallback, useContext, useEffect, useR
 interface ToastAction { label: string; run: () => void | Promise<void> }
 interface Toast { id: number; message: string; action?: ToastAction }
 interface Question { title: string; lines: string[]; confirmLabel: string; resolve: (ok: boolean) => void }
+interface Choice { title: string; lines: string[]; options: readonly { value: string; label: string }[]; resolve: (value: string | null) => void }
 interface Feedback {
   toast(message: string, action?: ToastAction, ms?: number): void;
   confirm(title: string, lines: string[], confirmLabel: string): Promise<boolean>;
+  choose(title: string, lines: string[], options: readonly { value: string; label: string }[]): Promise<string | null>;
 }
 
 const FeedbackContext = createContext<Feedback | null>(null);
@@ -39,6 +41,7 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
 export function FeedbackProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [question, setQuestion] = useState<Question | null>(null);
+  const [choice, setChoice] = useState<Choice | null>(null);
 
   const toast = useCallback((message: string, action?: ToastAction, ms = 10_000) => {
     const id = ++nextId;
@@ -50,13 +53,22 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
       open?.resolve(false);
       return { title, lines, confirmLabel, resolve };
     })), []);
+  const choose = useCallback((title: string, lines: string[], options: readonly { value: string; label: string }[]) =>
+    new Promise<string | null>((resolve) => setChoice((open) => {
+      open?.resolve(null);
+      return { title, lines, options, resolve };
+    })), []);
   const answer = (ok: boolean) => {
     question?.resolve(ok);
     setQuestion(null);
   };
+  const pick = (value: string | null) => {
+    choice?.resolve(value);
+    setChoice(null);
+  };
 
   return (
-    <FeedbackContext.Provider value={{ toast, confirm }}>
+    <FeedbackContext.Provider value={{ toast, confirm, choose }}>
       {children}
       {question && (
         <Modal title={question.title} onClose={() => answer(false)}>
@@ -64,6 +76,15 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
           <div className="actions">
             <button type="button" onClick={() => answer(false)}>Cancel</button>
             <button type="button" className="primary" autoFocus onClick={() => answer(true)}>{question.confirmLabel}</button>
+          </div>
+        </Modal>
+      )}
+      {choice && (
+        <Modal title={choice.title} onClose={() => pick(null)}>
+          {choice.lines.length > 0 && <ul className="lines">{choice.lines.map((line) => <li key={line}>{line}</li>)}</ul>}
+          <div className="actions">
+            <button type="button" onClick={() => pick(null)}>Cancel</button>
+            {choice.options.map((o) => <button key={o.value} type="button" className="primary" onClick={() => pick(o.value)}>{o.label}</button>)}
           </div>
         </Modal>
       )}

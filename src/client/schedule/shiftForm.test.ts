@@ -42,6 +42,15 @@ describe('shift form', () => {
     expect(await saveShift('POST', '/api/shifts', { a: 1 }, async () => false)).toBeNull();
   });
 
+  it('includes a repeat pattern in the body only when repeat is set', () => {
+    const base = shiftToForm(shift(), zone);
+    const repeating = formToBody({ ...base, repeat: 'week', repeat_interval: '2', repeat_ends: 'after', repeat_count: '5' }, zone);
+    expect(repeating.repeat).toEqual({ interval: 2, unit: 'week', ends: 'after', count: 5 });
+
+    const notRepeating = formToBody({ ...base, repeat: '' }, zone);
+    expect('repeat' in notRepeating).toBe(false);
+  });
+
   it('resends without asking when every conflict is already known, and asks when one is new', async () => {
     const conflict = (...messages: string[]) => new ApiError(409, 'SHIFT_CONFLICT', 'x', { conflicts: messages.map((message) => ({ rule: 'r', message })) }, 'c');
     const confirm = vi.fn(async () => false);

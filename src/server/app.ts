@@ -22,18 +22,22 @@ import { ManagerRepository } from './repo/managers';
 import { NotificationRepository } from './repo/notifications';
 import { Outbox } from './repo/outbox';
 import { ProfileRepository } from './repo/profiles';
+import { RecurrenceRepository } from './repo/recurrences';
 import { RoleRepository } from './repo/roles';
 import { SettingsRepository } from './repo/settings';
 import { ShiftRepository } from './repo/shifts';
+import { TemplateRepository } from './repo/templates';
 import { TimeOffRepository } from './repo/timeOff';
 import { buildRouter } from './routes';
 import { ConflictContext } from './scheduling/conflictContext';
 import { Eligibility } from './scheduling/eligibility';
 import { OpenShiftService } from './scheduling/openShiftService';
 import { PublishService } from './scheduling/publishService';
+import { RecurrenceService } from './scheduling/recurrenceService';
 import { ScheduleService } from './scheduling/scheduleService';
 import { ShiftService } from './scheduling/shiftService';
 import { UnitOfWork } from './scheduling/unitOfWork';
+import { WeekCopyService } from './scheduling/weekCopyService';
 import { ClientCredentials } from './roster/clientCredentials';
 import { DepartmentApi } from './roster/departments';
 import { InternDatabaseRoster } from './roster/internDatabase';
@@ -181,6 +185,10 @@ export class App {
     return this.once('shifts', () => new ShiftRepository(this.database().db, this.organisationId()));
   }
 
+  templates(): TemplateRepository {
+    return this.once('templates', () => new TemplateRepository(this.database().db, this.organisationId()));
+  }
+
   outbox(): Outbox {
     return this.once('outbox', () => new Outbox(this.database().db, this.organisationId()));
   }
@@ -260,9 +268,15 @@ export class App {
     return this.once('unitOfWork', () => new UnitOfWork(this.database().db, this.organisationId(), this.defaultTimezone()));
   }
 
+  recurrences(): RecurrenceService {
+    return this.once('recurrences', () => new RecurrenceService(
+      new RecurrenceRepository(this.database().db, this.organisationId()), this.conflictContext(), this.unitOfWork(), this.clock(), this.log,
+    ));
+  }
+
   shiftService(): ShiftService {
     return this.once('shiftService', () => new ShiftService(
-      this.shifts(), this.profiles(), this.roles(), this.directory(), this.conflictContext(), this.outbox(), this.settings(), this.clock(), this.unitOfWork(),
+      this.shifts(), this.profiles(), this.roles(), this.directory(), this.conflictContext(), this.outbox(), this.settings(), this.clock(), this.unitOfWork(), this.recurrences(),
     ));
   }
 
@@ -270,9 +284,15 @@ export class App {
     return this.once('publishService', () => new PublishService(this.unitOfWork(), this.clock(), this.directory()));
   }
 
+  weekCopies(): WeekCopyService {
+    return this.once('weekCopies', () => new WeekCopyService(
+      this.shifts(), this.directory(), this.conflictContext(), this.settings(), this.unitOfWork(),
+    ));
+  }
+
   scheduleService(): ScheduleService {
     return this.once('scheduleService', () => new ScheduleService(
-      this.shifts(), this.profiles(), this.roles(), this.directory(), this.directoryRefresher(), this.timeOff(), this.holidays(), this.settings(), this.clock(),
+      this.shifts(), this.profiles(), this.roles(), this.directory(), this.directoryRefresher(), this.timeOff(), this.holidays(), this.settings(), this.clock(), this.recurrences(),
     ));
   }
 

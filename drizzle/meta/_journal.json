@@ -29,6 +29,13 @@
       "when": 1792474796887,
       "tag": "0003_email_opt_outs",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792478361059,
+      "tag": "0004_recurrence_templates",
+      "breakpoints": true
     }
   ]
 }

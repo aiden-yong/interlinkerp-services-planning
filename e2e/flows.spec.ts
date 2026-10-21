@@ -72,3 +72,31 @@ test('an employee reads a notice and marks everything read', async ({ page, requ
   const { preferences } = await call(request, ANA, 'GET', '/api/my/notification-preferences');
   expect(preferences.find((p: { kind: string }) => p.kind === 'schedule_published').email).toBe(false);
 });
+
+test('a manager repeats a shift weekly and sees it the week after', async ({ page }) => {
+  await page.goto('/schedule');
+  await page.getByRole('button', { name: 'Next period' }).click();
+  await expect(page.getByRole('main').getByText('Ana Lim').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Add shift' }).click();
+  const dialog = page.getByRole('dialog', { name: 'New shift' });
+  await dialog.getByRole('combobox', { name: 'Employee', exact: true }).selectOption({ label: 'Ana Lim' });
+  await dialog.getByLabel('Start date').fill(nextWednesday(9).slice(0, 10));
+  await dialog.getByLabel('End date').fill(nextWednesday(9).slice(0, 10));
+  await dialog.getByRole('combobox', { name: 'Repeat' }).selectOption({ label: 'Weeks' });
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Shift created as a draft.' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Next period' }).click();
+  await expect(page.getByRole('main').getByRole('button', { name: /^09:00–17:00/ })).toBeVisible();
+});
+
+test('a manager copies the previous week', async ({ page, request }) => {
+  await call(request, null, 'POST', '/api/shifts', { employee_ref: 'E1', start_at: nextWednesday(9), end_at: nextWednesday(17) });
+
+  await page.goto('/schedule');
+  await page.getByRole('button', { name: 'Next period' }).click();
+  await page.getByRole('button', { name: 'Next period' }).click();
+  await page.getByRole('button', { name: 'Copy previous week' }).click();
+  await page.getByRole('dialog', { name: 'Copy previous week?' }).getByRole('button', { name: 'Copy' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Copied 1 shift.' })).toBeVisible();
+});

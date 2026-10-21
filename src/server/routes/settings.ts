@@ -9,7 +9,8 @@ import { isTimezone } from '../support/time';
 export function register(r: Router, app: App): void {
   r.add('GET', '/api/settings', 'manager', 'Read organisation planning settings.', async () => json(200, { settings: await app.settings().get() }),
     op('Read Settings', 'See the organisation country, region and time zone', ['Showing the settings page'], ["Reading an employee's time zone"],
-      [], ['settings.country_code', 'settings.region_code', 'settings.timezone', 'settings.give_up_mode', 'settings.unassign_window_days'], ['Planning Manager'], ['PATCH /api/settings'],
+      [], ['settings.country_code', 'settings.region_code', 'settings.timezone', 'settings.give_up_mode', 'settings.unassign_window_days', 'settings.recurrence_horizon_months'],
+      ['Planning Manager'], ['PATCH /api/settings'],
       ['settings', 'configuration', 'time zone', 'country']));
 
   r.add('PATCH', '/api/settings', 'manager', 'Change organisation planning settings.', async ({ body }) => {
@@ -24,10 +25,13 @@ export function register(r: Router, app: App): void {
     const mode = input.has('give_up_mode') ? input.string('give_up_mode', 16, true) : current.give_up_mode;
     if (mode && mode !== 'switch' && mode !== 'unassign') input.error('give_up_mode', 'Use switch or unassign.');
     const windowDays = input.has('unassign_window_days') ? input.int('unassign_window_days', 0, 60, current.unassign_window_days) : current.unassign_window_days;
+    const horizonMonths = input.has('recurrence_horizon_months') ? input.int('recurrence_horizon_months', 1, 24, current.recurrence_horizon_months) : current.recurrence_horizon_months;
     input.check();
-    await app.openShifts().applySettings({ country_code: country, region_code: region, timezone: timezone!, give_up_mode: mode as GiveUpMode, unassign_window_days: windowDays! });
+    await app.openShifts().applySettings({
+      country_code: country, region_code: region, timezone: timezone!, give_up_mode: mode as GiveUpMode, unassign_window_days: windowDays!, recurrence_horizon_months: horizonMonths!,
+    });
     return json(200, { settings: await app.settings().get() });
   }, op('Update Settings', 'Set the organisation country, region and time zone', ['Choosing which public holidays apply', 'Changing the default time zone'], ["Changing one employee's time zone"],
-    ['country_code', 'region_code', 'timezone', 'give_up_mode', 'unassign_window_days'], ['settings'], ['Planning Manager'], ['GET /api/settings', 'POST /api/holiday-syncs'],
+    ['country_code', 'region_code', 'timezone', 'give_up_mode', 'unassign_window_days', 'recurrence_horizon_months'], ['settings'], ['Planning Manager'], ['GET /api/settings', 'POST /api/holiday-syncs'],
     ['settings', 'time zone', 'country', 'region']));
 }

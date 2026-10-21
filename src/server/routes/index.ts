@@ -15,10 +15,12 @@ import * as roles from './roles';
 import * as schedule from './schedule';
 import * as settings from './settings';
 import * as shifts from './shifts';
+import * as templates from './templates';
 import * as timeOff from './timeOff';
+import * as weekCopies from './weekCopies';
 
 /** Every route module. Later tasks add theirs to this list. */
-const MODULES: { register(r: Router, app: App): void }[] = [health, me, cron, settings, roles, employees, timeOff, holidays, managers, shifts, schedule, publications, myShifts, openShifts, notifications, devIdentity];
+const MODULES: { register(r: Router, app: App): void }[] = [health, me, cron, settings, roles, employees, timeOff, holidays, managers, shifts, templates, schedule, publications, myShifts, openShifts, notifications, devIdentity, weekCopies];
 
 export function buildRouter(app: App): Router {
   const router = new Router();

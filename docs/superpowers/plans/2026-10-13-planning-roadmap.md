@@ -4,13 +4,13 @@
 
 **Stack (decided 2026-10-15):** Next.js 16 App Router, React 19 and TypeScript; Drizzle ORM on PostgreSQL (18 locally, Neon `aws-ap-southeast-1` in production); Vercel region `sin1`. No separate backend service: the JSON API runs in Next.js route handlers.
 
-Release 1 is built in four milestones. Each one ends with working, deployable software and gets its own detailed implementation plan, written when the milestone starts so it is based on the real code. Only M1 has a detailed plan so far: [2026-10-13-planning-m1-foundation.md](2026-10-13-planning-m1-foundation.md).
+Release 1 is built in four milestones. Each one ends with working, deployable software and gets its own detailed implementation plan, written when the milestone starts so it is based on the real code. M1 and M3 have detailed plans so far: [2026-10-13-planning-m1-foundation.md](2026-10-13-planning-m1-foundation.md) and [2026-10-20-planning-m3.md](2026-10-20-planning-m3.md) (spec: [2026-10-20-planning-m3-design.md](../specs/2026-10-20-planning-m3-design.md)).
 
 | Milestone | Theme | Depends on | Detailed plan |
 |---|---|---|---|
 | M1 | Foundation: sign-in, configuration, shifts, schedule, publishing, My Planning | — | Written |
 | M2 | Open shifts, giving up shifts, notification delivery | M1 | Write when M1 ships |
-| M3 | Recurrence, shift templates, copy previous week, split | M1 (M2 for notifications on generated shifts) | Write when M2 ships |
+| M3 | Recurrence, shift templates, copy previous week, split | M1 (M2 for notifications on generated shifts) | Written |
 | M4 | Reporting, Auto Plan, remaining Should/Could items | M1–M3 | Write when M3 ships |
 
 ---
@@ -67,6 +67,8 @@ Release 1 is built in four milestones. Each one ends with working, deployable so
 **Requirements:** FR-REC-01 to 04, FR-TPL-01 to 04, FR-PUB-04, FR-SHF-06, FR-CFG-06, BR-08.
 
 **Depends on:** M1 shifts; M2 notifications (edits to published recurring shifts notify).
+
+**Status:** built 2026-10-21 on `feature/m3-recurrence-templates`, pending final review and merge to `main`.
 
 **Likely adds**
 - Tables: `recurrences` (type, interval, end type, count, until, excluded occurrences, generated_until), `shift_templates` (name, role, start time, duration, break).

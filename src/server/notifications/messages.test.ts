@@ -6,6 +6,7 @@ const KL = 'Asia/Kuala_Lumpur';
 const shift = (id: string, start: string, end: string): ShiftRecord => ({
   id, employeeRef: 'E1', roleId: null, start: new Date(start), end: new Date(end), breakMinutes: 0, percent: 100, note: null, state: 'published',
   publishedAt: null, ackBy: null, ackAt: null, version: 1, createdBy: 'm@example.com', deletedAt: null, switchRequestedAt: null,
+  recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null,
 });
 const ctx = {
   shifts: new Map([['s1', shift('s1', '2026-10-14T01:00:00Z', '2026-10-14T09:00:00Z')], ['s2', shift('s2', '2026-10-15T14:00:00Z', '2026-10-15T22:00:00Z')]]),

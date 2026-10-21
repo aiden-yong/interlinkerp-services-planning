@@ -16,6 +16,8 @@ import { todayIn } from './tz';
 
 const SCALES = [{ value: 'day', label: 'Day' }, { value: 'week', label: 'Week' }, { value: 'month', label: 'Month' }] as const satisfies readonly { value: Scale; label: string }[];
 
+interface WeekCopyReport { created: number; skipped_recurring: number; skipped_already_copied: number; skipped_off_roster: number; conflicts: number }
+
 export function SchedulePage({ me }: { me: Me }) {
   const { confirm, toast } = useFeedback();
   const [scale, setScale] = useState<Scale>('week');
@@ -57,7 +59,7 @@ export function SchedulePage({ me }: { me: Me }) {
     if (!data) return;
     const times = newShiftTimes(scale, atIso, data.period.timezone, period.from);
     const employee = data.employees.find((e) => e.employee_ref === rowRef);
-    setEditing({ shift: null, initial: shiftToForm({ employee_ref: rowRef, role_id: employee?.default_role_id ?? null, ...times, break_minutes: 0, allocated_percent: 100, note: null }, data.period.timezone) });
+    setEditing({ shift: null, initial: shiftToForm({ employee_ref: rowRef, role_id: employee?.default_role_id ?? null, ...times, break_minutes: 0, allocated_percent: 100, note: null, recurrence: null }, data.period.timezone) });
   }
 
   async function applyChange(shift: Shift, change: ShiftChange) {
@@ -104,6 +106,41 @@ export function SchedulePage({ me }: { me: Me }) {
     await reload();
   }
 
+  async function copyPreviousWeek() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const n = (count: number) => (count === 1 ? '' : 's');
+      let dry: WeekCopyReport;
+      try {
+        dry = await api<WeekCopyReport>('POST', '/api/week-copies', { week_start: period.from, dry_run: true });
+      } catch (e) {
+        report(e);
+        return;
+      }
+      if (dry.created === 0) {
+        toast('Nothing to copy from last week.', undefined, 4000);
+        return;
+      }
+      const lines = [
+        `${dry.created} shift${n(dry.created)} will be copied as drafts.`,
+        ...(dry.skipped_recurring > 0 ? [`${dry.skipped_recurring} repeated shift${n(dry.skipped_recurring)} are skipped; their series already makes them.`] : []),
+        ...(dry.skipped_already_copied > 0 ? [`${dry.skipped_already_copied} were already copied.`] : []),
+        ...(dry.skipped_off_roster > 0 ? [`${dry.skipped_off_roster} belong to people no longer on the roster.`] : []),
+      ];
+      if (!(await confirm('Copy previous week?', lines, 'Copy'))) return;
+      try {
+        const result = await api<WeekCopyReport>('POST', '/api/week-copies', { week_start: period.from });
+        toast(`Copied ${result.created} shift${n(result.created)}.`, undefined, 5000);
+      } catch (e) {
+        report(e);
+      }
+      await reload();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="schedule">
       <div className="toolbar">
@@ -112,6 +149,7 @@ export function SchedulePage({ me }: { me: Me }) {
         <span className="spacer" />
         <Segmented label="Scale" value={scale} segments={SCALES} onChange={setScale} />
         <button type="button" onClick={() => openNew(null, null)}>Add shift</button>
+        {scale === 'week' && <button type="button" disabled={busy} onClick={() => void copyPreviousWeek()}>Copy previous week</button>}
         <label className="check"><input type="checkbox" checked={notifyOpen} onChange={(e) => setNotifyOpen(e.target.checked)} /> Tell eligible employees about open shifts</label>
         <button type="button" className="primary" disabled={busy} onClick={publish}>Publish</button>
       </div>

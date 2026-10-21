@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 const settings = (over: Partial<Settings> = {}): Settings => ({
-  country_code: 'MY', region_code: null, timezone: 'Asia/Kuala_Lumpur', give_up_mode: 'switch', unassign_window_days: 2, ...over,
+  country_code: 'MY', region_code: null, timezone: 'Asia/Kuala_Lumpur', give_up_mode: 'switch', unassign_window_days: 2, recurrence_horizon_months: 6, ...over,
 });
 
 function setup(initial: Settings, patchStatus = 200, patchBody?: unknown) {
@@ -62,7 +62,7 @@ describe('GeneralTab give-up mode', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Switch to Unassign' }));
     await waitFor(() => expect(patches()).toHaveLength(1));
     expect(JSON.parse(String((patches()[0]![1] as RequestInit).body))).toEqual({
-      country_code: 'MY', region_code: null, timezone: 'Asia/Kuala_Lumpur', give_up_mode: 'unassign', unassign_window_days: 7,
+      country_code: 'MY', region_code: null, timezone: 'Asia/Kuala_Lumpur', give_up_mode: 'unassign', unassign_window_days: 7, recurrence_horizon_months: 6,
     });
     expect(await screen.findByText('Settings saved.')).toBeTruthy();
   });
@@ -102,5 +102,32 @@ describe('GeneralTab give-up mode', () => {
     setup(settings());
     await screen.findByRole('radiogroup', { name: 'Give-up mode' });
     expect(screen.queryAllByRole('group', { name: 'Give-up mode' })).toHaveLength(0);
+  });
+});
+
+describe('GeneralTab recurrence horizon', () => {
+  it('loads the saved horizon and limits it to 1..24', async () => {
+    setup(settings({ recurrence_horizon_months: 3 }));
+    const input = (await screen.findByLabelText('Recurrence horizon (months)')) as HTMLInputElement;
+    expect([input.value, input.type, input.min, input.max]).toEqual(['3', 'number', '1', '24']);
+  });
+
+  it.each([['', /Required/], ['2.5', /whole number/], ['25', /1 to 24/], ['0', /1 to 24/]])('rejects the horizon %j without a request', async (value, message) => {
+    const { patches } = setup(settings());
+    const input = (await screen.findByLabelText('Recurrence horizon (months)')) as HTMLInputElement;
+    fireEvent.change(input, { target: { value } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(patches()).toHaveLength(0);
+  });
+
+  it('saves a changed horizon', async () => {
+    const { patches } = setup(settings());
+    const input = (await screen.findByLabelText('Recurrence horizon (months)')) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    expect(JSON.parse(String((patches()[0]![1] as RequestInit).body)).recurrence_horizon_months).toBe(12);
+    expect(await screen.findByText('Settings saved.')).toBeTruthy();
   });
 });

@@ -28,8 +28,9 @@ export function register(r: Router, app: App): void {
   // and raises [alert] log lines for failures nobody would otherwise see (backlog item 9).
   r.add('GET', '/internal/cron/notifications', 'internal', 'Deliver due notifications, prune old ones and check for failures.', async ({ request }) => {
     requireCronSecret(app, request);
-    const report = await app.delivery().deliverDue();
     const now = app.clock().now();
-    return json(200, { ...report, pruned: await app.retention().run(now), alerts: await app.opsCheck().run(now) });
+    const extended = await app.recurrences().extendAll(now);
+    const report = await app.delivery().deliverDue();
+    return json(200, { ...report, pruned: await app.retention().run(now), alerts: await app.opsCheck().run(now), extended });
   });
 }
