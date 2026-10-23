@@ -1,7 +1,7 @@
 import { requireEnv } from './env';
 
 /** Change in the same commit as any API change (NFR-09). */
-export const SERVICE_VERSION = '0.4.0';
+export const SERVICE_VERSION = '0.4.1';
 
 export interface ServiceInfo {
   serviceId: string;
