@@ -80,7 +80,8 @@ export class WeekCopyService {
     report.created = copies.length;
 
     if (!dryRun && copies.length > 0) {
-      await this.unit.run(async ({ shifts, audit }) => {
+      await this.unit.run(async ({ shifts, audit, lockEmployees }) => {
+        await lockEmployees(copies.map((c) => c.employeeRef)); // sorted, so it queues behind Auto Plan instead of racing it (backlog item 52)
         const ids = await shifts.insertMany(copies, now);
         await audit.record(ids.map((shiftId) => ({ shiftId, action: 'copied', ...managerActor(by) })), now);
       });

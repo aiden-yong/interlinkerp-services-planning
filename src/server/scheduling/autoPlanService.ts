@@ -1,6 +1,7 @@
 import type { ShiftFacts } from '../domain/allocation';
 import { type Candidate, type OpenDraft, planAutoAssignments, REASON_TEXT, type UnfilledReason } from '../domain/autoPlan';
 import { HttpError } from '../http/errors';
+import { ConflictContext } from './conflictContext';
 import { managerActor } from '../repo/audit';
 import { factsOf } from '../repo/shifts';
 import type { ReportService } from '../reports/reportService';
@@ -29,16 +30,18 @@ export class AutoPlanService {
 
       // Take every candidate's employee lock, the one claims and take-overs hold while they check eligibility and write.
       // Those take a single employee lock each, so taking ours in sorted order cannot deadlock with them.
-      const refs = employees.filter((e) => e.onRoster).map((e) => e.ref).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-      // eslint-disable-next-line no-await-in-loop -- locks are taken one at a time, in order, on the transaction's connection
-      for (const ref of refs) await scope.lockEmployee(ref);
+      // Manager shift and time-off writes take the same lock (see the lock order in unitOfWork.ts).
+      await scope.lockEmployees(employees.filter((e) => e.onRoster).map((e) => e.ref));
 
-      // Shifts are re-read only now. What is guaranteed: no other Auto Plan run, and no claim or take-over, can give a
-      // candidate a shift between this read and the commit, so those cannot create a conflict with what we assign.
-      // Unassigns only take shifts away. Not guaranteed: a manager's own edits to assigned shifts, and time off or
-      // profile changes, made between the load above and the commit are not locked out. This is the same as two
-      // managers editing at once elsewhere; the schedule shows any conflict that results.
-      const rows = await scope.shifts.overlapping(new Date(period.from - MARGIN_MS), new Date(period.to + MARGIN_MS));
+      // Shifts and time off are re-read only now, with every candidate's lock held. No other Auto Plan run, claim,
+      // take-over, manager shift write or time-off write can give a candidate a shift or time off between this read and
+      // the commit (they wait for the lock), so none can create a conflict with what we assign; one that committed before
+      // we took the lock is seen here. Unassigns only take shifts away. Not locked out: profile changes (working hours,
+      // roles) and holidays made after the load above; the schedule shows any conflict that results.
+      const wideFrom = new Date(period.from - MARGIN_MS);
+      const wideTo = new Date(period.to + MARGIN_MS);
+      const timeOff = await scope.timeOff.between(wideFrom, wideTo);
+      const rows = await scope.shifts.overlapping(wideFrom, wideTo);
       const notStartedOpenInPeriod = rows.filter((s) => s.employeeRef === null && s.start > now && s.start.getTime() >= period.from && s.start.getTime() < period.to);
       const open: OpenDraft[] = notStartedOpenInPeriod.filter((s) => s.state === 'draft')
         .map((s) => ({ id: s.id, roleId: s.roleId, start: s.start, end: s.end, breakMinutes: s.breakMinutes, percent: s.percent, version: s.version }));
@@ -46,7 +49,12 @@ export class AutoPlanService {
 
       const existing = new Map<string, ShiftFacts[]>();
       for (const s of rows) if (s.employeeRef) existing.set(s.employeeRef, [...(existing.get(s.employeeRef) ?? []), factsOf(s)]);
-      const people: Candidate[] = employees.map((e) => ({ ...e, existing: existing.get(e.ref) ?? [] }));
+      const people: Candidate[] = employees.map((e) => ({
+        ...e,
+        // Time off from the fresh read replaces what the load saw; holidays (and any other kind) are kept as loaded.
+        away: [...e.away.filter((span) => span.kind !== 'time_off'), ...ConflictContext.spans(timeOff.filter((t) => t.employeeRef === e.ref), [], e.zone)],
+        existing: existing.get(e.ref) ?? [],
+      }));
 
       const plan = planAutoAssignments(open, people, period);
       const byId = new Map(rows.map((s) => [s.id, s]));

@@ -38,7 +38,13 @@ export function register(r: Router, app: App): void {
     const reason = input.string('reason', 200) ?? '';
     checkSpan(input, start, end);
     input.check();
-    const record = await app.timeOff().create(ref!, start!, end!, reason, principal ? actorId(principal) : 'unknown', app.clock().now());
+    const by = principal ? actorId(principal) : 'unknown';
+    const now = app.clock().now();
+    // Under the employee's lock, so Auto Plan (which holds it while it assigns) and this write queue instead of racing (backlog item 52).
+    const record = await app.unitOfWork().run(async (scope) => {
+      await scope.lockEmployee(ref!);
+      return scope.timeOff.create(ref!, start!, end!, reason, by, now);
+    });
     return json(201, { unavailability: toApi(record) });
   }, op('Record Time Off', 'Mark an employee as unavailable', ['An employee is on leave, sick or training'], ['Adding a company-wide holiday'],
     ['employee_ref', 'start_at', 'end_at', 'reason'], ['unavailability'], ['Planning Manager', 'Employee on the roster'], ['GET /api/unavailabilities'],
@@ -52,7 +58,12 @@ export function register(r: Router, app: App): void {
     const reason = input.has('reason') ? (input.string('reason', 200) ?? '') : current.reason;
     checkSpan(input, start, end);
     input.check();
-    return json(200, { unavailability: toApi(await app.timeOff().update(current.id, start!, end!, reason, app.clock().now())) });
+    const now = app.clock().now();
+    const updated = await app.unitOfWork().run(async (scope) => {
+      await scope.lockEmployee(current.employeeRef);
+      return scope.timeOff.update(current.id, start!, end!, reason, now);
+    });
+    return json(200, { unavailability: toApi(updated) });
   }, op('Update Time Off', 'Correct the dates or reason of time off', ['Leave was extended or shortened'], ['Recording new time off'],
     ['start_at', 'end_at', 'reason'], ['unavailability'], ['Planning Manager'], ['GET /api/unavailabilities'],
     ['leave', 'time off', 'edit']));

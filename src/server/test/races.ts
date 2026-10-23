@@ -24,7 +24,7 @@ export async function whileLocked<T>(database: Database, lock: (client: PoolClie
   }
 }
 
-async function blockedOnLocks(database: Database, waiters: number, timeoutMs = 5_000): Promise<void> {
+export async function blockedOnLocks(database: Database, waiters: number, timeoutMs = 5_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const { rows } = await database.pool.query<{ n: string }>(
