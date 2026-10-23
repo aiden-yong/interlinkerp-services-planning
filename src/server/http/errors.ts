@@ -11,6 +11,7 @@ export const ERROR_CODES = [
   'RECURRENCE_PATTERN_SCOPE',
   'TEMPLATE_NAME_TAKEN',
   'SPLIT_OUTSIDE', 'BREAK_DOES_NOT_FIT',
+  'PERIOD_TOO_LONG', 'AUTO_PLAN_RUNNING',
 ] as const;
 
 /** An expected failure that becomes a non-2xx response with the error envelope (contract SS-5). */

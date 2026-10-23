@@ -4,14 +4,14 @@
 
 **Stack (decided 2026-10-15):** Next.js 16 App Router, React 19 and TypeScript; Drizzle ORM on PostgreSQL (18 locally, Neon `aws-ap-southeast-1` in production); Vercel region `sin1`. No separate backend service: the JSON API runs in Next.js route handlers.
 
-Release 1 is built in four milestones. Each one ends with working, deployable software and gets its own detailed implementation plan, written when the milestone starts so it is based on the real code. M1 and M3 have detailed plans so far: [2026-10-13-planning-m1-foundation.md](2026-10-13-planning-m1-foundation.md) and [2026-10-20-planning-m3.md](2026-10-20-planning-m3.md) (spec: [2026-10-20-planning-m3-design.md](../specs/2026-10-20-planning-m3-design.md)).
+Release 1 is built in four milestones. Each one ends with working, deployable software and gets its own detailed implementation plan, written when the milestone starts so it is based on the real code. M1, M3 and M4 have detailed plans so far: [2026-10-13-planning-m1-foundation.md](2026-10-13-planning-m1-foundation.md), [2026-10-20-planning-m3.md](2026-10-20-planning-m3.md) (spec: [2026-10-20-planning-m3-design.md](../specs/2026-10-20-planning-m3-design.md)) and [2026-10-21-planning-m4.md](2026-10-21-planning-m4.md) (spec: [2026-10-21-planning-m4-design.md](../specs/2026-10-21-planning-m4-design.md)).
 
 | Milestone | Theme | Depends on | Detailed plan |
 |---|---|---|---|
 | M1 | Foundation: sign-in, configuration, shifts, schedule, publishing, My Planning | — | Written |
 | M2 | Open shifts, giving up shifts, notification delivery | M1 | Write when M1 ships |
 | M3 | Recurrence, shift templates, copy previous week, split | M1 (M2 for notifications on generated shifts) | Written |
-| M4 | Reporting, Auto Plan, remaining Should/Could items | M1–M3 | Write when M3 ships |
+| M4 | Reporting, Auto Plan, remaining Should/Could items | M1–M3 | Built (service 0.4.0): [plan](2026-10-21-planning-m4.md) |
 
 ---
 

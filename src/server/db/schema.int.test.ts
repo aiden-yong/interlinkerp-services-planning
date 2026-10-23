@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ORG, TABLES, useTestDatabase } from '../test/db';
-import { roles, shifts } from './schema';
+import { auditEntries, roles, shifts } from './schema';
 
 const database = useTestDatabase();
 const now = new Date('2026-10-13T00:00:00Z');
@@ -41,5 +43,34 @@ describe('schema', () => {
     await database.db.insert(shifts).values(shift('2026-10-13T01:00:00Z', '2026-10-13T09:00:00Z'));
     const [saved] = await database.db.select().from(shifts);
     expect(saved.startAt.toISOString()).toBe('2026-10-13T01:00:00.000Z');
+  });
+
+  it('back-fills history for shifts made before M4', async () => {
+    const created = new Date('2026-10-01T00:00:00Z');
+    const published = new Date('2026-10-02T00:00:00Z');
+    const deleted = new Date('2026-10-03T00:00:00Z');
+    const live = { ...shift('2026-10-13T01:00:00Z', '2026-10-13T09:00:00Z'), createdBy: 'mona@example.com', createdAt: created, state: 'published', publishedAt: published };
+    const gone = { ...shift('2026-10-14T01:00:00Z', '2026-10-14T09:00:00Z'), createdBy: 'mona@example.com', createdAt: created, deletedAt: deleted, deletedBy: 'dan@example.com' };
+    await database.db.insert(shifts).values([live, gone]);
+
+    const file = readFileSync(join(process.cwd(), 'drizzle', '0005_reporting_audit_feeds.sql'), 'utf8');
+    const block = file.slice(file.indexOf('-- back-fill (D18)'));
+    for (const statement of block.split('--> statement-breakpoint')) await database.pool.query(statement);
+
+    const rows = await database.db.select().from(auditEntries);
+    const byShift = (id: string) => rows.filter((r) => r.shiftId === id).map((r) => [r.action, r.actor, r.actorKind, r.at.toISOString()]).sort();
+    expect(byShift(live.id)).toEqual([
+      ['created', 'mona@example.com', 'manager', created.toISOString()],
+      ['published', null, 'system', published.toISOString()],
+    ]);
+    expect(byShift(gone.id)).toEqual([
+      ['created', 'mona@example.com', 'manager', created.toISOString()],
+      ['deleted', 'dan@example.com', 'manager', deleted.toISOString()],
+    ]);
+  });
+
+  it('refuses an unknown audit action', async () => {
+    const entry = { organisationId: ORG, shiftId: randomUUID(), action: 'renamed' as never, actor: 'x', actorKind: 'manager', at: now };
+    expect(await pgErrorCode(database.db.insert(auditEntries).values(entry))).toBe('23514');
   });
 });

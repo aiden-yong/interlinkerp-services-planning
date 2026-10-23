@@ -1,4 +1,4 @@
-export type Scale = 'day' | 'week' | 'month';
+export type Scale = 'day' | 'week' | 'month' | 'year';
 export interface Period { scale: Scale; from: string; to: string; days: string[] }
 
 const DAY_MS = 86_400_000;
@@ -21,6 +21,10 @@ export function periodFor(scale: Scale, anchor: string): Period {
     const [y, m] = anchor.split('-').map(Number);
     from = format(Date.UTC(y, m - 1, 1));
     to = format(Date.UTC(y, m, 0));
+  } else if (scale === 'year') {
+    const y = Number(anchor.slice(0, 4));
+    from = format(Date.UTC(y, 0, 1));
+    to = format(Date.UTC(y, 11, 31));
   }
   const days: string[] = [];
   for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
@@ -31,6 +35,7 @@ export function step(scale: Scale, anchor: string, direction: -1 | 1): string {
   if (scale === 'day') return addDays(anchor, direction);
   if (scale === 'week') return addDays(anchor, 7 * direction);
   const [y, m] = anchor.split('-').map(Number);
+  if (scale === 'year') return format(Date.UTC(y + direction, 0, 1));
   return format(Date.UTC(y, m - 1 + direction, 1));
 }
 
@@ -50,5 +55,6 @@ export function periodLabel(p: Period): string {
   if (p.scale === 'day') return `${WEEKDAYS[new Date(parse(p.from)).getUTCDay()]} ${long(p.from)}`;
   if (p.scale === 'week') return `${long(p.from)} – ${long(p.to)}`;
   const d = new Date(parse(p.from));
+  if (p.scale === 'year') return String(d.getUTCFullYear());
   return `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }

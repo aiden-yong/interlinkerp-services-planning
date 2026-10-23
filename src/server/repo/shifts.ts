@@ -30,6 +30,7 @@ export interface ShiftRecord {
   recurrenceIndex: number | null;
   recurrenceDetached: boolean;
   copiedFrom: string | null;
+  remindedAt: Date | null;
 }
 
 const toRecord = (r: typeof shifts.$inferSelect): ShiftRecord => ({
@@ -38,6 +39,7 @@ const toRecord = (r: typeof shifts.$inferSelect): ShiftRecord => ({
   version: r.version, createdBy: r.createdBy, deletedAt: r.deletedAt,
   switchRequestedAt: r.switchRequestedAt,
   recurrenceId: r.recurrenceId, recurrenceIndex: r.recurrenceIndex, recurrenceDetached: r.recurrenceDetached, copiedFrom: r.copiedFrom,
+  remindedAt: r.remindedAt,
 });
 
 const one = (rows: (typeof shifts.$inferSelect)[]): ShiftRecord | null => (rows.length === 1 ? toRecord(rows[0]!) : null);
@@ -139,7 +141,8 @@ export class ShiftRepository {
    * fromIndex (excluding `excludeId`, the shift already saved by the caller). Each row keeps its own local calendar
    * date (only startTimeLocal's time-of-day moves it) and its own existing duration unless durationMinutes is given.
    * A row whose version changed between the SELECT and the UPDATE (rare) is skipped silently, not retried: this is
-   * a best-effort bulk operation and a single lost row here is never a correctness problem.
+   * a best-effort bulk operation and a single lost row here is never a correctness problem. Returns each saved row
+   * with how it was before, for the audit trail.
    */
   async updateSeriesShifts(
     seriesId: string, fromIndex: number, now: Date,
@@ -148,7 +151,7 @@ export class ShiftRepository {
       startTimeLocal?: string; durationMinutes?: number; zone?: string;
     },
     excludeId?: string,
-  ): Promise<number> {
+  ): Promise<{ before: ShiftRecord; after: ShiftRecord }[]> {
     const conditions = [
       this.live(), eq(shifts.recurrenceId, seriesId), gte(shifts.recurrenceIndex, fromIndex),
       eq(shifts.state, 'draft'), eq(shifts.recurrenceDetached, false), gt(shifts.startAt, now),
@@ -156,7 +159,7 @@ export class ShiftRepository {
     if (excludeId) conditions.push(ne(shifts.id, excludeId));
     const rows = await this.db.select().from(shifts).where(and(...conditions));
 
-    let count = 0;
+    const saved: { before: ShiftRecord; after: ShiftRecord }[] = [];
     for (const raw of rows) {
       const row = toRecord(raw);
       const newStart = patch.startTimeLocal
@@ -175,10 +178,10 @@ export class ShiftRepository {
         note: patch.note !== undefined ? patch.note : row.note,
       };
       // eslint-disable-next-line no-await-in-loop -- sequential on the transaction's own connection, same pattern as recurrenceService.ts's previewConflicts/extendAll
-      const saved = await this.update(next, row.version, now);
-      if (saved) count += 1;
+      const after = await this.update(next, row.version, now);
+      if (after) saved.push({ before: row, after });
     }
-    return count;
+    return saved;
   }
 
   /** Soft-deletes every not-started, not-already-deleted shift of a series from `fromIndex` on (any state, detached included). Returns the deleted rows. */
@@ -189,13 +192,13 @@ export class ShiftRepository {
     return rows.map(toRecord);
   }
 
-  /** D6: hard-deletes the untouched future drafts of a series from fromIndex on (except `exceptId`, which moves to the new series instead). */
-  async hardDeleteSeriesShiftsFrom(seriesId: string, fromIndex: number, now: Date, exceptId: string): Promise<number> {
+  /** D6: hard-deletes the untouched future drafts of a series from fromIndex on (except `exceptId`, which moves to the new series instead). Returns the deleted ids so their audit rows can go in the same transaction. */
+  async hardDeleteSeriesShiftsFrom(seriesId: string, fromIndex: number, now: Date, exceptId: string): Promise<string[]> {
     const deleted = await this.db.delete(shifts).where(and(
       this.live(), eq(shifts.recurrenceId, seriesId), gte(shifts.recurrenceIndex, fromIndex),
       eq(shifts.state, 'draft'), eq(shifts.recurrenceDetached, false), gt(shifts.startAt, now), ne(shifts.id, exceptId),
     )).returning({ id: shifts.id });
-    return deleted.length;
+    return deleted.map((r) => r.id);
   }
 
   /**
@@ -221,6 +224,8 @@ export class ShiftRepository {
       employeeRef: s.employeeRef, roleId: s.roleId, startAt: s.start, endAt: s.end, breakMinutes: s.breakMinutes, allocatedPercent: s.percent,
       note: s.note, conflictAcknowledgedBy: s.ackBy, conflictAcknowledgedAt: s.ackAt, switchRequestedAt: s.switchRequestedAt, version: expectedVersion + 1, updatedAt: now,
       recurrenceDetached: s.recurrenceDetached,
+      // FR-NTF-05: a new start or a new person is reminded afresh; any other edit keeps the mark.
+      remindedAt: sql`case when ${shifts.startAt} is distinct from ${s.start.toISOString()}::timestamptz or ${shifts.employeeRef} is distinct from ${s.employeeRef} then null else ${shifts.remindedAt} end`,
     }).where(and(this.live(), eq(shifts.id, s.id), eq(shifts.version, expectedVersion))).returning();
     return updated.length === 1 ? toRecord(updated[0]!) : null;
   }
@@ -283,8 +288,17 @@ export class ShiftRepository {
 
   /** NFR-04: takes an open published shift that has not started and is still at `expectedVersion`. null = someone else got it first, or it changed. */
   async claim(id: string, ref: string, expectedVersion: number, now: Date): Promise<ShiftRecord | null> {
-    return one(await this.db.update(shifts).set({ employeeRef: ref, version: sql`${shifts.version} + 1`, updatedAt: now })
+    return one(await this.db.update(shifts).set({ employeeRef: ref, remindedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
       .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), isNull(shifts.employeeRef), eq(shifts.state, 'published'), gt(shifts.startAt, now))).returning());
+  }
+
+  /**
+   * Auto Plan (D13, D14): gives a draft open shift to `ref` only if it is still open, still a draft and still at
+   * `expectedVersion`; bumps the version. `detach` marks a series occurrence as individually edited. null = it changed.
+   */
+  async assign(id: string, ref: string, expectedVersion: number, detach: boolean, now: Date): Promise<ShiftRecord | null> {
+    return one(await this.db.update(shifts).set({ employeeRef: ref, remindedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now, ...(detach ? { recurrenceDetached: true } : {}) })
+      .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), isNull(shifts.employeeRef), eq(shifts.state, 'draft'))).returning());
   }
 
   /** BR-07: ends every active switch request on a shift that has not started; returns the shifts whose owners must be told. Bumps the version so an in-flight take-over is caught. */
@@ -308,14 +322,14 @@ export class ShiftRepository {
 
   /** NFR-04: hands an up-for-switch shift from its owner to the taker. null = someone else took it, or it changed. */
   async takeOver(id: string, ownerRef: string, takerRef: string, expectedVersion: number, now: Date): Promise<ShiftRecord | null> {
-    return one(await this.db.update(shifts).set({ employeeRef: takerRef, switchRequestedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
+    return one(await this.db.update(shifts).set({ employeeRef: takerRef, switchRequestedAt: null, remindedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
       .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), eq(shifts.employeeRef, ownerRef), eq(shifts.state, 'published'), isNotNull(shifts.switchRequestedAt), gt(shifts.startAt, now)))
       .returning());
   }
 
   /** BR-06: only shifts starting after `earliestStart` (now + window) can be given up. */
   async unassign(id: string, ref: string, earliestStart: Date, expectedVersion: number, now: Date): Promise<ShiftRecord | null> {
-    return one(await this.db.update(shifts).set({ employeeRef: null, switchRequestedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
+    return one(await this.db.update(shifts).set({ employeeRef: null, switchRequestedAt: null, remindedAt: null, version: sql`${shifts.version} + 1`, updatedAt: now })
       .where(and(this.live(), eq(shifts.id, id), eq(shifts.version, expectedVersion), eq(shifts.employeeRef, ref), eq(shifts.state, 'published'), gt(shifts.startAt, earliestStart)))
       .returning());
   }

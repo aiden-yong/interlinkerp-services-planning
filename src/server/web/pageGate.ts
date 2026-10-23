@@ -7,16 +7,16 @@ import type { Roster } from '../roster/roster';
 import type { Clock } from '../support/clock';
 
 export const RETURN_COOKIE = 'planning_return_to';
-export const PAGE_PATHS = ['/', '/schedule', '/my', '/settings', '/not-on-roster'];
+export const PAGE_PATHS = ['/', '/schedule', '/reports', '/my', '/settings', '/not-on-roster'];
 
 export type GateResult =
   | { kind: 'pass'; cookies: string[] }
   | { kind: 'redirect'; location: string; cookies: string[] }
   | { kind: 'error'; status: number; html: string; cookies: string[] };
 
-/** Paths served by route handlers. Bare /api and /internal have none, so the proxy answers them with the JSON 404. */
+/** Paths served by route handlers. /feeds/ is the public calendar feed (D23). Bare /api and /internal have none, so the proxy answers them with the JSON 404. */
 export function isApiPath(path: string): boolean {
-  return path === '/health' || path === '/openapi.json' || path.startsWith('/api/') || path.startsWith('/internal/');
+  return path === '/health' || path === '/openapi.json' || path.startsWith('/api/') || path.startsWith('/internal/') || path.startsWith('/feeds/');
 }
 
 export function isPagePath(path: string): boolean {

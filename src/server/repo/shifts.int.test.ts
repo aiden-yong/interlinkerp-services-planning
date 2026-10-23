@@ -9,7 +9,7 @@ const now = new Date('2026-10-13T00:00:00Z');
 const shift = (id: string): ShiftRecord => ({
   id, employeeRef: null, roleId: null, start: new Date('2026-10-14T01:00:00Z'), end: new Date('2026-10-14T09:00:00Z'), breakMinutes: 0, percent: 100,
   note: null, state: 'draft', publishedAt: null, ackBy: null, ackAt: null, version: 1, createdBy: 'tester', deletedAt: null, switchRequestedAt: null,
-  recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null,
+  recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null, remindedAt: null,
 });
 const ID = '6f1c2b0e-3a4d-4e5f-8a9b-0c1d2e3f4a5b';
 const RECURRENCE_ID = '7a2d3c1f-4b5e-4f6a-9b0c-1d2e3f4a5b6c';

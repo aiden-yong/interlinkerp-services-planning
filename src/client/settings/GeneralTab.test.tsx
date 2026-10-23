@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 const settings = (over: Partial<Settings> = {}): Settings => ({
-  country_code: 'MY', region_code: null, timezone: 'Asia/Kuala_Lumpur', give_up_mode: 'switch', unassign_window_days: 2, recurrence_horizon_months: 6, ...over,
+  country_code: 'MY', region_code: null, timezone: 'Asia/Kuala_Lumpur', give_up_mode: 'switch', unassign_window_days: 2, recurrence_horizon_months: 6, reminder_lead_minutes: 60, ...over,
 });
 
 function setup(initial: Settings, patchStatus = 200, patchBody?: unknown) {
@@ -62,7 +62,7 @@ describe('GeneralTab give-up mode', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Switch to Unassign' }));
     await waitFor(() => expect(patches()).toHaveLength(1));
     expect(JSON.parse(String((patches()[0]![1] as RequestInit).body))).toEqual({
-      country_code: 'MY', region_code: null, timezone: 'Asia/Kuala_Lumpur', give_up_mode: 'unassign', unassign_window_days: 7, recurrence_horizon_months: 6,
+      country_code: 'MY', region_code: null, timezone: 'Asia/Kuala_Lumpur', give_up_mode: 'unassign', unassign_window_days: 7, recurrence_horizon_months: 6, reminder_lead_minutes: 60,
     });
     expect(await screen.findByText('Settings saved.')).toBeTruthy();
   });
@@ -129,5 +129,18 @@ describe('GeneralTab recurrence horizon', () => {
     await waitFor(() => expect(patches()).toHaveLength(1));
     expect(JSON.parse(String((patches()[0]![1] as RequestInit).body)).recurrence_horizon_months).toBe(12);
     expect(await screen.findByText('Settings saved.')).toBeTruthy();
+  });
+});
+
+describe('GeneralTab reminder lead time', () => {
+  it('saves the reminder lead time', async () => {
+    const { patches } = setup(settings());
+    const select = (await screen.findByLabelText('Remind employees before their shifts')) as HTMLSelectElement;
+    expect(select.value).toBe('60');
+    expect(Array.from(select.options).map((o) => o.text)).toEqual(['Off', '30 minutes', '1 hour', '2 hours', '4 hours', '12 hours', '24 hours']);
+    fireEvent.change(select, { target: { value: '240' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    expect(JSON.parse(String((patches()[0]![1] as RequestInit).body)).reminder_lead_minutes).toBe(240);
   });
 });

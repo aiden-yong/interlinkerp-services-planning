@@ -1,0 +1,16 @@
+.reports .filters { align-items: center; }
+.reports .filters .spacer { flex: 1; }
+.reports .button {
+  display: inline-flex; align-items: center; min-height: 30px; padding: 0 12px; border-radius: var(--radius);
+  background: var(--fill); color: var(--text); font-size: 0.8125rem; font-weight: 500; text-decoration: none;
+}
+.reports a.button:hover { background: var(--fill-hover); }
+.reports .button[aria-disabled="true"] { opacity: 0.5; }
+.reports .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.reports tbody th, .reports tfoot th { text-align: left; font-size: inherit; font-weight: 550; color: var(--text); padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.reports tfoot th, .reports tfoot td { font-weight: 600; border-top: 1px solid var(--line-strong); border-bottom: 0; background: var(--fill); padding: 10px 14px; }
+.reports tr.over-row { background: color-mix(in srgb, var(--warn) 9%, transparent); }
+.reports .over { margin-top: 0; }
+.reports .grid td.has-open { color: var(--warn); font-weight: 600; }
+.reports .grid th, .reports .grid td { padding-inline: 10px; }
+.reports .table-wrap { overflow-x: auto; }

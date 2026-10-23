@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Version | 0.4 (draft, reviewed) |
-| Date | 2026-10-16 |
+| Version | 0.5 (draft, reviewed) |
+| Date | 2026-10-21 |
 | Department | Services |
 | Status | For review |
 
@@ -272,6 +272,7 @@ The system shall give each employee a private calendar feed (iCalendar) of their
 **FR-AUT-01** · Should · ODOO-DOC
 The system shall assign open shifts in the current planning period automatically, following BR-09, and leave results as drafts.
 - AC1: Given 10 open shifts and 6 eligible employees, when Auto Plan runs, then each assignment satisfies BR-09, no new conflict (BR-01) is created, and nothing is sent to employees until the manager publishes.
+- Only draft open shifts are planned. Published open shifts are left for employees to claim (FR-OPN-02) and are listed in the result as such.
 
 **FR-AUT-02** · Should · OWN
 The system shall report how many open shifts Auto Plan filled and which it could not fill, with the reason for each.
@@ -367,7 +368,7 @@ Source: ODOO-DOC (allocated time and percentage), VENDOR (over-allocation), OWN 
 - Skip flexible-hours employees and employees with no roles.
 - Respect working hours: never assign beyond them.
 
-Source: ODOO-DOC. How ties are broken is OI-04.
+Source: ODOO-DOC. Ties are broken by spreading load evenly: the employee with the fewest allocated hours in the period goes first (OI-04).
 
 **BR-10 Time.** All instants are stored in UTC. Each employee's working hours carry a time zone. Shifts display in the viewer's time zone: the zone on the viewer's own planning profile, or the organisation's when they have none. The schedule's days start and end at midnight in that zone, and times entered in the shift form are read in it. Source: OWN.
 
@@ -428,7 +429,7 @@ Server-to-server calls (IF-02, IF-03, IF-05) use the app's own client credential
 
 **NFR-02 Performance — health.** `/health` responds p95 ≤ 300 ms warm and always < 1 s, with only a cheap database check.
 
-**NFR-03 Security.** No local login, passwords or user table. Every request verifies the token signature and checks the live gateway session, with no caching of that check. Lock within one request of gateway sign-out.
+**NFR-03 Security.** No local login, passwords or user table. Every request verifies the token signature and checks the live gateway session, with no caching of that check. Lock within one request of gateway sign-out. The one exception is the private calendar feed (FR-MYP-03): it is answered without a gateway session, shows only its owner's own published shifts, is read-only, and its link can be reset or turned off at any time.
 
 **NFR-04 Concurrency.** Claiming and switch-taking are atomic: under simultaneous requests for the same shift, exactly one succeeds (FR-OPN-02 AC3).
 
@@ -475,7 +476,7 @@ Server-to-server calls (IF-02, IF-03, IF-05) use the app's own client credential
 | OI-01 | Which future service will own approved leave, and when. Triggers retirement of FR-CFG-03. | Post-release 1 | Planning keeps storing unavailability |
 | OI-02 | Which holiday provider (IF-06). Nager.Date has no Malaysia data; Calendarific and others need checking for state-level coverage and cost. | Before FR-CFG-04 | Manual holidays only until chosen |
 | OI-03 | **Resolved 2026-10-13:** the employee roster is intern-database for release 1. May change later; IF-02 is the only place that knows the roster source. | — | — |
-| OI-04 | Auto Plan tie-break: spread load evenly, or fill one person first. | Before FR-AUT-01 | Spread evenly |
+| OI-04 | **Resolved 2026-10-21:** Auto Plan spreads load evenly (fewest allocated hours first, after the BR-09 default-role preference). | — | — |
 | OI-05 | Whether employees without a gateway account need any access. | Post-release 1 | No access |
 | OI-06 | **Resolved 2026-10-13:** the gateway has no per-app roles (only `admin`/`hr`/`supervisor`/`user`). Planning Managers are gateway admins plus a local manager list (BR-12, FR-ACC-03). | — | — |
 | OI-07 | The gateway is being updated; its notification standard (badges and pop-ups) may change. Planning implements the badge API the recruitment app uses, behind an adapter that is off until the gateway is connected. | Before connecting to the gateway | Badges off; in-app inbox and email only |
@@ -491,3 +492,12 @@ Server-to-server calls (IF-02, IF-03, IF-05) use the app's own client credential
 | VENDOR | https://octurasolutions.com/resources/odoo-19-planning-and-shift-management-schedule-your-workforce-with-precision and https://www.cybrosys.com/slides/multi-day-shift-creation-from-gantt-view-in-odoo-19-planning |
 | INTERLINK | InterlinkERP service contract, microapp authentication and performance guides |
 | Format | ISO/IEC/IEEE 29148:2018 |
+
+---
+
+## Appendix B. Change log
+
+| Version | Date | Changes |
+|---|---|---|
+| 0.5 | 2026-10-21 | M4: OI-04 resolved (spread evenly); NFR-03 gains the calendar-feed exception; FR-AUT-01 notes that published open shifts are not auto-planned; BR-09 states the tie-break. IDs unchanged. |
+| 0.4 | 2026-10-16 | M2: FR-NTF-03 recipients, IF-04 wording; OI-07 added. |

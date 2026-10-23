@@ -1,0 +1,19 @@
+.year-board { overflow: auto; max-height: calc(100dvh - 200px); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.year-board table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 900px; font-variant-numeric: tabular-nums; }
+.year-board th, .year-board td { padding: 0; border-bottom: 1px solid var(--line); }
+.year-board thead th { position: sticky; top: 0; z-index: 2; background: var(--surface); padding: 8px 6px; font-size: 0.75rem; font-weight: 600; color: var(--muted); text-align: right; box-shadow: 0 1px 0 var(--line-strong); }
+.year-board tbody th { position: sticky; left: 0; z-index: 1; background: var(--surface); padding: 6px 12px; min-width: 180px; text-align: left; font-weight: 550; white-space: nowrap; box-shadow: 1px 0 0 var(--line); }
+.year-board thead th:first-child { left: 0; z-index: 3; text-align: left; padding-left: 12px; }
+.year-board tr.group th { background: var(--fill); font-size: 0.8125rem; font-weight: 650; }
+.year-board td { height: 40px; }
+.year-board td button {
+  all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: flex-end; gap: 4px; width: 100%; height: 100%; min-height: 40px;
+  padding: 0 8px; cursor: pointer; font-size: 0.8125rem; color: var(--text);
+  background-image: linear-gradient(color-mix(in srgb, var(--accent) 24%, var(--surface)), color-mix(in srgb, var(--accent) 24%, var(--surface))), repeating-linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--surface)) 0 4px, var(--surface) 4px 8px);
+  background-size: var(--pub, 0%) 100%, 100% 100%; background-repeat: no-repeat;
+}
+.year-board td button:hover { background-color: color-mix(in srgb, var(--accent) 8%, transparent); }
+.year-board td button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.year-board td button.zero { color: var(--muted); background-image: none; }
+.year-board td button.over { color: var(--warn); font-weight: 600; }
+.year-board td button.open-count { font-weight: 600; }

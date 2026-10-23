@@ -6,7 +6,7 @@ const KL = 'Asia/Kuala_Lumpur';
 const shift = (id: string, start: string, end: string): ShiftRecord => ({
   id, employeeRef: 'E1', roleId: null, start: new Date(start), end: new Date(end), breakMinutes: 0, percent: 100, note: null, state: 'published',
   publishedAt: null, ackBy: null, ackAt: null, version: 1, createdBy: 'm@example.com', deletedAt: null, switchRequestedAt: null,
-  recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null,
+  recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null, remindedAt: null,
 });
 const ctx = {
   shifts: new Map([['s1', shift('s1', '2026-10-14T01:00:00Z', '2026-10-14T09:00:00Z')], ['s2', shift('s2', '2026-10-15T14:00:00Z', '2026-10-15T22:00:00Z')]]),
@@ -27,6 +27,13 @@ describe('messages', () => {
       body: 'Wed 14 Oct, 09:00–17:00 GMT+8\nThu 15 Oct, 22:00 – Fri 16 Oct, 06:00 GMT+8',
       link: 'https://planning.example.com/my',
     });
+  });
+
+  it('reminds an employee of a coming shift, in their zone (FR-NTF-05)', () => {
+    expect(render('shift_reminder', { shift_ids: ['s1'] }, ctx)).toEqual({
+      title: 'Your shift starts soon', body: 'Wed 14 Oct, 09:00–17:00 GMT+8', link: 'https://planning.example.com/my',
+    });
+    expect(render('shift_reminder', { shift_ids: ['s1'] }, { ...ctx, zone: 'Europe/London' }).body).toBe('Wed 14 Oct, 02:00–10:00 GMT+1');
   });
 
   it('names people in manager notices and links managers to the schedule (FR-NTF-03)', () => {

@@ -9,6 +9,7 @@ import type { SchedulePayload, Shift, Template } from '../types';
 import { FIELD_FOR, formToBody, saveShift, SCOPE_OPTIONS, STALE_MESSAGE, type ShiftForm } from './shiftForm';
 import { applyTemplate, templatesFor } from './templates';
 import { isoToWall, wallToIso } from './tz';
+import { ShiftHistory } from './ShiftHistory';
 import { FieldError, FormError, invalid } from '../fields';
 
 interface Props {
@@ -329,6 +330,7 @@ export function ShiftDialog({ data, shift, initial, onClose, onSaved }: Props) {
             </div>
           </div>
         )}
+        {shift && <ShiftHistory shiftId={shift.id} zone={zone} roles={data.roles} names={new Map(data.employees.map((e) => [e.employee_ref, e.name]))} />}
         <FormError message={message} />
         <div className="actions">
           {shift && <><button type="button" className="danger" disabled={busy} onClick={remove}>Delete</button><button type="button" disabled={busy} onClick={duplicate}>Duplicate</button>

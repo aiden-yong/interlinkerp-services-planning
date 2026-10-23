@@ -38,4 +38,21 @@ describe('buildRows', () => {
     expect(rows.map((r) => r.label)).toEqual(['Open shifts', 'No role', 'Ana Lim']);
     expect(rows[2].shifts.map((s) => s.id)).toEqual(['x']);
   });
+
+  it('groups employees by department with No department last', () => {
+    const d = payload({
+      employees: [
+        employee({ employee_ref: 'E1', name: 'Ana Lim' }),
+        employee({ employee_ref: 'E2', name: 'Bo Tan', department_id: 'D2', department_name: 'Sales' }),
+        employee({ employee_ref: 'E3', name: 'Cy Ong', department_id: 'D1', department_name: 'Kitchen' }),
+      ],
+      shifts: [shift({ id: 'open', employee_ref: null })],
+    });
+    const rows = buildRows(d, 'department', NO_FILTERS);
+    expect(rows.map((r) => [r.key, r.label])).toEqual([
+      ['open', 'Open shifts'], ['dept:D1', 'Kitchen'], ['dept:D1:E3', 'Cy Ong'], ['dept:D2', 'Sales'], ['dept:D2:E2', 'Bo Tan'],
+      ['dept:none', 'No department'], ['dept:none:E1', 'Ana Lim'],
+    ]);
+    expect(rows[0].shifts.map((s) => s.id)).toEqual(['open']);
+  });
 });

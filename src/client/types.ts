@@ -65,6 +65,13 @@ export interface SchedulePayload {
   shifts: Shift[];
 }
 
+export interface AutoPlanReport {
+  filled: { shift_id: string; employee_ref: string }[];
+  unfilled: { shift_id: string; reason_code: string; reason: string }[];
+  skipped_published: string[];
+  skipped_changed: string[];
+}
+
 export interface MyShift { id: string; role_id: string | null; start_at: string; end_at: string; break_minutes: number; allocated_hours: number; note: string | null; switch_requested: boolean }
 export interface MyShiftsPayload { timezone: string; from: string; to: string; roles: Role[]; shifts: MyShift[] }
 
@@ -89,7 +96,11 @@ export interface EmployeeProfile {
   working_hours: WorkingHoursMap | null;
 }
 
-export interface Settings { country_code: string | null; region_code: string | null; timezone: string; give_up_mode: 'switch' | 'unassign'; unassign_window_days: number; recurrence_horizon_months: number }
+export interface Settings { country_code: string | null; region_code: string | null; timezone: string; give_up_mode: 'switch' | 'unassign'; unassign_window_days: number; recurrence_horizon_months: number; reminder_lead_minutes: number }
+export interface HistoryEntry {
+  action: string; actor: string | null; actor_kind: 'manager' | 'employee' | 'system'; actor_name: string;
+  changes: Record<string, [unknown, unknown]> | null; at: string;
+}
 export interface Template { id: string; name: string; role_id: string | null; start_time: string; duration_minutes: number; break_minutes: number }
 export interface TimeOff { id: string; employee_ref: string; start_at: string; end_at: string; reason: string }
 export interface Holiday { id: string; date: string; name: string; source: 'manual' | 'provider'; hidden: boolean; edited: boolean }
@@ -97,3 +108,21 @@ export interface ManagerGrant { email: string; granted_by: string; granted_at: s
 
 export interface NotificationItem { id: number; kind: string; title: string; body: string; link: string; shift_id: string | null; created_at: string; read_at: string | null }
 export interface NotificationsPayload { notifications: NotificationItem[]; unread_count: number }
+
+// Reports (GET /api/reports/*). Hours are decimals; the page shows one decimal.
+export interface ReportPeriod { from: string; to: string; timezone: string; from_at: string; to_at: string }
+export interface HoursCell { draft_hours: number; published_hours: number; total_hours: number; shifts: number }
+export interface PlannedHoursRow extends HoursCell { key: string; label: string; left: boolean; months?: ({ month: string } & HoursCell)[] }
+export interface PlannedHoursReport { period: ReportPeriod; group: 'employee' | 'role' | 'department'; rows: PlannedHoursRow[]; totals: HoursCell }
+export interface UtilisationRow {
+  employee_ref: string; name: string; left: boolean; flexible: boolean;
+  allocated_hours: number; available_hours: number | null; utilisation_percent: number | null; over_allocated_days: string[];
+  months?: { month: string; allocated_hours: number; available_hours: number | null; over_allocated: boolean }[];
+}
+export interface UtilisationReport { period: ReportPeriod; rows: UtilisationRow[] }
+export interface OpenShiftCell { open: number; total: number }
+export interface OpenShiftsReport {
+  period: ReportPeriod; days: string[];
+  rows: { role_id: string | null; label: string; cells: Record<string, OpenShiftCell> }[];
+  totals: Record<string, OpenShiftCell>;
+}

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
+import { AuditRepository } from '../repo/audit';
 import { HolidayRepository } from '../repo/holidays';
 import { Outbox } from '../repo/outbox';
 import { ProfileRepository } from '../repo/profiles';
@@ -18,12 +19,16 @@ export interface WriteScope {
   /** BR-05 reading through this transaction's connection, so a transaction never waits on the pool. */
   eligibility: Eligibility;
   recurrences: RecurrenceRepository;
+  /** DR-04: every shift write records what happened here, in the same transaction. */
+  audit: AuditRepository;
   /** Serialises this employee's claims and take-overs until the transaction ends (NFR-04). */
   lockEmployee(ref: string): Promise<void>;
   /** Serialises changes to the give-up settings against switch requests until the transaction ends (BR-07). */
   lockSettings(): Promise<void>;
   /** Serialises two extensions of the same series until the transaction ends (Review Focus 4). */
   lockSeries(id: string): Promise<void>;
+  /** Auto Plan (D14): takes the organisation's Auto Plan lock until the transaction ends; false when another run holds it. */
+  tryLockAutoPlan(): Promise<boolean>;
 }
 
 /**
@@ -47,6 +52,7 @@ export class UnitOfWork {
         settings,
         eligibility: new Eligibility(shifts, profiles, timeOff, context),
         recurrences: new RecurrenceRepository(db, this.org),
+        audit: new AuditRepository(db, this.org),
         lockEmployee: async (ref) => {
           // hashtext is 32-bit, so two employees can share a key; the only effect is a little extra serialisation.
           await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`${this.org}:${ref}`}))`);
@@ -56,6 +62,10 @@ export class UnitOfWork {
         },
         lockSeries: async (id) => {
           await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`${this.org}:series:${id}`}))`);
+        },
+        tryLockAutoPlan: async () => {
+          const result = await db.execute<{ locked: boolean }>(sql`select pg_try_advisory_xact_lock(hashtext(${`${this.org}:auto-plan`})) as locked`);
+          return result.rows[0]?.locked === true;
         },
       });
     }, { isolationLevel: 'read committed' });

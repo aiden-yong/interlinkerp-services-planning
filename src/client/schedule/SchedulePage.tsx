@@ -5,7 +5,8 @@ import { api, ApiError, query } from '../api';
 import { useFeedback } from '../feedback';
 import { Segmented } from '../Segmented';
 import { Stepper } from '../Stepper';
-import type { Me, SchedulePayload, Shift } from '../types';
+import type { AutoPlanReport, EmployeeProfile, Me, PlannedHoursReport, SchedulePayload, Shift, UtilisationReport } from '../types';
+import { AutoPlanResult } from './AutoPlanResult';
 import { Board, type ShiftChange } from './Board';
 import { newShiftTimes, publishSummary } from './drag';
 import { periodFor, periodLabel, type Scale, step } from './period';
@@ -13,8 +14,10 @@ import { buildRows, type Filters, type GroupBy, NO_FILTERS } from './rows';
 import { ShiftDialog } from './ShiftDialog';
 import { saveShift, type ShiftForm, shiftToForm, STALE_MESSAGE } from './shiftForm';
 import { todayIn } from './tz';
+import { YearBoard } from './YearBoard';
+import { type Departments, yearRows } from './year';
 
-const SCALES = [{ value: 'day', label: 'Day' }, { value: 'week', label: 'Week' }, { value: 'month', label: 'Month' }] as const satisfies readonly { value: Scale; label: string }[];
+const SCALES = [{ value: 'day', label: 'Day' }, { value: 'week', label: 'Week' }, { value: 'month', label: 'Month' }, { value: 'year', label: 'Year' }] as const satisfies readonly { value: Scale; label: string }[];
 
 interface WeekCopyReport { created: number; skipped_recurring: number; skipped_already_copied: number; skipped_off_roster: number; conflicts: number }
 
@@ -26,17 +29,35 @@ export function SchedulePage({ me }: { me: Me }) {
   const [groupBy, setGroupBy] = useState<GroupBy>('employee');
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [data, setData] = useState<SchedulePayload | null>(null);
+  const [yearData, setYearData] = useState<{ planned: PlannedHoursReport; util: UtilisationReport } | null>(null);
+  const [yearDepartments, setYearDepartments] = useState<Departments>({});
+  const year = scale === 'year';
   const [busy, setBusy] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ shift: Shift | null; initial: ShiftForm } | null>(null);
+  const [planResult, setPlanResult] = useState<AutoPlanReport | null>(null);
+  const autoPlanButton = useRef<HTMLButtonElement>(null);
   const period = useMemo(() => periodFor(scale, anchor), [scale, anchor]);
 
+  const yearRole = year ? filters.roleId : ''; // the schedule filters roles itself; only Year asks the server
   const latest = useRef(0);
 
   const reload = useCallback(async () => {
     const request = ++latest.current;
     try {
+      if (year) {
+        // Year is a summary: month buckets from the report endpoints, not the shifts themselves (D20).
+        const base = { from: period.from, to: period.to, bucket: 'month', timezone: zone };
+        const [planned, util] = await Promise.all([
+          api<PlannedHoursReport>('GET', `/api/reports/planned-hours${query({ ...base, role_id: yearRole || undefined, group: 'employee' })}`),
+          api<UtilisationReport>('GET', `/api/reports/utilisation${query(base)}`),
+        ]);
+        if (request !== latest.current) return;
+        setYearData({ planned, util });
+        setError(null);
+        return;
+      }
       const payload = await api<SchedulePayload>('GET', `/api/schedule${query({ from: period.from, to: period.to, timezone: zone })}`);
       if (request !== latest.current) return;
       setData(payload);
@@ -44,11 +65,29 @@ export function SchedulePage({ me }: { me: Me }) {
     } catch (e) {
       if (request === latest.current) setError((e as Error).message);
     }
-  }, [period.from, period.to, zone]);
+  }, [period.from, period.to, zone, year, yearRole]);
   useEffect(() => void reload(), [reload]);
 
+  // Utilisation rows carry no department, so Year takes it from the employee directory, as the Reports page does.
+  useEffect(() => {
+    if (!year) return;
+    api<{ employees: EmployeeProfile[] }>('GET', '/api/employees').then((r) => {
+      setYearDepartments(Object.fromEntries(r.employees.map((e) => [e.employee_ref, { id: e.department_id, name: e.department_name }])));
+    }, (e: Error) => toast(`Departments could not be loaded: ${e.message}`, undefined, 6000));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year]);
+
   const rows = useMemo(() => (data ? buildRows(data, groupBy, filters) : []), [data, groupBy, filters]);
-  const departments = useMemo(() => [...new Map((data?.employees ?? []).filter((e) => e.department_id).map((e) => [e.department_id!, e.department_name ?? e.department_id!]))], [data]);
+  const yearView = useMemo(() => (yearData ? yearRows(yearData.planned.rows, yearData.util.rows, filters, groupBy === 'department' ? 'department' : 'employee', yearDepartments, Number(period.from.slice(0, 4))) : []), [yearData, filters, groupBy, yearDepartments, period.from]);
+  const departments = useMemo(() => {
+    const people = year ? Object.values(yearDepartments) : (data?.employees ?? []).map((e) => ({ id: e.department_id, name: e.department_name }));
+    return [...new Map(people.filter((e) => e.id).map((e) => [e.id!, e.name ?? e.id!]))];
+  }, [data, year, yearDepartments]);
+  // Role grouping has no meaning for a per-employee summary, so Year falls back to Employee.
+  function changeScale(next: Scale) {
+    if (next === 'year' && groupBy === 'role') setGroupBy('employee');
+    setScale(next);
+  }
   const set = (patch: Partial<Filters>) => setFilters((f) => ({ ...f, ...patch }));
 
   const report = (e: unknown) => toast(e instanceof ApiError && e.code === 'STALE_SHIFT'
@@ -106,6 +145,24 @@ export function SchedulePage({ me }: { me: Me }) {
     await reload();
   }
 
+  async function autoPlan() {
+    if (busy) return;
+    setBusy(true);
+    let result: AutoPlanReport | null = null;
+    try {
+      if (!(await confirm('Fill the draft open shifts in this period?', ['Assigned shifts stay drafts until you publish.'], 'Auto Plan'))) return;
+      try {
+        result = await api<AutoPlanReport>('POST', '/api/auto-plans', { from: period.from, to: period.to, timezone: zone });
+      } catch (e) {
+        report(e); // AUTO_PLAN_RUNNING and other errors show their own message
+      }
+      await reload();
+    } finally {
+      setBusy(false);
+      setPlanResult(result); // shown once the button is enabled again, so closing it can return focus there
+    }
+  }
+
   async function copyPreviousWeek() {
     if (busy) return;
     setBusy(true);
@@ -147,15 +204,16 @@ export function SchedulePage({ me }: { me: Me }) {
         <Stepper unit="period" nowLabel="Today" onStep={(d) => setAnchor(step(scale, anchor, d))} onNow={() => setAnchor(todayIn(zone))} />
         <h1 className="period">{periodLabel(period)}</h1>
         <span className="spacer" />
-        <Segmented label="Scale" value={scale} segments={SCALES} onChange={setScale} />
-        <button type="button" onClick={() => openNew(null, null)}>Add shift</button>
+        <Segmented label="Scale" value={scale} segments={SCALES} onChange={changeScale} />
+        {!year && <button type="button" onClick={() => openNew(null, null)}>Add shift</button>}
+        {!year && <button type="button" ref={autoPlanButton} disabled={busy} onClick={() => void autoPlan()}>Auto Plan</button>}
         {scale === 'week' && <button type="button" disabled={busy} onClick={() => void copyPreviousWeek()}>Copy previous week</button>}
-        <label className="check"><input type="checkbox" checked={notifyOpen} onChange={(e) => setNotifyOpen(e.target.checked)} /> Tell eligible employees about open shifts</label>
-        <button type="button" className="primary" disabled={busy} onClick={publish}>Publish</button>
+        {!year && <label className="check"><input type="checkbox" checked={notifyOpen} onChange={(e) => setNotifyOpen(e.target.checked)} /> Tell eligible employees about open shifts</label>}
+        {!year && <button type="button" className="primary" disabled={busy} onClick={publish}>Publish</button>}
       </div>
       <div className="filters">
         <select aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}>
-          <option value="employee">By employee</option><option value="role">By role</option>
+          <option value="employee">By employee</option><option value="role" disabled={year}>By role</option><option value="department">By department</option>
         </select>
         <select aria-label="Filter by role" value={filters.roleId} onChange={(e) => set({ roleId: e.target.value })}>
           <option value="">All roles</option>
@@ -172,7 +230,9 @@ export function SchedulePage({ me }: { me: Me }) {
       </div>
       {data?.directory_stale && <p className="notice">Employee names may be out of date because the roster could not be refreshed. Planning still works.</p>}
       {error && <p role="alert" className="form-error">{error}</p>}
-      {data ? (
+      {year ? (
+        yearData ? <YearBoard rows={yearView} onPick={(month) => { setScale('month'); setAnchor(`${month}-01`); }} /> : !error && <p className="empty">Loading…</p>
+      ) : data ? (
         <Board
           data={data}
           rows={rows}
@@ -182,7 +242,8 @@ export function SchedulePage({ me }: { me: Me }) {
           onChange={applyChange}
         />
       ) : !error && <p className="empty">Loading…</p>}
-      {editing && data && <ShiftDialog data={data} shift={editing.shift} initial={editing.initial} onClose={() => setEditing(null)} onSaved={reload} />}
+      {!year && editing && data && <ShiftDialog data={data} shift={editing.shift} initial={editing.initial} onClose={() => setEditing(null)} onSaved={reload} />}
+      {!year && planResult && data && <AutoPlanResult report={planResult} data={data} zone={zone} onClose={() => { setPlanResult(null); autoPlanButton.current?.focus(); }} />}
     </section>
   );
 }

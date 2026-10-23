@@ -136,7 +136,7 @@ export class DeliveryService {
     const leased = await db.transaction(async (tx) => {
       const due = await tx.select().from(notifications)
         .where(and(eq(notifications.organisationId, org), isNull(notifications.emailedAt), sql`${notifications.emailAttempts} < ${sql.raw(String(MAX_EMAIL_ATTEMPTS))}`, lte(notifications.emailNextAt, now)))
-        .orderBy(notifications.id).limit(EMAIL_BATCH).for('update', { skipLocked: true });
+        .orderBy(sql`(${notifications.kind} = 'shift_reminder') desc`, notifications.id).limit(EMAIL_BATCH).for('update', { skipLocked: true });
       if (due.length > 0) {
         await tx.update(notifications).set({ emailNextAt: new Date(now.getTime() + LEASE_MS), emailAttempts: sql`${notifications.emailAttempts} + 1` })
           .where(and(eq(notifications.organisationId, org), inArray(notifications.id, due.map((n) => n.id))));
@@ -153,12 +153,21 @@ export class DeliveryService {
     });
     const refs = leased.flatMap((n) => (n.recipientRef ? [n.recipientRef] : []));
     const [addresses, onRoster] = await Promise.all([this.d.directory.emailsFor(refs), this.d.directory.present(refs)]);
+    // A reminder is only worth sending while its shift is still ahead and still that person's.
+    const reminderShifts = new Map((await new ShiftRepository(db, org).byIds(leased.flatMap((n) => (n.kind === 'shift_reminder' && n.shiftId ? [n.shiftId] : [])))).map((s) => [s.id, s]));
     let sent = 0;
     let directoryHasEmails: boolean | undefined;
     for (const n of leased) {
       if (muted.has(`${addressOf(n)}|${n.kind}`)) {
         await db.update(notifications).set({ emailAttempts: MAX_EMAIL_ATTEMPTS, emailError: 'Skipped: email turned off for this notice type.' }).where(byId(n.id));
         continue;
+      }
+      if (n.kind === 'shift_reminder') {
+        const shift = n.shiftId ? reminderShifts.get(n.shiftId) : undefined;
+        if (!shift || shift.deletedAt || shift.employeeRef !== n.recipientRef || shift.start <= clock.now()) {
+          await db.update(notifications).set({ emailAttempts: MAX_EMAIL_ATTEMPTS, emailError: 'Skipped: shift already started' }).where(byId(n.id));
+          continue;
+        }
       }
       const to = n.recipientEmail ?? (n.recipientRef ? addresses.get(n.recipientRef) : undefined);
       if (!to && n.recipientRef && !onRoster.has(n.recipientRef) && !(await this.d.directory.isEmpty())) {

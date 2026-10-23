@@ -12,10 +12,11 @@ import { type AccessGuard, Kernel, type Logger } from './http/kernel';
 import { buildOpenApi } from './http/openapi';
 import type { Router } from './http/router';
 import { HolidayProvider, nullHolidayProvider } from './holidays/provider';
+import { AuditRepository } from './repo/audit';
 import { HolidayRepository } from './repo/holidays';
 import { DirectoryRepository } from './repo/directory';
 import { type BadgePublisher, GatewayBadgePublisher, noBadges } from './notifications/badges';
-import { DeliveryService } from './notifications/deliveryService';
+import { DeliveryService, type Touched } from './notifications/deliveryService';
 import { DeliveryTrigger, MIN_GAP_MS } from './notifications/trigger';
 import { LogMailer, type Mailer, SmtpMailer } from './notifications/mailer';
 import { ManagerRepository } from './repo/managers';
@@ -31,9 +32,11 @@ import { TimeOffRepository } from './repo/timeOff';
 import { buildRouter } from './routes';
 import { ConflictContext } from './scheduling/conflictContext';
 import { Eligibility } from './scheduling/eligibility';
+import { AutoPlanService } from './scheduling/autoPlanService';
 import { OpenShiftService } from './scheduling/openShiftService';
 import { PublishService } from './scheduling/publishService';
 import { RecurrenceService } from './scheduling/recurrenceService';
+import { ReportService } from './reports/reportService';
 import { ScheduleService } from './scheduling/scheduleService';
 import { ShiftService } from './scheduling/shiftService';
 import { UnitOfWork } from './scheduling/unitOfWork';
@@ -44,12 +47,15 @@ import { InternDatabaseRoster } from './roster/internDatabase';
 import { DirectoryRefresher } from './roster/refresher';
 import { type DepartmentNames, type Roster, unconfiguredRoster } from './roster/roster';
 import { type Clock, systemClock } from './support/clock';
+import { redactAddresses } from './support/scrub';
 import { FetchHttpClient, type HttpClient } from './support/http';
 import { isTimezone } from './support/time';
 import { JobRuns } from './repo/jobRuns';
+import { ReminderService } from './notifications/reminders';
 import { OpsCheck } from './notifications/opsCheck';
 import { Retention } from './notifications/retention';
 import { EmailPreferences } from './repo/emailPreferences';
+import { CalendarFeedRepository, FEED_LIMIT } from './repo/calendarFeeds';
 import { RateLimiter, type RateLimitPolicy, WRITE_LIMIT } from './repo/rateLimits';
 import { PageGate } from './web/pageGate';
 
@@ -181,6 +187,11 @@ export class App {
     return this.once('holidays', () => new HolidayRepository(this.database().db, this.organisationId()));
   }
 
+  /** Pool-backed: for reading history. Entries are written through `scope.audit`. */
+  audit(): AuditRepository {
+    return this.once('audit', () => new AuditRepository(this.database().db, this.organisationId()));
+  }
+
   shifts(): ShiftRepository {
     return this.once('shifts', () => new ShiftRepository(this.database().db, this.organisationId()));
   }
@@ -224,7 +235,15 @@ export class App {
   }
 
   deliveryTrigger(): DeliveryTrigger {
-    return this.once('deliveryTrigger', () => new DeliveryTrigger(this.delivery(), this.clock(), this.log, MIN_GAP_MS,
+    // FR-NTF-05: each sweep queues due reminders first, so they are delivered in the same pass.
+    const sweeping = {
+      deliverDue: async () => {
+        await this.queueReminders(this.clock().now());
+        return this.delivery().deliverDue();
+      },
+      pushBadges: (touched: Touched) => this.delivery().pushBadges(touched),
+    };
+    return this.once('deliveryTrigger', () => new DeliveryTrigger(sweeping, this.clock(), this.log, MIN_GAP_MS,
       (now, gap) => this.jobRuns().claim('delivery', now, gap)));
   }
 
@@ -232,8 +251,22 @@ export class App {
     return this.once('emailPreferences', () => new EmailPreferences(this.database().db, this.organisationId()));
   }
 
+  /** FR-NTF-05: queues due reminders; a failure is logged (no personal data) and counts as 0, so delivery still runs. */
+  async queueReminders(now: Date): Promise<number> {
+    try {
+      return await this.reminders().queueDue(now);
+    } catch (error) {
+      this.log(`[reminders] queueing failed: ${redactAddresses(error instanceof Error ? error.message : String(error))}`);
+      return 0;
+    }
+  }
+
+  reminders(): ReminderService {
+    return this.once('reminders', () => new ReminderService(this.database().db, this.organisationId(), this.settings()));
+  }
+
   opsCheck(): OpsCheck {
-    return this.once('opsCheck', () => new OpsCheck(this.database().db, this.organisationId(), this.directory(), this.log));
+    return this.once('opsCheck', () => new OpsCheck(this.database().db, this.organisationId(), this.directory(), this.jobRuns(), this.log));
   }
 
   retention(): Retention {
@@ -247,6 +280,15 @@ export class App {
   rateLimiter(): RateLimiter | null {
     const policy = this.deps.rateLimit === undefined ? WRITE_LIMIT : this.deps.rateLimit;
     return policy ? this.once('rateLimiter', () => new RateLimiter(this.database().db, this.organisationId(), this.clock(), policy)) : null;
+  }
+
+  calendarFeeds(): CalendarFeedRepository {
+    return this.once('calendarFeeds', () => new CalendarFeedRepository(this.database().db, this.organisationId()));
+  }
+
+  /** Per-token bucket for the public calendar feed (FR-MYP-03). Always on: the feed has no session to limit by. */
+  feedLimiter(): RateLimiter {
+    return this.once('feedLimiter', () => new RateLimiter(this.database().db, this.organisationId(), this.clock(), FEED_LIMIT));
   }
 
   conflictContext(): ConflictContext {
@@ -294,6 +336,16 @@ export class App {
     return this.once('scheduleService', () => new ScheduleService(
       this.shifts(), this.profiles(), this.roles(), this.directory(), this.directoryRefresher(), this.timeOff(), this.holidays(), this.settings(), this.clock(), this.recurrences(),
     ));
+  }
+
+  reports(): ReportService {
+    return this.once('reports', () => new ReportService(
+      this.shifts(), this.profiles(), this.roles(), this.directory(), this.directoryRefresher(), this.timeOff(), this.holidays(), this.settings(), this.clock(), this.recurrences(),
+    ));
+  }
+
+  autoPlans(): AutoPlanService {
+    return this.once('autoPlans', () => new AutoPlanService(this.reports(), this.unitOfWork()));
   }
 
   holidayProvider(): HolidayProvider {

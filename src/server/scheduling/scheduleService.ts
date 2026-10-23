@@ -1,7 +1,8 @@
-import { allocatedByDay, availableByDay, overAllocatedDays } from '../domain/allocation';
+import { overAllocatedDays } from '../domain/allocation';
 import { type Conflict, conflictsForEmployee } from '../domain/conflicts';
 import { Interval } from '../domain/interval';
 import { workingIntervals } from '../domain/workingHours';
+import { allocatedInPeriod, availableInPeriod, reportEmployee, type ReportPeriod } from '../reports/hours';
 import type { DirectoryRepository, DirectoryRow } from '../repo/directory';
 import type { HolidayRepository } from '../repo/holidays';
 import { blankProfile, type ProfileRepository } from '../repo/profiles';
@@ -47,6 +48,7 @@ export class ScheduleService {
     const from = localMidnight(fromDate, periodZone);
     const to = localMidnight(nextDay(toDate), periodZone);
     const period = new Interval(from, to);
+    const reportPeriod: ReportPeriod = { from, to, viewZone: periodZone };
     const wideFrom = new Date(from - CONTEXT_MARGIN_MS);
     const wideTo = new Date(to + CONTEXT_MARGIN_MS);
 
@@ -80,10 +82,9 @@ export class ScheduleService {
 
       const working = profile.workingHours ? workingIntervals(profile.workingHours, from, to, zone) : [];
       const periodSpans = spans.filter((s) => s.interval.overlaps(period));
-      const available = profile.workingHours ? availableByDay(working, periodSpans.map((s) => s.interval), zone) : null;
-      const firstDay = localDate(from, zone);
-      const endDay = localDate(to, zone);
-      const allocated = Object.fromEntries(Object.entries(allocatedByDay(facts, zone)).filter(([d]) => d >= firstDay && d < endDay));
+      const reportEmp = reportEmployee(ref, directory.get(ref), profile, zone, spans);
+      const available = availableInPeriod(reportEmp, reportPeriod);
+      const allocated = allocatedInPeriod(facts, zone, reportPeriod);
       const d = directory.get(ref);
 
       return {

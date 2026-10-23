@@ -45,6 +45,7 @@ export function AppShell({ screen, children }: { screen: Screen; children?: (me:
         <span className="brand"><span className="brand-mark"><PlanningMark /></span>Planning</span>
         <nav aria-label="Planning">
           {me?.is_manager && <NavLink href="/schedule" active={screen === 'schedule'}>Schedule</NavLink>}
+          {me?.is_manager && <NavLink href="/reports" active={screen === 'reports'}>Reports</NavLink>}
           {me?.employee_ref && <NavLink href="/my" active={screen === 'my'}>My Planning</NavLink>}
           {me?.is_manager && <NavLink href="/settings" active={screen === 'settings'}>Settings</NavLink>}
         </nav>

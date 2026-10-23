@@ -1,4 +1,5 @@
 import { Input } from '../http/input';
+import { managerActor } from '../repo/audit';
 import type { DirectoryRepository } from '../repo/directory';
 import type { Clock } from '../support/clock';
 import type { UnitOfWork } from './unitOfWork';
@@ -11,7 +12,8 @@ export class PublishService {
     private readonly directory: DirectoryRepository,
   ) {}
 
-  async publish(body: Record<string, unknown>): Promise<{ published: number; employees_notified: number; open_shift_notices: number }> {
+  /** `by` is the manager publishing, for the audit trail (DR-04). */
+  async publish(body: Record<string, unknown>, by: string): Promise<{ published: number; employees_notified: number; open_shift_notices: number }> {
     const input = new Input(body);
     const ids = input.stringList('shift_ids', 1000, true);
     if (ids && ids.length === 0) input.error('shift_ids', 'List at least one shift.');
@@ -24,6 +26,7 @@ export class PublishService {
     const people = notifyOpen === true ? await this.directory.refs() : [];
     return this.unit.run(async (scope) => {
       const published = await scope.shifts.publish(ids!, now);
+      await scope.audit.record(published.map((s) => ({ shiftId: s.id, action: 'published', ...managerActor(by) })), now);
       const byEmployee = new Map<string, string[]>();
       for (const shift of published) {
         if (!shift.employeeRef) continue;

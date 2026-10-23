@@ -4,6 +4,7 @@ import { actorId, type Principal } from '../auth/principal';
 import type { Conflict } from '../domain/conflicts';
 import { HttpError } from '../http/errors';
 import { Input } from '../http/input';
+import { changesOf, managerActor } from '../repo/audit';
 import type { DirectoryRepository } from '../repo/directory';
 import type { Outbox } from '../repo/outbox';
 import type { ProfileRepository } from '../repo/profiles';
@@ -63,7 +64,7 @@ export class ShiftService {
     const draft: ShiftRecord = {
       id: randomUUID(), employeeRef, roleId, start: start!, end: end!, breakMinutes, percent, note, state: 'draft', publishedAt: null,
       ackBy: null, ackAt: null, version: 1, createdBy: actorId(by), deletedAt: null, switchRequestedAt: null,
-      recurrenceId: null, recurrenceIndex: repeat ? 0 : null, recurrenceDetached: false, copiedFrom: null,
+      recurrenceId: null, recurrenceIndex: repeat ? 0 : null, recurrenceDetached: false, copiedFrom: null, remindedAt: null,
     };
 
     if (repeat) {
@@ -85,7 +86,7 @@ export class ShiftService {
       // must not touch ConflictContext/the pool again once scope's transaction is open (see its own doc comment).
       const conflictingDates = new Set(flagged.map((p) => p.date));
       const { shift, seriesId, created } = await this.unit.run(async (scope) => {
-        const result = await this.recurrences.createSeries(scope, draft, repeat, zone, horizonMonths, ack, conflictingDates, now);
+        const result = await this.recurrences.createSeries(scope, draft, repeat, zone, horizonMonths, ack, conflictingDates, now, managerActor(actorId(by)));
         const inserted = (await scope.shifts.find(draft.id)) ?? (() => { throw new Error('The first shift of a new series was not found right after being saved.'); })();
         return { shift: inserted, ...result };
       });
@@ -93,7 +94,7 @@ export class ShiftService {
     }
 
     const { shift, conflicts } = await this.guardConflicts(draft, acknowledged, by, now);
-    await this.unit.run(({ shifts }) => shifts.insert(shift, now));
+    await this.unit.run((scope) => insertCreated(scope, shift, by, now));
     return { shift, conflicts };
   }
 
@@ -163,6 +164,9 @@ export class ShiftService {
     const saved = await this.unit.run(async (scope) => {
       const row = await scope.shifts.update(shift, current.version, now);
       if (!row) throw stale();
+      const who = managerActor(actorId(by));
+      const changes = changesOf(current, row);
+      if (changes) await scope.audit.record([{ shiftId: row.id, action: 'changed', ...who, changes }], now);
       if (current.state === 'published') await this.notifyChange(scope, current, row, now); // BR-11: stays published; employees are told
 
       let updated = 0;
@@ -176,7 +180,7 @@ export class ShiftService {
         // first-not-started index (a safe lower bound — splitSeries's own filters handle draft/attached/live).
         const fromIndex = scopeRaw === 'following' ? row.recurrenceIndex! : (await scope.shifts.firstNotStartedIndex(row.recurrenceId!, now)) ?? row.recurrenceIndex!;
         const horizonMonths = (await scope.settings.get()).recurrence_horizon_months;
-        const result = await this.recurrences.splitSeries(scope, row.recurrenceId!, fromIndex, repeat, row, horizonMonths, now);
+        const result = await this.recurrences.splitSeries(scope, row.recurrenceId!, fromIndex, repeat, row, horizonMonths, now, who);
         updated = result.removed + result.created;
       } else {
         const fromIndex = scopeRaw === 'following' ? row.recurrenceIndex! : (await scope.shifts.firstNotStartedIndex(row.recurrenceId!, now)) ?? row.recurrenceIndex!;
@@ -192,7 +196,7 @@ export class ShiftService {
           note: row.note !== current.note ? row.note : undefined,
           startTimeLocal: timeChanged ? DateTime.fromJSDate(row.start, { zone: zone! }).toFormat('HH:mm') : undefined,
           durationMinutes: timeChanged ? Math.round((row.end.getTime() - row.start.getTime()) / 60_000) : undefined,
-        }, now, row.id);
+        }, now, who, row.id);
       }
 
       const finalShift = (await scope.shifts.find(row.id)) ?? row;
@@ -233,13 +237,18 @@ export class ShiftService {
     const secondRecord: ShiftRecord = {
       ...current, id: secondId, start: at!, breakMinutes: breakGoesToFirst ? 0 : current.breakMinutes,
       version: 1, createdBy: actorId(by), ackBy: null, ackAt: null, switchRequestedAt: null, deletedAt: null,
-      recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null,
+      recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null, remindedAt: null,
     };
 
     const [first, second] = await this.unit.run(async (scope) => {
       const savedFirst = await scope.shifts.update(firstRecord, version!, now);
       if (!savedFirst) throw stale();
       await scope.shifts.insert(secondRecord, now);
+      const who = managerActor(actorId(by));
+      await scope.audit.record([
+        { shiftId: savedFirst.id, action: 'split', ...who, changes: changesOf(current, savedFirst) },
+        { shiftId: secondRecord.id, action: 'created', ...who },
+      ], now);
       if (current.state === 'published' && current.employeeRef) {
         await scope.outbox.add('shift_changed', current.employeeRef, savedFirst.id, { shift_id: savedFirst.id, changed: ['end'] }, now, now);
       }
@@ -251,8 +260,9 @@ export class ShiftService {
   async delete(id: string, by: Principal, scope?: 'following' | 'all'): Promise<{ deleted: number } | null> {
     const now = this.clock.now();
     if (!scope) {
-      await this.unit.run(async ({ shifts, outbox }) => {
+      await this.unit.run(async ({ shifts, outbox, audit }) => {
         const shift = (await shifts.softDelete(id, actorId(by), now)) ?? (() => { throw HttpError.notFound('No shift with that id.'); })();
+        await audit.record([{ shiftId: shift.id, action: 'deleted', ...managerActor(actorId(by)) }], now);
         if (shift.state === 'published' && shift.employeeRef) {
           // Sent only after the undo window, so an undone deletion never reaches the employee (FR-NTF-02).
           await outbox.add('shift_deleted', shift.employeeRef, shift.id, { shift_id: shift.id, start_at: iso(shift.start), end_at: iso(shift.end) },
@@ -274,14 +284,15 @@ export class ShiftService {
     return { deleted };
   }
 
-  async restore(id: string, _by: Principal): Promise<ShiftRecord> {
+  async restore(id: string, by: Principal): Promise<ShiftRecord> {
     const shift = await this.shifts.find(id, true);
     if (!shift || !shift.deletedAt) throw HttpError.notFound('No deleted shift with that id.');
     const now = this.clock.now();
     if (now.getTime() - shift.deletedAt.getTime() >= UNDO_MS) throw HttpError.conflict('UNDO_EXPIRED', 'This deletion can no longer be undone.');
     const deletedAt = shift.deletedAt;
-    return this.unit.run(async ({ shifts, outbox }) => {
+    return this.unit.run(async ({ shifts, outbox, audit }) => {
       const restored = (await shifts.restore(id, deletedAt, now)) ?? (() => { throw HttpError.notFound('No deleted shift with that id.'); })();
+      await audit.record([{ shiftId: restored.id, action: 'restored', ...managerActor(actorId(by)) }], now);
       // Backlog item 31: a sweep may deliver the deletion notice at the same moment. cancelPending then waits for that
       // sweep's row lock and cancels nothing; undoing anyway would leave the employee told about a deletion that never
       // happened, so the whole restore is rolled back instead.
@@ -314,10 +325,10 @@ export class ShiftService {
     const copy: ShiftRecord = {
       ...source, id: randomUUID(), start: copyStart, end: copyEnd,
       state: 'draft', publishedAt: null, version: 1, createdBy: actorId(by), deletedAt: null, switchRequestedAt: null,
-      recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null,
+      recurrenceId: null, recurrenceIndex: null, recurrenceDetached: false, copiedFrom: null, remindedAt: null,
     };
     const result = await this.guardConflicts(copy, acknowledged, by, now);
-    await this.unit.run(({ shifts }) => shifts.insert(result.shift, now));
+    await this.unit.run((scope) => insertCreated(scope, result.shift, by, now));
     return result;
   }
 
@@ -354,6 +365,12 @@ export class ShiftService {
     if (!role) input.error('role_id', 'Unknown role.');
     else if (role.archived) input.error('role_id', 'This role is archived.');
   }
+}
+
+/** Saves a new one-off shift and its `created` entry (DR-04). */
+async function insertCreated({ shifts, audit }: WriteScope, shift: ShiftRecord, by: Principal, now: Date): Promise<void> {
+  await shifts.insert(shift, now);
+  await audit.record([{ shiftId: shift.id, action: 'created', ...managerActor(actorId(by)) }], now);
 }
 
 function validateTimes(input: Input, start: Date | null, end: Date | null, breakMinutes: number): void {

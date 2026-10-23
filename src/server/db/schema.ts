@@ -13,6 +13,16 @@ const email = (name: string) => varchar(name, { length: 254 });
 /** Email delivery gives up after this many failed attempts (FR-NTF-03). */
 export const MAX_EMAIL_ATTEMPTS = 5;
 
+/** Minutes before a shift starts that its employee is reminded; 0 turns reminders off (FR-NTF-05, D24). */
+export const REMINDER_LEAD_MINUTES = [0, 30, 60, 120, 240, 720, 1440] as const;
+
+/** What happened to a shift, as recorded in the audit trail. Keep in step with the CHECK on audit_entries. */
+export const AUDIT_ACTIONS = [
+  'created', 'changed', 'published', 'deleted', 'restored', 'split', 'copied', 'generated', 'auto_planned',
+  'claimed', 'switch_requested', 'switch_cancelled', 'taken_over', 'unassigned',
+] as const;
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
 export const roles = pgTable('roles', {
   id: uuid('id').primaryKey(),
   organisationId: organisationId(),
@@ -68,6 +78,7 @@ export const shifts = pgTable('shifts', {
   recurrenceIndex: integer('recurrence_index'),
   recurrenceDetached: boolean('recurrence_detached').notNull().default(false),
   copiedFrom: uuid('copied_from'),
+  remindedAt: instant('reminded_at'),
 }, (t) => [
   check('shifts_end_after_start', sql`${t.endAt} > ${t.startAt}`),
   check('shifts_percent_range', sql`${t.allocatedPercent} between 1 and 100`),
@@ -168,11 +179,13 @@ export const organisationSettings = pgTable('organisation_settings', {
   giveUpMode: varchar('give_up_mode', { length: 16 }).notNull().default('switch'),
   unassignWindowDays: smallint('unassign_window_days').notNull().default(2),
   recurrenceHorizonMonths: smallint('recurrence_horizon_months').notNull().default(6),
+  reminderLeadMinutes: smallint('reminder_lead_minutes').notNull().default(60),
   updatedAt: instant('updated_at').notNull(),
 }, (t) => [
   check('organisation_settings_give_up_mode_valid', sql`${t.giveUpMode} in ('switch', 'unassign')`),
   check('organisation_settings_window_range', sql`${t.unassignWindowDays} between 0 and 60`),
   check('organisation_settings_recurrence_horizon_range', sql`${t.recurrenceHorizonMonths} between 1 and 24`),
+  check('organisation_settings_reminder_lead_valid', sql`${t.reminderLeadMinutes} in (0, 30, 60, 120, 240, 720, 1440)`),
 ]);
 
 export const planningManagers = pgTable('planning_managers', {
@@ -270,3 +283,28 @@ export const emailOptOuts = pgTable('email_opt_outs', {
   kind: varchar('kind', { length: 40 }).notNull(),
   createdAt: instant('created_at').notNull(),
 }, (t) => [primaryKey({ columns: [t.organisationId, t.recipient, t.kind] })]);
+
+/** M4 audit trail: one row per thing that happened to a shift. `actor` is null only for back-filled system events. */
+export const auditEntries = pgTable('audit_entries', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  organisationId: organisationId(),
+  shiftId: uuid('shift_id').notNull(),
+  action: varchar('action', { length: 24 }).notNull().$type<AuditAction>(),
+  actor: email('actor'),
+  actorKind: varchar('actor_kind', { length: 8 }).notNull(),
+  changes: jsonb('changes').$type<Record<string, [unknown, unknown]>>(),
+  at: instant('at').notNull(),
+}, (t) => [
+  check('audit_entries_action_valid', sql`${t.action} in (${sql.raw(AUDIT_ACTIONS.map((a) => `'${a}'`).join(', '))})`),
+  check('audit_entries_actor_kind_valid', sql`${t.actorKind} in ('manager', 'employee', 'system')`),
+  index('audit_entries_shift_idx').on(t.organisationId, t.shiftId, t.at),
+]);
+
+/** M4 calendar feeds: one subscription token per employee, stored only as a SHA-256 hex digest. */
+export const calendarFeeds = pgTable('calendar_feeds', {
+  organisationId: organisationId(),
+  employeeRef: varchar('employee_ref', { length: 64 }).notNull(),
+  tokenHash: char('token_hash', { length: 64 }).notNull().unique(),
+  createdAt: instant('created_at').notNull(),
+  lastUsedAt: instant('last_used_at'),
+}, (t) => [primaryKey({ columns: [t.organisationId, t.employeeRef] })]);
