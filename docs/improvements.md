@@ -211,16 +211,16 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Done:** Add shift, Publish, Copy previous week and Auto Plan are now disabled until the schedule for the shown period has loaded (including while a period change is loading), so there is no silent dead click.
 - **Effort:** S
 
-### 35. A repeating shift's pattern change can resurrect an old date if the recurrence horizon was shrunk first
+### 35. A repeating shift's pattern change can resurrect an old date if the recurrence horizon was shrunk first (done 2026-10-23)
 - **Area:** Correctness, narrow edge case
 - **Why:** `splitSeries` skips calendar dates already occupied by a surviving (published/detached) or soft-deleted old-series shift, by checking the old series' own current rows (D4's "a deleted occurrence must not come back" promise). But if the horizon was shrunk *after* the old series was generated and *before* the pattern change, the old series' surviving rows only reach as far as whatever horizon was in force when they were made. A later extension of the *new* series has no knowledge of those old dates and can generate onto one of them. Requires: generate a series under a larger horizon, shrink the horizon, split the series with a pattern change, then let the new series extend past the old one's last generated date.
-- **Fix:** either persist a per-series exclusion list, or have `extendOne` check the predecessor series' (if any) occupied dates too, not just its own.
+- **Done:** A series now remembers the series it was split from (`recurrences.predecessor_id`, migration 0006). `extendOne` skips any date on which a series in that chain holds a shift row (live, published/detached or deleted), so a later extension can no longer land on an old date.
 - **Effort:** M
 
-### 36. A repeat-N-times pattern change can under-count when dates collide with old shifts
+### 36. A repeat-N-times pattern change can under-count when dates collide with old shifts (done 2026-10-23)
 - **Area:** Correctness, narrow edge case
 - **Why:** When `splitSeries` skips a calendar date already occupied by a surviving old-series shift (item 35's mechanism, working as intended), that skipped step still counts against an `ends: 'after'` count budget, because the generator counts every non-month-skipped step regardless of whether `splitSeries` later discards it. A manager asking for "10 more shifts" can get fewer than 10 new drafts when some of those dates were already taken. Never duplicates or resurrects a shift — only under-generates.
-- **Fix:** When filtering occupied dates in `splitSeries`, ask the generator for enough extra steps to make up the difference, or document the behaviour as "up to N, counting dates already covered."
+- **Done:** Dates skipped because an old-series shift holds them no longer use up an `ends: 'after'` count: the generator is asked for more steps until N new shifts exist (bounded by the per-run cap), at the split and on later extensions.
 - **Effort:** S
 
 ### 37. Two managers editing the same repeating series within milliseconds can deadlock (done 2026-10-23)
@@ -229,10 +229,10 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Done:** `ShiftService.update()` takes the series lock before touching any row of a series shift, and a series delete takes it before reading the shifts, so every series path locks series first, then rows. As a safety net the kernel maps Postgres deadlock (`40P01`) and serialization failure (`40001`) to `503 TRY_AGAIN` with `Retry-After: 1`.
 - **Effort:** S
 
-### 38. Resuming (re-patterning) a series whose tail was deleted leaves a calendar gap
+### 38. Resuming (re-patterning) a series whose tail was deleted leaves a calendar gap (done 2026-10-23)
 - **Area:** UX, narrow edge case
 - **Why:** If a manager does "Delete this and following" from a later point in a series, then later changes the pattern starting from an earlier, still-live point, item 3's fix (skip dates an old-series shift already occupies, soft-deleted ones included) correctly refuses to resurrect the deleted dates — but it keeps refusing them all the way out to the old horizon, so the new series generates nothing for however many months that spans, then resumes abruptly. No data is lost or duplicated; it is a defensible reading of "a deleted occurrence must not come back," but a manager who intentionally ended a series and later wants to restart its pattern from an earlier point would see a confusing silent gap with no explanation in the UI.
-- **Fix:** when generating the new series, only treat an old date as occupied up to the old series' own `generated_until`/`lastIndex`, not indefinitely — or show the gap explicitly if it's unavoidable.
+- **Done:** Only dates on which a series in the predecessor chain actually holds a shift row count as occupied (all of its rows, deleted ones included, so D4 still holds); dates beyond what the old series generated are free, so a restarted pattern resumes without a gap there. Existing series have no predecessor (no back-fill).
 - **Effort:** M
 
 ### 39. A pattern change with scope "all" has a narrow window where an undone deletion could still land on the wrong shift (done 2026-10-23)

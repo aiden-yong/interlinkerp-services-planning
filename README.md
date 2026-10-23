@@ -41,6 +41,7 @@ Apply the new migrations to the production database BEFORE deploying: `DATABASE_
 ## Changes after 0.3.0 (M4, service version 0.4.0)
 Apply the new migration to the production database BEFORE deploying: `DATABASE_URL='<pooled url>' npm run db:migrate`. Locally, run `npm run db:migrate`.
 - `0005_reporting_audit_feeds` adds the audit trail for shifts, the private calendar feed tokens and `organisation_settings.reminder_lead_minutes` (0, 30, 60, 120, 240, 720 or 1440 minutes; default 60; 0 turns reminders off). Change it in Settings → General, "Remind employees before their shifts". It also adds `shifts.reminded_at` (set once a reminder is queued) and back-fills audit history for existing shifts, one INSERT per shift, so the migration takes longer on a large database.
+- `0006_series_predecessor` adds the nullable `recurrences.predecessor_id` (the series a repeating shift was split from by a pattern change) and an index on it. Existing series get null. Apply it to production before deploying; until then, pattern changes fail on the missing column.
 - M4 adds: a Reports page (planned hours, utilisation and open shifts, each with CSV download); Auto Plan on the schedule, which fills draft open shifts and spreads load evenly; a Year scale and grouping by department on the schedule; a change history per shift; a private iCalendar link for each employee ("Get calendar link" on My Planning); and shift reminders.
 - Auto Plan leaves every result as a draft. Published open shifts are left for employees to claim.
 

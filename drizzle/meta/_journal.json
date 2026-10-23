@@ -43,6 +43,13 @@
       "when": 1792565264787,
       "tag": "0005_reporting_audit_feeds",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792725985490,
+      "tag": "0006_series_predecessor",
+      "breakpoints": true
     }
   ]
 }

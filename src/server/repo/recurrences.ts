@@ -19,6 +19,8 @@ export interface SeriesRecord extends RepeatRule {
    */
   generatedUntil: Date;
   createdBy: string;
+  /** The series this one was split from by a pattern change (D6); null when it was never re-patterned (or predates the link). */
+  predecessorId: string | null;
 }
 
 const toRecord = (r: typeof recurrences.$inferSelect): SeriesRecord => ({
@@ -41,6 +43,7 @@ const toRecord = (r: typeof recurrences.$inferSelect): SeriesRecord => ({
   note: r.note,
   generatedUntil: r.generatedUntil,
   createdBy: r.createdBy,
+  predecessorId: r.predecessorId,
 });
 
 export function seriesToApi(s: SeriesRecord, index: number | null, detached: boolean) {
@@ -58,6 +61,18 @@ export class RecurrenceRepository {
     return row ? toRecord(row) : null;
   }
 
+  /** Ids of the series this one was split from, nearest first (a series re-patterned twice has two). Cycle- and depth-guarded. */
+  async predecessorChain(series: Pick<SeriesRecord, 'predecessorId'>): Promise<string[]> {
+    const chain: string[] = [];
+    let next = series.predecessorId;
+    while (next !== null && !chain.includes(next) && chain.length < 100) {
+      chain.push(next);
+      // eslint-disable-next-line no-await-in-loop -- each hop depends on the previous row
+      next = (await this.find(next))?.predecessorId ?? null;
+    }
+    return chain;
+  }
+
   /** Several series in one query (e.g. for a schedule's list of shifts), so a page of shifts never costs one query per series. */
   async findMany(ids: string[]): Promise<SeriesRecord[]> {
     const valid = [...new Set(ids)].filter(isUuid);
@@ -71,7 +86,7 @@ export class RecurrenceRepository {
       id: s.id, organisationId: this.org, interval: s.interval, unit: s.unit, ends: s.ends, untilDate: s.untilDate,
       occurrenceCount: s.count, timezone: s.timezone, firstStartLocal: s.firstStartLocal, durationMinutes: s.durationMinutes,
       employeeRef: s.employeeRef, roleId: s.roleId, breakMinutes: s.breakMinutes, allocatedPercent: s.percent, note: s.note,
-      lastIndex: s.lastIndex, generatedUntil: s.generatedUntil, createdBy: s.createdBy, createdAt: now, updatedAt: now,
+      lastIndex: s.lastIndex, predecessorId: s.predecessorId, generatedUntil: s.generatedUntil, createdBy: s.createdBy, createdAt: now, updatedAt: now,
     });
   }
 
