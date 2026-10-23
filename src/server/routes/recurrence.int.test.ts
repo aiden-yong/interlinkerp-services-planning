@@ -1,8 +1,9 @@
 import { eq, inArray } from 'drizzle-orm';
 import { DateTime } from 'luxon';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { auditEntries, recurrences, shifts } from '../db/schema';
 import { Outbox } from '../repo/outbox';
+import { ShiftRepository } from '../repo/shifts';
 import { ORG } from '../test/db';
 import { useApiHarness } from '../test/harness';
 import { whileLocked } from '../test/races';
@@ -488,5 +489,71 @@ describe('recurrence lifecycle (final review fixes)', () => {
     }
     const series = await h.app.recurrences().find(body.recurrence.id);
     expect([series!.employeeRef, series!.firstStartLocal.slice(11), series!.note]).toEqual(['E1', '09:00', 'Bring keys']);
+  });
+});
+
+describe('series edits racing each other (backlog items 37 and 39)', () => {
+  beforeEach(() => advanceTo('2026-01-01T02:00:00Z'));
+  afterEach(() => vi.restoreAllMocks());
+
+  it('a series PATCH and a series DELETE at the same moment never deadlock into a 500 (item 37)', async () => {
+    for (let i = 0; i < 10; i += 1) {
+      // eslint-disable-next-line no-await-in-loop -- each round needs its own fresh series
+      const { status, body } = await createRepeating({ acknowledge_conflicts: true });
+      expect(status, JSON.stringify(body)).toBe(201);
+      const seriesId: string = body.recurrence.id;
+      // eslint-disable-next-line no-await-in-loop
+      const shift3 = await atIndex(seriesId, 3);
+      // eslint-disable-next-line no-await-in-loop
+      const shift2 = await atIndex(seriesId, 2);
+      // The test holds the series lock while both requests start, so both reach their transactions before either
+      // can take it; when it is released they race for it (before the fix, a PATCH holding shift 3's row lock
+      // while waiting for the series lock deadlocked with a DELETE holding the series lock and waiting for shift 3).
+      // eslint-disable-next-line no-await-in-loop
+      const [patched, deleted] = await whileLocked(h.database, async (client) => {
+        await client.query('select pg_advisory_xact_lock(hashtext($1))', [`${ORG}:series:${seriesId}`]);
+      }, () => Promise.all([
+        h.call('PATCH', `/api/shifts/${shift3.id}`, { version: shift3.version, scope: 'following', note: `round ${i}`, acknowledge_conflicts: true }),
+        h.call('DELETE', `/api/shifts/${shift2.id}`, undefined, { scope: 'following' }),
+      ]), 2);
+      expect([200, 409], JSON.stringify(patched.body)).toContain(patched.status);
+      expect(deleted.status, JSON.stringify(deleted.body)).toBe(200);
+
+      // eslint-disable-next-line no-await-in-loop
+      const rows = await seriesRows(seriesId);
+      expect(rows.length).toBe(26);
+      expect(rows.filter((r) => r.recurrenceIndex! >= 2 && r.deletedAt === null)).toEqual([]);
+      expect(rows.filter((r) => r.recurrenceIndex! < 2 && r.deletedAt !== null)).toEqual([]);
+      // eslint-disable-next-line no-await-in-loop
+      expect((await h.app.recurrences().find(seriesId))!.lastIndex).toBe(1);
+    }
+  });
+
+  it('refuses a pattern change for all when an earlier shift is restored after the first check (item 39)', async () => {
+    const { body } = await createRepeating(); // index 0 has already started
+    const seriesId: string = body.recurrence.id;
+    const shift1 = await atIndex(seriesId, 1);
+    expect((await h.call('DELETE', `/api/shifts/${shift1.id}`)).status).toBe(204);
+    const shift2 = await atIndex(seriesId, 2); // now the first not-started live shift
+
+    // The undo of shift 1 lands right after the request's first (pool-level) check, before its transaction opens.
+    const original = ShiftRepository.prototype.firstNotStartedIndex;
+    vi.spyOn(ShiftRepository.prototype, 'firstNotStartedIndex').mockImplementationOnce(async function firstCheck(this: ShiftRepository, id, now) {
+      const result = await original.call(this, id, now);
+      const restored = await h.call('POST', '/api/shift-restorations', { shift_id: shift1.id });
+      expect(restored.status, JSON.stringify(restored.body)).toBe(201);
+      return result;
+    });
+
+    const res = await h.call('PATCH', `/api/shifts/${shift2.id}`, {
+      version: shift2.version, scope: 'all', repeat: { interval: 2, unit: 'week', ends: 'never' },
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(res.body.error.code).toBe('RECURRENCE_PATTERN_SCOPE');
+
+    const rows = await seriesRows(seriesId);
+    expect(rows.length).toBe(26);
+    expect(rows.find((r) => r.id === shift1.id)!.deletedAt).toBeNull();
+    expect((await h.app.recurrences().find(seriesId))!.lastIndex).toBeNull();
   });
 });

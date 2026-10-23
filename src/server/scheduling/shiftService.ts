@@ -25,6 +25,10 @@ const NOTIFY_FIELDS: [keyof ShiftRecord, string][] = [
 ];
 const same = (a: unknown, b: unknown) => (a instanceof Date && b instanceof Date ? a.getTime() === b.getTime() : a === b);
 const UNTIL_BEFORE_FIRST = "Must be on or after the shift's own date.";
+const notEarliestOpenShift = () => {
+  const message = 'Changing the pattern for all shifts must start from the earliest shift that has not started yet. Open that shift instead.';
+  return new HttpError(422, 'RECURRENCE_PATTERN_SCOPE', message, { scope: message });
+};
 const stale = () => HttpError.conflict('STALE_SHIFT', 'Someone else changed this shift since you loaded it. Reload and try again.');
 
 /** FR-SHF-*, BR-01/02/11. Managers are warned about conflicts, never blocked (FR-SHF-09). */
@@ -147,8 +151,7 @@ export class ShiftService {
       // this shift's own date, so starting anywhere later would leave the weeks in between deleted and never remade.
       const firstNotStarted = await this.shifts.firstNotStartedIndex(current.recurrenceId, now);
       if (firstNotStarted !== null && firstNotStarted !== current.recurrenceIndex) {
-        const message = 'Changing the pattern for all shifts must start from the earliest shift that has not started yet. Open that shift instead.';
-        throw new HttpError(422, 'RECURRENCE_PATTERN_SCOPE', message, { scope: message });
+        throw notEarliestOpenShift();
       }
     }
     if (repeat !== null && repeat.ends === 'on' && current.recurrenceId !== null) {
@@ -162,6 +165,14 @@ export class ShiftService {
     if (version !== current.version) throw stale();
     const { shift, conflicts } = await this.guardConflicts(next, acknowledged, by, now);
     const saved = await this.unit.run(async (scope) => {
+      // Every series path takes the series lock before any shift row (deleteFrom, applyToSeries, splitSeries, extendOne),
+      // so two requests on the same series queue here instead of deadlocking on each other's row lock (backlog item 37).
+      if (current.recurrenceId !== null) await scope.lockSeries(current.recurrenceId);
+      if (repeat !== null && scopeRaw === 'all' && current.recurrenceId !== null) {
+        // Backlog item 39: the check above ran on the pool, before this lock; an undone deletion may have landed since.
+        const firstNotStarted = await scope.shifts.firstNotStartedIndex(current.recurrenceId, now);
+        if (firstNotStarted !== null && firstNotStarted !== current.recurrenceIndex) throw notEarliestOpenShift();
+      }
       const row = await scope.shifts.update(shift, current.version, now);
       if (!row) throw stale();
       const who = managerActor(actorId(by));
@@ -278,6 +289,7 @@ export class ShiftService {
       throw new HttpError(422, 'RECURRENCE_PATTERN_SCOPE', message, { scope: message });
     }
     const deleted = await this.unit.run(async (scopeCtx) => {
+      await scopeCtx.lockSeries(current.recurrenceId!); // before any lookup of the series' shifts, same order as update()
       const fromIndex = scope === 'following' ? current.recurrenceIndex! : (await scopeCtx.shifts.firstNotStartedIndex(current.recurrenceId!, now)) ?? current.recurrenceIndex!;
       return this.recurrences.deleteFrom(scopeCtx, current.recurrenceId!, fromIndex, actorId(by), now, UNDO_MS);
     });

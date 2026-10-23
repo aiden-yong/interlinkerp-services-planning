@@ -223,10 +223,10 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Fix:** When filtering occupied dates in `splitSeries`, ask the generator for enough extra steps to make up the difference, or document the behaviour as "up to N, counting dates already covered."
 - **Effort:** S
 
-### 37. Two managers editing the same repeating series within milliseconds can deadlock
+### 37. Two managers editing the same repeating series within milliseconds can deadlock (done 2026-10-23)
 - **Area:** Reliability, narrow edge case
 - **Why:** `update()`'s transaction locks the edited shift's own row, then (for `following`/`all`) waits on the series' advisory lock inside `applyToSeries`/`splitSeries`. `deleteFrom` takes the series lock first, then needs the edited shift's row lock. Two requests on the same series, one PATCHing and one DELETEing (or two PATCHes) within the same window, can each hold what the other needs. Postgres detects this and aborts one with a deadlock error; there is no handling for that error code, so the aborted request gets a 500 instead of a clean, retryable error. No data is corrupted — the losing transaction never commits.
-- **Fix:** take `lockSeries` in `update()` before the row update (same order `deleteFrom`/`applyToSeries`/`splitSeries` use), or map Postgres's deadlock code to a clean `409`/`503` the client can retry.
+- **Done:** `ShiftService.update()` takes the series lock before touching any row of a series shift, and a series delete takes it before reading the shifts, so every series path locks series first, then rows. As a safety net the kernel maps Postgres deadlock (`40P01`) and serialization failure (`40001`) to `503 TRY_AGAIN` with `Retry-After: 1`.
 - **Effort:** S
 
 ### 38. Resuming (re-patterning) a series whose tail was deleted leaves a calendar gap
@@ -235,10 +235,10 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Fix:** when generating the new series, only treat an old date as occupied up to the old series' own `generated_until`/`lastIndex`, not indefinitely — or show the gap explicitly if it's unavoidable.
 - **Effort:** M
 
-### 39. A pattern change with scope "all" has a narrow window where an undone deletion could still land on the wrong shift
+### 39. A pattern change with scope "all" has a narrow window where an undone deletion could still land on the wrong shift (done 2026-10-23)
 - **Area:** Correctness, narrow edge case
 - **Why:** The "all" + pattern-change guard (item 2's fix) checks that the edited shift is the series' first not-started occurrence once, outside the transaction. If an earlier occurrence is restored via `POST /api/shift-restorations` (available for 30 seconds after a delete) in the narrow window between that check and the transaction committing, the original item-2 bug (deleting drafts before the edited shift without regenerating them) could still occur. Needs a concurrent restore landing in that exact window.
-- **Fix:** recompute `firstNotStartedIndex` inside the transaction (after `lockSeries`) and compare it there instead of trusting the pool-level check. Same narrow-race class as item 31.
+- **Done:** `update()` recomputes `firstNotStartedIndex` inside the transaction, after `lockSeries` and before any row is written, and refuses with the same `RECURRENCE_PATTERN_SCOPE` error when the edited shift is no longer the earliest open one.
 - **Effort:** S
 
 ---
