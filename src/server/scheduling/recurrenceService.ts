@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { DateTime } from 'luxon';
 import type { Conflict } from '../domain/conflicts';
-import { occurrences, type RepeatEnds, type RepeatRule, type RepeatUnit } from '../domain/recurrence';
+import { occurrencesAvoiding, occurrences, type RepeatEnds, type RepeatRule, type RepeatUnit } from '../domain/recurrence';
 import type { Logger } from '../http/kernel';
 import type { Input } from '../http/input';
 import { type AuditActor, changesOf, managerActor, SYSTEM_ACTOR } from '../repo/audit';
@@ -141,7 +141,7 @@ export class RecurrenceService {
       id: seriesId, interval: rule.interval, unit: rule.unit, ends: rule.ends, untilDate: rule.untilDate, count: rule.count,
       timezone: zone, firstStartLocal: rule.firstStartLocal, durationMinutes: rule.durationMinutes, lastIndex: null,
       employeeRef: first.employeeRef, roleId: first.roleId, breakMinutes: first.breakMinutes, percent: first.percent, note: first.note,
-      generatedUntil: until, createdBy: first.createdBy,
+      generatedUntil: until, createdBy: first.createdBy, predecessorId: null,
     };
     await scope.recurrences.insert(series, now);
 
@@ -216,9 +216,10 @@ export class RecurrenceService {
     const removedIds = await scope.shifts.hardDeleteSeriesShiftsFrom(seriesId, atIndex, now, from.id);
     await scope.audit.deleteForShifts(removedIds);
     const removed = removedIds.length;
-    // Dates the old series still holds from atIndex on (published or detached shifts left in place, and deleted
-    // occurrences, D4): the new series must not put a second shift on them, nor bring a deleted one back.
-    const occupied = await scope.shifts.occupiedLocalDates(seriesId, atIndex, from.id, old.timezone);
+    // Dates on which the old series (and the ones before it) still hold a row: published or detached shifts left in
+    // place, and deleted occurrences (D4). The new series must not put a second shift on them, nor bring a deleted
+    // one back. Dates the old series never generated are free.
+    const occupied = await scope.shifts.occupiedLocalDates([seriesId, ...(await scope.recurrences.predecessorChain(old))], from.id, old.timezone);
 
     const newSeriesId = randomUUID();
     const until = DateTime.fromJSDate(now, { zone: old.timezone }).plus({ months: horizonMonths }).toJSDate();
@@ -229,7 +230,7 @@ export class RecurrenceService {
       durationMinutes: Math.round((from.end.getTime() - from.start.getTime()) / 60_000),
       lastIndex: null,
       employeeRef: from.employeeRef, roleId: from.roleId, breakMinutes: from.breakMinutes, percent: from.percent, note: from.note,
-      generatedUntil: until, createdBy: from.createdBy,
+      generatedUntil: until, createdBy: from.createdBy, predecessorId: seriesId,
     };
     await scope.recurrences.insert(newSeries, now);
     await scope.shifts.reassignSeries(from.id, newSeriesId, 0, now);
@@ -239,7 +240,8 @@ export class RecurrenceService {
       timezone: newSeries.timezone, firstStartLocal: newSeries.firstStartLocal, durationMinutes: newSeries.durationMinutes, lastIndex: newSeries.lastIndex,
     };
     // A skipped date leaves its index unused for good: extendOne resumes from max(existing index) + 1, never backfills.
-    const steps = occurrences(rule, 1, until).filter((step) => !occupied.has(localDate(step.start.getTime(), old.timezone)));
+    // Skipped dates do not use up an 'after' count (occurrencesAvoiding asks for more steps).
+    const steps = occurrencesAvoiding(rule, 1, until, occupied);
     const rows: ShiftRecord[] = steps.map((step) => ({
       id: randomUUID(), employeeRef: newSeries.employeeRef, roleId: newSeries.roleId, start: step.start, end: step.end,
       breakMinutes: newSeries.breakMinutes, percent: newSeries.percent, note: newSeries.note, state: 'draft', publishedAt: null,
@@ -286,7 +288,10 @@ export class RecurrenceService {
         interval: series.interval, unit: series.unit, ends: series.ends, untilDate: series.untilDate, count: series.count,
         timezone: series.timezone, firstStartLocal: series.firstStartLocal, durationMinutes: series.durationMinutes, lastIndex: series.lastIndex,
       };
-      const steps = occurrences(rule, fromIndex, until);
+      // A re-patterned series never lands on a date its predecessors hold a row for (#35); skipped dates do not use up an 'after' count (#36).
+      const chain = await scope.recurrences.predecessorChain(series);
+      const occupied = await scope.shifts.occupiedLocalDates(chain, null, series.timezone);
+      const steps = occurrencesAvoiding(rule, fromIndex, until, occupied);
       const rows: ShiftRecord[] = steps.map((step) => ({
         id: randomUUID(), employeeRef: series.employeeRef, roleId: series.roleId, start: step.start, end: step.end,
         breakMinutes: series.breakMinutes, percent: series.percent, note: series.note, state: 'draft', publishedAt: null,

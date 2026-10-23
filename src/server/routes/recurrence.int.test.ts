@@ -556,4 +556,86 @@ describe('series edits racing each other (backlog items 37 and 39)', () => {
     expect(rows.find((r) => r.id === shift1.id)!.deletedAt).toBeNull();
     expect((await h.app.recurrences().find(seriesId))!.lastIndex).toBeNull();
   });
+
+  describe('regenerating a re-patterned series (items 35, 36, 38)', () => {
+    const localDay = (d: Date) => DateTime.fromJSDate(d, { zone: 'Asia/Kuala_Lumpur' }).toISODate();
+    const live = async (seriesId: string) => (await seriesRows(seriesId)).filter((r) => r.deletedAt === null);
+    const datesOf = (rows: { startAt: Date }[]) => rows.map((r) => localDay(r.startAt)).sort();
+    const repattern = async (seriesId: string, idx: number, repeat: Record<string, unknown>) => {
+      const shift = await atIndex(seriesId, idx);
+      return h.call('PATCH', `/api/shifts/${shift.id}`, { version: shift.version, scope: 'following', repeat });
+    };
+
+    it('38: restarting a pattern after a deleted tail skips only the dates the old series generated', async () => {
+      const { body } = await createRepeating(); // weekly from 2026-01-01, 26 rows to 2026-06-25
+      const shift10 = await atIndex(body.recurrence.id, 10); // 2026-03-12
+      expect((await h.call('DELETE', `/api/shifts/${shift10.id}`, undefined, { scope: 'following' })).status).toBe(200);
+
+      const res = await repattern(body.recurrence.id, 2, { interval: 1, unit: 'week', ends: 'never' });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const newId = res.body.shift.recurrence.id;
+      expect((await h.app.recurrences().find(newId))!.predecessorId).toBe(body.recurrence.id);
+
+      let dates = datesOf(await seriesRows(newId));
+      expect(dates).toContain('2026-03-05');
+      expect(dates).not.toContain('2026-03-12'); // deleted occurrences stay deleted (D4)
+      expect(dates).not.toContain('2026-06-25');
+
+      // Past the old series' own generated range there is no gap: the new series carries on from the next date.
+      h.clock.advance(Math.round((Date.parse('2026-07-15T02:00:00Z') - h.clock.now().getTime()) / 1000));
+      await h.app.recurrences().extendAll(h.clock.now());
+      dates = datesOf(await seriesRows(newId));
+      expect(dates).toContain('2026-07-02');
+      expect(dates).not.toContain('2026-04-02');
+    });
+
+    it('35: a later extension of the new series never lands on an old-series date', async () => {
+      const { body } = await createRepeating(); // 26 rows to 2026-06-25 under the 6-month horizon
+      const shift20 = await atIndex(body.recurrence.id, 20); // 2026-05-21
+      expect((await h.call('POST', '/api/publications', { shift_ids: [shift20.id] })).status).toBe(201);
+      expect((await h.call('PATCH', '/api/settings', { recurrence_horizon_months: 1 })).status).toBe(200);
+
+      const res = await repattern(body.recurrence.id, 2, { interval: 1, unit: 'week', ends: 'never' });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const newId = res.body.shift.recurrence.id;
+      expect(datesOf(await seriesRows(newId))).not.toContain('2026-05-21'); // beyond the shrunk horizon, not generated yet
+
+      h.clock.advance(Math.round((Date.parse('2026-05-10T02:00:00Z') - h.clock.now().getTime()) / 1000));
+      await h.app.recurrences().extendAll(h.clock.now());
+
+      const onThatDay = (await h.database.db.select().from(shifts)).filter((r) => r.deletedAt === null && localDay(r.startAt) === '2026-05-21');
+      expect(onThatDay.map((r) => r.id)).toEqual([shift20.id]);
+      expect(datesOf(await seriesRows(newId))).toContain('2026-05-28');
+    });
+
+    it('36: dates skipped as occupied do not use up a repeat-N-times count', async () => {
+      const { body } = await createRepeating();
+      for (const idx of [3, 4]) { // 2026-01-22 and 2026-01-29
+        const shift = await atIndex(body.recurrence.id, idx);
+        expect((await h.call('POST', '/api/publications', { shift_ids: [shift.id] })).status).toBe(201);
+      }
+      const res = await repattern(body.recurrence.id, 1, { interval: 1, unit: 'week', ends: 'after', count: 5 });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const rows = await live(res.body.shift.recurrence.id);
+      expect(datesOf(rows)).toEqual(['2026-01-08', '2026-01-15', '2026-02-05', '2026-02-12', '2026-02-19']);
+
+      // A later sweep adds nothing: the series already holds its 5.
+      h.clock.advance(40 * 24 * 3600);
+      await h.app.recurrences().extendAll(h.clock.now());
+      expect((await live(res.body.shift.recurrence.id)).length).toBe(5);
+    });
+
+    it('D4: a deleted old occurrence never comes back, at the split or on a later extension', async () => {
+      const { body } = await createRepeating();
+      const shift4 = await atIndex(body.recurrence.id, 4); // 2026-01-29
+      expect((await h.call('DELETE', `/api/shifts/${shift4.id}`)).status).toBe(204);
+      const res = await repattern(body.recurrence.id, 1, { interval: 1, unit: 'week', ends: 'never' });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const newId = res.body.shift.recurrence.id;
+      h.clock.advance(60 * 24 * 3600);
+      await h.app.recurrences().extendAll(h.clock.now());
+      expect(datesOf(await seriesRows(newId))).not.toContain('2026-01-29');
+      expect((await seriesRows(body.recurrence.id)).find((r) => r.id === shift4.id)!.deletedAt).not.toBeNull();
+    });
+  });
 });

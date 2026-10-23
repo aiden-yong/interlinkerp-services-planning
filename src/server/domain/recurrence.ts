@@ -72,3 +72,25 @@ export function occurrences(rule: RepeatRule, fromIndex: number, until: Date): O
 
   return result;
 }
+
+/**
+ * Like occurrences(), but drops steps (index >= 1) whose local date is in `occupied`. With `ends: 'after'` a dropped
+ * step does not use up the count: more steps are requested until `count` shifts survive (step 0 always counts), the
+ * horizon is reached, or MAX_PER_RUN is hit. Only steps with index >= fromIndex are returned.
+ */
+export function occurrencesAvoiding(rule: RepeatRule, fromIndex: number, until: Date, occupied: ReadonlySet<string>): Occurrence[] {
+  const dateOf = (o: Occurrence) => DateTime.fromJSDate(o.start, { zone: rule.timezone }).toFormat('yyyy-MM-dd');
+  const free = (o: Occurrence) => o.index === 0 || !occupied.has(dateOf(o));
+  if (occupied.size === 0) return occurrences(rule, fromIndex, until);
+  if (rule.ends !== 'after' || rule.count === null) return occurrences(rule, fromIndex, until).filter(free);
+
+  const wanted = rule.count;
+  let budget = wanted;
+  for (;;) {
+    const all = occurrences({ ...rule, count: budget }, 0, until);
+    const kept = all.filter(free);
+    const exhausted = all.length < budget || all.length >= MAX_PER_RUN;
+    if (kept.length >= wanted || exhausted) return kept.slice(0, wanted).filter((o) => o.index >= fromIndex);
+    budget += wanted - kept.length;
+  }
+}

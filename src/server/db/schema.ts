@@ -107,6 +107,8 @@ export const recurrences = pgTable('recurrences', {
   allocatedPercent: smallint('allocated_percent').notNull().default(100),
   note: text('note'),
   lastIndex: integer('last_index'),
+  // The series this one was split from by a pattern change (D6); null for a series that was never re-patterned.
+  predecessorId: uuid('predecessor_id'),
   generatedUntil: instant('generated_until').notNull(),
   createdBy: email('created_by').notNull(),
   createdAt: instant('created_at').notNull(),
@@ -120,6 +122,7 @@ export const recurrences = pgTable('recurrences', {
   check('recurrences_break_non_negative', sql`${t.breakMinutes} >= 0`),
   check('recurrences_percent_range', sql`${t.allocatedPercent} between 1 and 100`),
   index('recurrences_org_idx').on(t.organisationId),
+  index('recurrences_predecessor_idx').on(t.predecessorId),
 ]);
 
 export const shiftTemplates = pgTable('shift_templates', {

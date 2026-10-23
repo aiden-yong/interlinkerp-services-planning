@@ -202,13 +202,15 @@ export class ShiftRepository {
   }
 
   /**
-   * D6: calendar dates (in `zone`) already occupied by a shift of this series at index >= fromIndex, soft-deleted ones
-   * included (no live filter, on purpose: D4), excluding `exceptId`. Call this AFTER hardDeleteSeriesShiftsFrom, so
-   * the untouched drafts it just removed are gone — only surviving (published/detached) and deleted rows count.
+   * D4/D6: calendar dates (in `zone`) on which any of these (predecessor) series holds a shift row, soft-deleted ones
+   * included (no live filter, on purpose), excluding `exceptId`. Only rows that exist count, so dates the old series
+   * never generated stay free. Call after hardDeleteSeriesShiftsFrom, so the untouched drafts it removed are gone.
    */
-  async occupiedLocalDates(seriesId: string, fromIndex: number, exceptId: string, zone: string): Promise<Set<string>> {
+  async occupiedLocalDates(seriesIds: string[], exceptId: string | null, zone: string): Promise<Set<string>> {
+    const valid = seriesIds.filter(isUuid);
+    if (valid.length === 0) return new Set();
     const rows = await this.db.select({ startAt: shifts.startAt }).from(shifts)
-      .where(and(eq(shifts.organisationId, this.org), eq(shifts.recurrenceId, seriesId), gte(shifts.recurrenceIndex, fromIndex), ne(shifts.id, exceptId)));
+      .where(and(eq(shifts.organisationId, this.org), inArray(shifts.recurrenceId, valid), exceptId ? ne(shifts.id, exceptId) : undefined));
     return new Set(rows.map((r) => localDate(r.startAt.getTime(), zone)));
   }
 
