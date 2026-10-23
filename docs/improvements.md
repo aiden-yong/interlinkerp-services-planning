@@ -38,13 +38,10 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Done:** `src/server/http/kernel.ts` rejects a body over 64 KB with `413 PAYLOAD_TOO_LARGE`, whether its size is declared in `Content-Length` or only becomes clear as the chunks arrive. It stops reading at the limit.
 - **Effort:** S
 
-### 6. Tie the sign-in `state` to the browser
+### 6. Tie the sign-in `state` to the browser (done 2026-10-23)
 - **Area:** Security
 - **Why:** The OAuth `state` value is not linked to the browser that started sign-in. This allows login CSRF: an attacker could sign a victim in as the attacker.
-- **Fix:**
-  - Set a short-lived HttpOnly cookie that holds the `state` (or a hash of it) when sign-in starts.
-  - Compare it in the callback.
-  - First confirm with the gateway owners how they expect `state` to be handled.
+- **Done:** `PageGate.toGateway` makes a random nonce, sends it to the gateway as `state`, and stores `<nonce>.<return path>` in the short-lived HttpOnly `planning_signin` cookie (replaces `planning_return_to`). The callback only exchanges the code when that cookie is well formed and any returned `state` equals its nonce (constant-time); otherwise it clears the cookie and starts a fresh sign-in. The return path comes only from the cookie. If the gateway does not echo `state`, the cookie alone is required and `[planning-web] gateway did not return state` is logged once. Confirm with the gateway owners that `state` is returned unchanged; then the no-state fallback can be removed.
 - **Effort:** S–M
 
 ### 7. Pass the gateway conformance check

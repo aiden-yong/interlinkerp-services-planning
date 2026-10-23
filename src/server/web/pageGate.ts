@@ -1,3 +1,4 @@
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { DevIdentity } from '../auth/devIdentity';
 import type { Gateway } from '../auth/gateway';
 import { readCookies, type RosterLookup, SESSION_COOKIE, type SessionCodec, type SessionData } from '../auth/session';
@@ -6,7 +7,8 @@ import type { Logger } from '../http/kernel';
 import type { Roster } from '../roster/roster';
 import type { Clock } from '../support/clock';
 
-export const RETURN_COOKIE = 'planning_return_to';
+/** Holds `<nonce>.<encoded return path>` from the moment sign-in starts; the callback must present it (login CSRF). */
+export const SIGNIN_COOKIE = 'planning_signin';
 export const PAGE_PATHS = ['/', '/schedule', '/reports', '/my', '/settings', '/not-on-roster'];
 
 export type GateResult =
@@ -29,6 +31,22 @@ export function safeReturnPath(path: string | null | undefined): string {
   return path;
 }
 
+function parseSignInCookie(value: string | undefined): { nonce: string; returnPath: string } | null {
+  const match = /^([A-Za-z0-9_-]{22})\.([^.]*)$/.exec(value ?? '');
+  if (!match) return null;
+  try {
+    return { nonce: match[1], returnPath: safeReturnPath(decodeURIComponent(match[2])) };
+  } catch {
+    return null;
+  }
+}
+
+function sameNonce(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
 /**
  * Sign-in flow for page loads (auth guide §4, §5). A failed code exchange shows an
  * error page rather than redirecting again, so a broken gateway cannot cause a loop.
@@ -45,6 +63,8 @@ export class PageGate {
     private readonly log: Logger,
     private readonly clock: Clock,
   ) {}
+
+  private warnedNoState = false;
 
   private get secure(): boolean {
     return this.publicUrl.startsWith('https://');
@@ -71,6 +91,21 @@ export class PageGate {
   }
 
   private async completeSignIn(url: URL, cookies: Record<string, string>, code: string): Promise<GateResult> {
+    // Login CSRF: only a callback from the browser that started sign-in may use the code.
+    const binding = parseSignInCookie(cookies[SIGNIN_COOKIE]);
+    const state = url.searchParams.get('state');
+    if (!binding || (state !== null && !sameNonce(state, binding.nonce))) {
+      const result = this.toGateway(new URL('/', url));
+      result.cookies.push(this.clearSignInCookie());
+      // toGateway set a fresh cookie first; the browser keeps the last one for a name, so put the fresh one last.
+      result.cookies.reverse();
+      return result;
+    }
+    if (state === null && !this.warnedNoState) {
+      this.warnedNoState = true;
+      this.log('[planning-web] gateway did not return state');
+    }
+
     let claims: Record<string, unknown>;
     try {
       claims = await this.tokens.verify(await this.gateway.exchangeCode(code), 'identity');
@@ -103,12 +138,15 @@ export class PageGate {
       sid: claims.sid as string, sub: claims.sub as string, email, name: String(claims.name ?? email),
       gatewayRole: typeof claims.role === 'string' ? claims.role : '', employeeRef, rosterLookup, rosterCheckedAt: this.clock.now().getTime(), expiresAt: 0,
     };
-    const returnPath = safeReturnPath(url.searchParams.get('state') ?? cookies[RETURN_COOKIE]);
     return {
       kind: 'redirect',
-      location: `${this.publicUrl}${returnPath}`,
-      cookies: [this.sessions.issue(session, this.secure), `${RETURN_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`],
+      location: `${this.publicUrl}${binding.returnPath}`,
+      cookies: [this.sessions.issue(session, this.secure), this.clearSignInCookie()],
     };
+  }
+
+  private clearSignInCookie(): string {
+    return `${SIGNIN_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${this.secure ? '; Secure' : ''}`;
   }
 
   private toGateway(url: URL): GateResult & { kind: 'redirect' } {
@@ -116,9 +154,8 @@ export class PageGate {
     query.delete('code');
     query.delete('state');
     const returnPath = safeReturnPath(`${url.pathname}${query.size ? `?${query}` : ''}`);
-    const cookies = returnPath === '/'
-      ? []
-      : [`${RETURN_COOKIE}=${encodeURIComponent(returnPath)}; Path=/; Max-Age=300; HttpOnly; SameSite=Lax${this.secure ? '; Secure' : ''}`];
-    return { kind: 'redirect', location: this.gateway.authorizeUrl(returnPath), cookies };
+    const nonce = randomBytes(16).toString('base64url');
+    const cookie = `${SIGNIN_COOKIE}=${nonce}.${encodeURIComponent(returnPath)}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax${this.secure ? '; Secure' : ''}`;
+    return { kind: 'redirect', location: this.gateway.authorizeUrl(nonce), cookies: [cookie] };
   }
 }

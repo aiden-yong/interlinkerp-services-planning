@@ -7,8 +7,7 @@ const gateway = (http: FakeHttpClient) => new Gateway(http, GW, 'https://plannin
 
 describe('Gateway', () => {
   it('builds the authorize URL from configured URLs only', () => {
-    expect(gateway(new FakeHttpClient()).authorizeUrl('/schedule?x=1')).toBe(`${GW}/oauth/authorize?redirect_uri=https%3A%2F%2Fplanning.test%2F&state=%2Fschedule%3Fx%3D1`);
-    expect(gateway(new FakeHttpClient()).authorizeUrl('/')).not.toContain('state');
+    expect(gateway(new FakeHttpClient()).authorizeUrl('abc_-123')).toBe(`${GW}/oauth/authorize?redirect_uri=https%3A%2F%2Fplanning.test%2F&state=abc_-123`);
   });
 
   it('exchanges a code server-to-server', async () => {
