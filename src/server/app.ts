@@ -390,7 +390,7 @@ export class App {
 
   pageGate(): PageGate {
     return this.once('pageGate', () => new PageGate(
-      this.gateway(), this.tokenVerifier(), this.sessions(), this.roster(), this.devIdentity(), this.publicUrl(), this.log, this.clock(),
+      this.gateway(), this.tokenVerifier(), this.sessions(), this.roster(), this.devIdentity(), this.publicUrl(), this.log, this.clock(), env('SIGNIN_STATE_OPTIONAL') === '1',
     ));
   }
 

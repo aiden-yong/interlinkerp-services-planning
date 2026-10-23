@@ -14,9 +14,9 @@ export class Gateway implements SessionLiveness {
     private readonly publicUrl: string,
   ) {}
 
-  authorizeUrl(returnPath: string): string {
-    const url = `${this.gatewayUrl}/oauth/authorize?redirect_uri=${encodeURIComponent(`${this.publicUrl}/`)}`;
-    return returnPath && returnPath !== '/' ? `${url}&state=${encodeURIComponent(returnPath)}` : url;
+  /** `state` is a random nonce tied to the browser by a cookie (login CSRF protection), never the return path. */
+  authorizeUrl(state: string): string {
+    return `${this.gatewayUrl}/oauth/authorize?redirect_uri=${encodeURIComponent(`${this.publicUrl}/`)}&state=${encodeURIComponent(state)}`;
   }
 
   /** Server-to-server code exchange (auth guide §4 step 4). Returns the identity token. */

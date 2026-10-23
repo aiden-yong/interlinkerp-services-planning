@@ -1,3 +1,4 @@
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { DevIdentity } from '../auth/devIdentity';
 import type { Gateway } from '../auth/gateway';
 import { readCookies, type RosterLookup, SESSION_COOKIE, type SessionCodec, type SessionData } from '../auth/session';
@@ -6,7 +7,11 @@ import type { Logger } from '../http/kernel';
 import type { Roster } from '../roster/roster';
 import type { Clock } from '../support/clock';
 
-export const RETURN_COOKIE = 'planning_return_to';
+/** Holds `<nonce>.<encoded return path>` from the moment sign-in starts; the callback must present it (login CSRF). */
+export const SIGNIN_COOKIE = 'planning_signin';
+/** Over https the cookie gets the __Host- prefix: Secure, Path=/, no Domain, so a sibling subdomain cannot plant it. */
+export const SIGNIN_COOKIE_SECURE = '__Host-planning_signin';
+const RETRY_PREFIX = 'r.';
 export const PAGE_PATHS = ['/', '/schedule', '/reports', '/my', '/settings', '/not-on-roster'];
 
 export type GateResult =
@@ -29,6 +34,23 @@ export function safeReturnPath(path: string | null | undefined): string {
   return path;
 }
 
+function parseSignInCookie(value: string | undefined): { nonce: string; returnPath: string } | null {
+  // The nonce alphabet has no dot, so the first dot ends it; the return path may contain dots.
+  const match = /^([A-Za-z0-9_-]{22})\.(.*)$/s.exec(value ?? '');
+  if (!match) return null;
+  try {
+    return { nonce: match[1], returnPath: safeReturnPath(decodeURIComponent(match[2])) };
+  } catch {
+    return null;
+  }
+}
+
+function sameNonce(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
 /**
  * Sign-in flow for page loads (auth guide §4, §5). A failed code exchange shows an
  * error page rather than redirecting again, so a broken gateway cannot cause a loop.
@@ -44,7 +66,15 @@ export class PageGate {
     private readonly publicUrl: string,
     private readonly log: Logger,
     private readonly clock: Clock,
+    /** SIGNIN_STATE_OPTIONAL=1: accept a callback without `state` when the sign-in cookie is present. */
+    private readonly stateOptional = false,
   ) {}
+
+  private warnedNoState = false;
+
+  private get cookieName(): string {
+    return this.secure ? SIGNIN_COOKIE_SECURE : SIGNIN_COOKIE;
+  }
 
   private get secure(): boolean {
     return this.publicUrl.startsWith('https://');
@@ -71,6 +101,26 @@ export class PageGate {
   }
 
   private async completeSignIn(url: URL, cookies: Record<string, string>, code: string): Promise<GateResult> {
+    // Login CSRF: only a callback from the browser that started sign-in may use the code.
+    const binding = parseSignInCookie(cookies[this.cookieName]);
+    const state = url.searchParams.get('state');
+    if (state === null && !this.stateOptional) {
+      this.log('[planning-web] sign-in callback without state; set SIGNIN_STATE_OPTIONAL=1 only if the gateway does not return state');
+      this.log('[planning-web] sign-in callback rejected');
+      return this.verifyFailedPage();
+    }
+    const retry = state?.startsWith(RETRY_PREFIX) ?? false;
+    const nonce = state === null ? null : retry ? state.slice(RETRY_PREFIX.length) : state;
+    if (!binding || (nonce !== null && !sameNonce(nonce, binding.nonce))) {
+      this.log('[planning-web] sign-in callback rejected');
+      // One fresh attempt when state came back; a second failure means the browser is not keeping the cookie, so stop instead of looping.
+      return nonce !== null && !retry ? this.toGateway(new URL('/', url), true) : this.verifyFailedPage(true);
+    }
+    if (nonce === null && !this.warnedNoState) {
+      this.warnedNoState = true;
+      this.log('[planning-web] gateway did not return state');
+    }
+
     let claims: Record<string, unknown>;
     try {
       claims = await this.tokens.verify(await this.gateway.exchangeCode(code), 'identity');
@@ -103,22 +153,34 @@ export class PageGate {
       sid: claims.sid as string, sub: claims.sub as string, email, name: String(claims.name ?? email),
       gatewayRole: typeof claims.role === 'string' ? claims.role : '', employeeRef, rosterLookup, rosterCheckedAt: this.clock.now().getTime(), expiresAt: 0,
     };
-    const returnPath = safeReturnPath(url.searchParams.get('state') ?? cookies[RETURN_COOKIE]);
     return {
       kind: 'redirect',
-      location: `${this.publicUrl}${returnPath}`,
-      cookies: [this.sessions.issue(session, this.secure), `${RETURN_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`],
+      location: `${this.publicUrl}${binding.returnPath}`,
+      cookies: [this.sessions.issue(session, this.secure), this.clearSignInCookie()],
     };
   }
 
-  private toGateway(url: URL): GateResult & { kind: 'redirect' } {
+  private verifyFailedPage(cookiesHint = false): GateResult {
+    const hint = cookiesHint ? ' Enable cookies for this site and try again.' : '';
+    return {
+      kind: 'error',
+      status: 502,
+      html: `<!doctype html><meta charset="utf-8"><title>Sign-in could not be verified</title><p>Your sign-in through InterlinkERP could not be verified.${hint} <a href="/">Try again</a>.</p>`,
+      cookies: [this.clearSignInCookie()],
+    };
+  }
+
+  private clearSignInCookie(): string {
+    return `${this.cookieName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${this.secure ? '; Secure' : ''}`;
+  }
+
+  private toGateway(url: URL, retry = false): GateResult & { kind: 'redirect' } {
     const query = new URLSearchParams(url.searchParams);
     query.delete('code');
     query.delete('state');
     const returnPath = safeReturnPath(`${url.pathname}${query.size ? `?${query}` : ''}`);
-    const cookies = returnPath === '/'
-      ? []
-      : [`${RETURN_COOKIE}=${encodeURIComponent(returnPath)}; Path=/; Max-Age=300; HttpOnly; SameSite=Lax${this.secure ? '; Secure' : ''}`];
-    return { kind: 'redirect', location: this.gateway.authorizeUrl(returnPath), cookies };
+    const nonce = randomBytes(16).toString('base64url');
+    const cookie = `${this.cookieName}=${nonce}.${encodeURIComponent(returnPath)}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax${this.secure ? '; Secure' : ''}`;
+    return { kind: 'redirect', location: this.gateway.authorizeUrl(retry ? `${RETRY_PREFIX}${nonce}` : nonce), cookies: [cookie] };
   }
 }

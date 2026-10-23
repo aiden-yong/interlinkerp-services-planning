@@ -38,13 +38,10 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Done:** `src/server/http/kernel.ts` rejects a body over 64 KB with `413 PAYLOAD_TOO_LARGE`, whether its size is declared in `Content-Length` or only becomes clear as the chunks arrive. It stops reading at the limit.
 - **Effort:** S
 
-### 6. Tie the sign-in `state` to the browser
+### 6. Tie the sign-in `state` to the browser (done 2026-10-23)
 - **Area:** Security
 - **Why:** The OAuth `state` value is not linked to the browser that started sign-in. This allows login CSRF: an attacker could sign a victim in as the attacker.
-- **Fix:**
-  - Set a short-lived HttpOnly cookie that holds the `state` (or a hash of it) when sign-in starts.
-  - Compare it in the callback.
-  - First confirm with the gateway owners how they expect `state` to be handled.
+- **Done:** `PageGate.toGateway` makes a random nonce, sends it to the gateway as `state`, and stores `<nonce>.<return path>` in a short-lived HttpOnly cookie (`__Host-planning_signin` over https, `planning_signin` over http; replaces `planning_return_to`). The callback only exchanges the code when that cookie is well formed and `state` equals its nonce (constant-time). Strict by default: a callback without `state` is refused with an error page and no code exchange; `SIGNIN_STATE_OPTIONAL=1` restores a cookie-only fallback. A failed binding redirects to the gateway once with a retry marker (`r.<nonce>`); a second failure shows an error page (enable cookies) instead of looping. The return path comes only from the cookie. Rejections log `[planning-web] sign-in callback rejected` (no nonce, state or code). Confirm with the gateway owners that `state` is returned unchanged; then the no-state fallback can be removed.
 - **Effort:** S–M
 
 ### 7. Pass the gateway conformance check
