@@ -12,24 +12,25 @@ beforeAll(async () => {
   tokens = await makeTestTokens();
 });
 
-function setup() {
+function setup(stateOptional = false) {
   const http = new FakeHttpClient();
   const roster = new FakeRoster();
   const clock = FixedClock.at('2026-10-13T00:00:00Z');
   const codec = new SessionCodec('k'.repeat(32), clock);
   const logged: string[] = [];
-  const gate = new PageGate(new Gateway(http, ISSUER, PUBLIC), new TokenVerifier(tokens.keys, ISSUER, AUDIENCE), codec, roster, null, PUBLIC, (l) => logged.push(l), clock);
+  const gate = new PageGate(new Gateway(http, ISSUER, PUBLIC), new TokenVerifier(tokens.keys, ISSUER, AUDIENCE), codec, roster, null, PUBLIC, (l) => logged.push(l), clock, stateOptional);
   return { http, roster, codec, logged, gate };
 }
 
+const HOST = '__Host-planning_signin';
 const named = (result: GateResult, name: string) => result.cookies.find((c) => c.startsWith(`${name}=`));
 
 /** Starts sign-in for `path` and returns the nonce sent to the gateway plus the cookie header the browser would send back. */
 async function startSignIn(gate: PageGate, path = '/') {
   const result = await gate.handle(new Request(`${PUBLIC}${path}`));
   const nonce = new URL((result as { location: string }).location).searchParams.get('state')!;
-  const setCookie = named(result, 'planning_signin')!;
-  return { result, nonce, setCookie, cookie: `planning_signin=${cookieValue(setCookie)}` };
+  const setCookie = named(result, HOST)!;
+  return { result, nonce, setCookie, cookie: `${HOST}=${cookieValue(setCookie)}` };
 }
 
 describe('PageGate', () => {
@@ -38,7 +39,7 @@ describe('PageGate', () => {
     const { result, nonce, setCookie } = await startSignIn(gate, '/schedule?view=week');
     expect(result).toMatchObject({ kind: 'redirect', location: `${ISSUER}/oauth/authorize?redirect_uri=${encodeURIComponent(`${PUBLIC}/`)}&state=${nonce}` });
     expect(nonce).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(setCookie).toBe(`planning_signin=${nonce}.${encodeURIComponent('/schedule?view=week')}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax; Secure`);
+    expect(setCookie).toBe(`${HOST}=${nonce}.${encodeURIComponent('/schedule?view=week')}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax; Secure`);
     expect(named(result, 'planning_return_to')).toBeUndefined();
   });
 
@@ -52,6 +53,7 @@ describe('PageGate', () => {
     const plain = new PageGate(new Gateway(http, ISSUER, 'http://planning.test'), new TokenVerifier(tokens.keys, ISSUER, AUDIENCE), new SessionCodec('k'.repeat(32), clock), new FakeRoster(), null, 'http://planning.test', () => {}, clock);
     const result = await plain.handle(new Request('http://planning.test/my'));
     expect(named(result, 'planning_signin')).not.toContain('Secure');
+    expect(named(result, 'planning_signin')).toMatch(/^planning_signin=/);
   });
 
   it('completes sign-in: exchanges the code, verifies the token, looks up the roster, returns to the stored path', async () => {
@@ -63,7 +65,7 @@ describe('PageGate', () => {
     const result = await gate.handle(new Request(`${PUBLIC}/?code=c-1&state=${nonce}`, { headers: { cookie } }));
 
     expect(result).toMatchObject({ kind: 'redirect', location: `${PUBLIC}/schedule` });
-    expect(named(result, 'planning_signin')).toContain('Max-Age=0');
+    expect(named(result, HOST)).toContain('Max-Age=0');
     expect(codec.decode(cookieValue(named(result, 'planning_session')!))).toMatchObject({
       employeeRef: 'u1', email: 'ana@example.com', rosterLookup: 'found', rosterCheckedAt: Date.parse('2026-10-13T00:00:00Z'),
     });
@@ -77,54 +79,126 @@ describe('PageGate', () => {
     expect(result).toMatchObject({ location: `${PUBLIC}/settings/roles` });
   });
 
-  it('accepts a callback without state when the cookie is present, and logs the gap once', async () => {
+  it('refuses a callback without state by default: no exchange, no redirect, error page, fixed log', async () => {
     const { gate, http, logged } = setup();
-    http.on('POST', `${ISSUER}/oauth/token`, reply(200, { token: await tokens.sign() }), reply(200, { token: await tokens.sign() }));
     const { cookie } = await startSignIn(gate, '/settings/roles');
     const result = await gate.handle(new Request(`${PUBLIC}/?code=c-1`, { headers: { cookie } }));
-    expect(result).toMatchObject({ kind: 'redirect', location: `${PUBLIC}/settings/roles` });
-    await gate.handle(new Request(`${PUBLIC}/?code=c-2`, { headers: { cookie } }));
-    expect(logged.filter((l) => l === '[planning-web] gateway did not return state')).toHaveLength(1);
+    expect(result).toMatchObject({ kind: 'error', status: 502 });
+    expect((result as { html: string }).html).toContain('could not be verified');
+    expect(http.requests).toHaveLength(0);
+    expect(named(result, 'planning_session')).toBeUndefined();
+    expect(logged).toContain('[planning-web] sign-in callback without state; set SIGNIN_STATE_OPTIONAL=1 only if the gateway does not return state');
+    expect(logged).toContain('[planning-web] sign-in callback rejected');
   });
 
-  it('refuses a mismatched state: no code exchange, clears the cookie, starts a fresh sign-in', async () => {
-    const { gate, http } = setup();
-    const { cookie, nonce } = await startSignIn(gate, '/schedule');
-    const result = await gate.handle(new Request(`${PUBLIC}/?code=attacker&state=${nonce.split('').reverse().join('')}x`, { headers: { cookie } }));
+  describe('with SIGNIN_STATE_OPTIONAL', () => {
+    it('accepts a callback without state when the cookie is present, and logs the gap once', async () => {
+      const { gate, http, logged } = setup(true);
+      http.on('POST', `${ISSUER}/oauth/token`, reply(200, { token: await tokens.sign() }), reply(200, { token: await tokens.sign() }));
+      const { cookie } = await startSignIn(gate, '/settings/roles');
+      const result = await gate.handle(new Request(`${PUBLIC}/?code=c-1`, { headers: { cookie } }));
+      expect(result).toMatchObject({ kind: 'redirect', location: `${PUBLIC}/settings/roles` });
+      await gate.handle(new Request(`${PUBLIC}/?code=c-2`, { headers: { cookie } }));
+      expect(logged.filter((l) => l === '[planning-web] gateway did not return state')).toHaveLength(1);
+    });
+
+    it('still refuses a stateless callback with no cookie, with an error page and no loop', async () => {
+      const { gate, http } = setup(true);
+      expect(await gate.handle(new Request(`${PUBLIC}/?code=attacker`))).toMatchObject({ kind: 'error', status: 502 });
+      expect(http.requests).toHaveLength(0);
+    });
+
+    it('still checks state when the gateway does return it', async () => {
+      const { gate, http } = setup(true);
+      const { cookie } = await startSignIn(gate);
+      const result = await gate.handle(new Request(`${PUBLIC}/?code=c-1&state=${'B'.repeat(22)}`, { headers: { cookie } }));
+      expect(result.kind).toBe('redirect');
+      expect(http.requests).toHaveLength(0);
+    });
+  });
+
+  it('refuses a mismatched state: no code exchange, one fresh sign-in marked as a retry, fresh cookie', async () => {
+    const { gate, http, logged } = setup();
+    const { cookie } = await startSignIn(gate, '/schedule');
+    const result = await gate.handle(new Request(`${PUBLIC}/?code=attacker&state=${'B'.repeat(22)}`, { headers: { cookie } }));
     expect(http.requests).toHaveLength(0);
     expect(result).toMatchObject({ kind: 'redirect' });
-    expect((result as { location: string }).location).toContain(`${ISSUER}/oauth/authorize`);
+    const location = new URL((result as { location: string }).location);
+    expect(`${location.origin}${location.pathname}`).toBe(`${ISSUER}/oauth/authorize`);
+    const state = location.searchParams.get('state')!;
+    expect(state).toMatch(/^r\.[A-Za-z0-9_-]{22}$/);
     expect(named(result, 'planning_session')).toBeUndefined();
-    expect(result.cookies.some((c) => c.startsWith('planning_signin=;') && c.includes('Max-Age=0'))).toBe(true);
-    // The fresh sign-in cookie comes last so the browser keeps it.
-    expect(result.cookies[result.cookies.length - 1]).toMatch(/^planning_signin=[A-Za-z0-9_-]{22}\./);
+    expect(result.cookies).toHaveLength(1);
+    expect(result.cookies[0]).toMatch(new RegExp(`^${HOST}=${state.slice(2)}\\.`));
+    expect(logged).toEqual(['[planning-web] sign-in callback rejected']);
+    expect(logged.join()).not.toMatch(/attacker|BBBB/);
   });
 
-  it('refuses a callback with no sign-in cookie', async () => {
+  it('completes a retried sign-in whose cookie matches', async () => {
     const { gate, http } = setup();
-    for (const path of ['/?code=attacker&state=whatever', '/?code=attacker']) {
-      const result = await gate.handle(new Request(`${PUBLIC}${path}`));
-      expect(result).toMatchObject({ kind: 'redirect' });
-      expect((result as { location: string }).location).toContain(`${ISSUER}/oauth/authorize`);
+    http.on('POST', `${ISSUER}/oauth/token`, reply(200, { token: await tokens.sign() }));
+    const first = await gate.handle(new Request(`${PUBLIC}/?code=x&state=${'B'.repeat(22)}`));
+    const state = new URL((first as { location: string }).location).searchParams.get('state')!;
+    const cookie = `${HOST}=${cookieValue(first.cookies[0])}`;
+    const result = await gate.handle(new Request(`${PUBLIC}/?code=c-1&state=${state}`, { headers: { cookie } }));
+    expect(result).toMatchObject({ kind: 'redirect', location: `${PUBLIC}/` });
+    expect(named(result, 'planning_session')).toBeDefined();
+  });
+
+  it('shows an error page, not another redirect, when a retried sign-in fails again', async () => {
+    const { gate, http, logged } = setup();
+    for (const cookie of [undefined, `${HOST}=${'A'.repeat(22)}.%2F`]) {
+      const result = await gate.handle(new Request(`${PUBLIC}/?code=c-1&state=r.${'B'.repeat(22)}`, { headers: cookie ? { cookie } : {} }));
+      expect(result).toMatchObject({ kind: 'error', status: 502 });
+      expect((result as { html: string }).html).toContain('Enable cookies');
     }
+    expect(http.requests).toHaveLength(0);
+    expect(logged).toEqual(['[planning-web] sign-in callback rejected', '[planning-web] sign-in callback rejected']);
+  });
+
+  it('refuses a callback with no sign-in cookie by redirecting once', async () => {
+    const { gate, http } = setup();
+    const result = await gate.handle(new Request(`${PUBLIC}/?code=attacker&state=whatever`));
+    expect(result).toMatchObject({ kind: 'redirect' });
+    expect((result as { location: string }).location).toContain(`${ISSUER}/oauth/authorize`);
     expect(http.requests).toHaveLength(0);
   });
 
-  it.each(['abc', 'short.%2F', 'AAAAAAAAAAAAAAAAAAAAAA', 'AAAAAAAAAAAAAAAAAAAAAA.%2F.extra', 'AAAAAAAAAAAAAAAAAAAAA!.%2F', 'AAAAAAAAAAAAAAAAAAAAAA.%E0%A4%A'])(
+  it.each(['abc', 'short.%2F', 'AAAAAAAAAAAAAAAAAAAAAA', 'AAAAAAAAAAAAAAAAAAAAA!.%2F', 'AAAAAAAAAAAAAAAAAAAAAA.%E0%A4%A'])(
     'refuses a malformed sign-in cookie %j',
     async (value) => {
       const { gate, http } = setup();
-      const result = await gate.handle(new Request(`${PUBLIC}/?code=c-1`, { headers: { cookie: `planning_signin=${value}` } }));
+      const result = await gate.handle(new Request(`${PUBLIC}/?code=c-1&state=${'A'.repeat(22)}`, { headers: { cookie: `${HOST}=${value}` } }));
       expect(http.requests).toHaveLength(0);
       expect((result as { location: string }).location).toContain('/oauth/authorize');
     },
   );
 
-  it('does not accept the old return-path cookie as a binding', async () => {
+  it('keeps dots in the stored return path', async () => {
     const { gate, http } = setup();
-    const result = await gate.handle(new Request(`${PUBLIC}/?code=c-1`, { headers: { cookie: 'planning_return_to=%2Fsettings' } }));
+    http.on('POST', `${ISSUER}/oauth/token`, reply(200, { token: await tokens.sign() }));
+    const { nonce, cookie } = await startSignIn(gate, '/schedule?d=1.5');
+    const result = await gate.handle(new Request(`${PUBLIC}/?code=c-1&state=${nonce}`, { headers: { cookie } }));
+    expect(result).toMatchObject({ location: `${PUBLIC}/schedule?d=1.5` });
+  });
+
+  it('ignores a plain-named cookie over https and the old return-path cookie', async () => {
+    const { gate, http } = setup();
+    const { nonce, cookie } = await startSignIn(gate);
+    const plain = cookie.replace(HOST, 'planning_signin');
+    for (const c of [plain, 'planning_return_to=%2Fsettings']) {
+      const result = await gate.handle(new Request(`${PUBLIC}/?code=c-1&state=${nonce}`, { headers: { cookie: c } }));
+      expect(result.kind).toBe('redirect');
+    }
     expect(http.requests).toHaveLength(0);
-    expect(result.kind).toBe('redirect');
+  });
+
+  it('uses the same __Host- name when clearing on success', async () => {
+    const { gate, http } = setup();
+    http.on('POST', `${ISSUER}/oauth/token`, reply(200, { token: await tokens.sign() }));
+    const { nonce, cookie } = await startSignIn(gate);
+    const result = await gate.handle(new Request(`${PUBLIC}/?code=c-1&state=${nonce}`, { headers: { cookie } }));
+    expect(named(result, HOST)).toBe(`${HOST}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure`);
   });
 
   it('still signs in, without a roster reference, when the roster is down', async () => {
