@@ -1,6 +1,6 @@
 # Planning: improvement backlog
 
-Status as of 2026-10-21 (service version 0.4.0, M4 built). Items are ordered from most to least urgent. Effort: **S** is under half a day, **M** is one to three days, **L** is more than three days.
+Status as of 2026-10-23 (service version 0.4.1: M4 plus fixes for items 6, 34–39, 52 and 53). Items are ordered from most to least urgent. Effort: **S** is under half a day, **M** is one to three days, **L** is more than three days.
 
 Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequirements.md` v0.5, and a check of the current code.
 
@@ -13,14 +13,13 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Done:** `main` is pushed, the `README.md` and `.env.example` edits are committed, and `refactor/planning-ui` is deleted locally and on GitHub.
 - **Effort:** S
 
-### 2. Protect `main` and add CI
+### 2. Protect `main` (CI done)
 - **Area:** Operations
-- **Why:** Nothing runs automatically. A broken typecheck or a failing test can reach production unnoticed.
-- **Fix:**
-  - Add a GitHub Actions workflow that runs `npm run typecheck`, `npm test` and `npm run build` on every PR. Give it a Postgres service container for the integration tests.
-  - Protect `main`: require PRs and passing CI, and block force-pushes.
+- **Done:** `.github/workflows/ci.yml` runs typecheck, tests (with a Postgres 18 service), build and the browser tests on every PR and push to `main`.
+- **Still to do (repository owner, in GitHub settings):**
   - Turn on "Automatically delete head branches".
-- **Effort:** S–M
+  - Protect `main`: block force-pushes and require CI to pass. Requiring pull requests is a workflow choice: today work is merged locally and `main` is pushed directly, which that rule would block.
+- **Effort:** S
 
 ### 3. Check the M2 screens in a browser
 - **Area:** Testing
@@ -229,7 +228,7 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 ### 38. Resuming (re-patterning) a series whose tail was deleted leaves a calendar gap (done 2026-10-23)
 - **Area:** UX, narrow edge case
 - **Why:** If a manager does "Delete this and following" from a later point in a series, then later changes the pattern starting from an earlier, still-live point, item 3's fix (skip dates an old-series shift already occupies, soft-deleted ones included) correctly refuses to resurrect the deleted dates — but it keeps refusing them all the way out to the old horizon, so the new series generates nothing for however many months that spans, then resumes abruptly. No data is lost or duplicated; it is a defensible reading of "a deleted occurrence must not come back," but a manager who intentionally ended a series and later wants to restart its pattern from an earlier point would see a confusing silent gap with no explanation in the UI.
-- **Done:** Only dates on which a series in the predecessor chain actually holds a shift row count as occupied (all of its rows, deleted ones included, so D4 still holds); dates beyond what the old series generated are free, so a restarted pattern resumes without a gap there. Existing series have no predecessor (no back-fill).
+- **Done:** Only dates on which a series in the predecessor chain actually holds a shift row count as occupied (all of its rows, deleted ones included, so D4 still holds); dates beyond what the old series generated are free, so a restarted pattern resumes without a gap there. The gap over the deleted range itself remains, as D4 requires. Existing series have no predecessor (no back-fill), so this applies to pattern changes made from 2026-10-23 on.
 - **Effort:** M
 
 ### 39. A pattern change with scope "all" has a narrow window where an undone deletion could still land on the wrong shift (done 2026-10-23)
