@@ -2,7 +2,7 @@ import { DateTime } from 'luxon';
 import type { HistoryEntry } from '../types';
 
 const LABELS: Record<string, string> = {
-  employee_ref: 'Employee', role_id: 'Role', start_at: 'Start', end_at: 'End', break_minutes: 'Break', allocated_percent: 'Allocation', note: 'Note',
+  employee_ref: 'Employee', role_id: 'Role', start_at: 'Start', end_at: 'End', break_minutes: 'Break', allocated_percent: 'Allocation', note: 'Note', conflict_acknowledged: 'Conflict',
 };
 const ORDER = Object.keys(LABELS);
 
@@ -45,6 +45,7 @@ export function describeEntry(e: HistoryEntry, zone: string, roles: Roles, names
     const changes = e.changes ?? {};
     const parts = ORDER.filter((k) => k in changes).map((k) => {
       const [from, to] = changes[k]!;
+      if (k === 'conflict_acknowledged') return to ? 'Conflict warning accepted' : 'Conflict acceptance cleared';
       return `${LABELS[k]} ${show(k, from, to, zone, roles, names)} → ${show(k, to, from, zone, roles, names)}`;
     });
     return { when, text: parts.length ? `Changed by ${who}: ${parts.join(', ')}` : `Changed by ${who}` };

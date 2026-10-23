@@ -15,6 +15,13 @@ describe('describeEntry', () => {
     expect(out.when).toBe('21 Oct 2026 09:00');
   });
 
+  it('describes accepting and clearing a conflict warning', () => {
+    const text = (changes: HistoryEntry['changes']) => describeEntry(entry({ action: 'changed', changes }), 'UTC', [], new Map()).text;
+    expect(text({ conflict_acknowledged: [false, true] })).toBe('Changed by Alice: Conflict warning accepted');
+    expect(text({ conflict_acknowledged: [true, false] })).toBe('Changed by Alice: Conflict acceptance cleared');
+    expect(text({ note: [null, 'x'], conflict_acknowledged: [false, true] })).toBe('Changed by Alice: Note "" → "x", Conflict warning accepted');
+  });
+
   it('describes an unknown actor', () => {
     expect(describeEntry(entry({ actor_name: '', actor: null }), 'UTC', [], new Map()).text).toBe('Created by someone');
   });

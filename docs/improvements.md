@@ -314,8 +314,8 @@ Things a milestone design left out or a decision put off. None is a defect. Pick
 - **Done:** Manager shift writes (create, update, split, restore, week copy, series create/extend) and time-off create/update now take the employee lock(s) in sorted order, and Auto Plan re-reads time off inside its transaction after locking; the lock order is documented in `unitOfWork.ts`.
 - **Effort:** S–M
 
-### 53. Audit conflict acknowledgements
+### 53. Audit conflict acknowledgements (done 2026-10-23)
 - **Area:** Feature
 - **Why:** A PATCH that only acknowledges a conflict records no history entry, though overriding a planning rule is what a manager may look for in history.
-- **Fix:** Record `conflict_acknowledged` as an audited field.
+- **Done:** `diffShift` now tracks `conflict_acknowledged` (accepted or not) as an 8th audited field, so an acknowledgement-only PATCH records a `changed` entry; the history reads "Conflict warning accepted" or "Conflict acceptance cleared".
 - **Effort:** S
