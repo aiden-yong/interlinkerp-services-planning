@@ -131,4 +131,26 @@ describe('GET /internal/cron/sweep', () => {
     expect(await reminders()).toHaveLength(1);
     expect(await app.jobRuns().lastStarted('sweep')).toEqual(h.clock.now());
   });
+
+  it('does not email a reminder once the shift has started, and records why (OpsCheck ignores Skipped)', async () => {
+    await h.addEmployee('E1', 'Ana Lim', null, null, 'ana@example.com');
+    await shiftFor('E1', 50);
+    await h.app.reminders().queueDue(h.clock.now());
+    await h.app.delivery().expandDue();
+    h.clock.advance(60 * 60); // 10 minutes after the start
+    await h.app.delivery().sendEmails();
+    expect(h.mailer.sent.map((m) => m.subject)).not.toContain('Your shift starts soon');
+    const [reminder] = await reminders();
+    expect(reminder).toMatchObject({ emailedAt: null, emailError: 'Skipped: shift already started' });
+  });
+
+  it('sends a due reminder before older notices in the same batch', async () => {
+    await h.addEmployee('E1', 'Ana Lim', null, null, 'ana@example.com');
+    for (let i = 0; i < 5; i++) await shiftFor('E1', 600 + i * 600);
+    await shiftFor('E1', 50);
+    await h.app.reminders().queueDue(h.clock.now());
+    await h.app.delivery().expandDue();
+    expect(await h.app.delivery().sendEmails()).toBe(5);
+    expect(h.mailer.sent.map((m) => m.subject)).toContain('Your shift starts soon');
+  });
 });
