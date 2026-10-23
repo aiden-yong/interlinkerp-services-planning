@@ -215,7 +215,7 @@ describe('giving up shifts', () => {
           shifts: Object.assign(Object.create(scope.shifts), {
             takeOver: async (...args: Parameters<typeof scope.shifts.takeOver>) => {
               const current = await h.app.settings().get();
-              await h.app.openShifts().applySettings({ ...current, give_up_mode: 'unassign' });
+              await h.app.openShifts().applySettings({ ...current, give_up_mode: 'unassign' }, 'admin@example.com');
               return scope.shifts.takeOver(...args);
             },
           }),
@@ -315,7 +315,7 @@ describe('give-up mode changes', () => {
     const current = await h.app.settings().get();
     await Promise.all([
       h.callAs(...ANA, 'POST', '/api/switch-requests', { shift_id: id }),
-      h.app.openShifts().applySettings({ ...current, give_up_mode: 'unassign' }),
+      h.app.openShifts().applySettings({ ...current, give_up_mode: 'unassign' }, 'admin@example.com'),
     ]);
     // Whichever ran first, no active request survives Unassign.
     expect((await h.app.shifts().find(id))!.switchRequestedAt).toBeNull();

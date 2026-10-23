@@ -71,5 +71,5 @@ export function register(r: Router, app: App): void {
     await app.calendarFeeds().touch(feed.employeeRef, now);
     return new Response(body, { status: 200, headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'private, max-age=900' } });
   }, op('My Calendar Feed', 'Read an employee calendar feed', ['A calendar app refreshes the private link an employee subscribed with'], ['Anything that needs a signed-in session'],
-    ['file'], ['text/calendar events'], ['None: the secret token in the link is the credential'], mine, ['calendar feed', 'ics', 'subscription']));
+    ['file'], ['text/calendar events'], ['None: the secret token in the link is the credential'], ['GET /feeds/calendar/{file}', ...mine], ['calendar feed', 'ics', 'subscription']));
 }

@@ -203,7 +203,7 @@ export class OpenShiftService {
    * Saves settings; switching to Unassign cancels pending switch requests and tells their owners, in one transaction (BR-07).
    * `by` is the manager making the change, recorded on each cancelled request (DR-04); null only when no person is known.
    */
-  async applySettings(next: OrgSettings, by: string | null = null): Promise<number> {
+  async applySettings(next: OrgSettings, by: string | null): Promise<number> {
     const now = this.clock.now();
     return this.unit.run(async (scope) => {
       await scope.lockSettings();

@@ -47,6 +47,7 @@ import { InternDatabaseRoster } from './roster/internDatabase';
 import { DirectoryRefresher } from './roster/refresher';
 import { type DepartmentNames, type Roster, unconfiguredRoster } from './roster/roster';
 import { type Clock, systemClock } from './support/clock';
+import { redactAddresses } from './support/scrub';
 import { FetchHttpClient, type HttpClient } from './support/http';
 import { isTimezone } from './support/time';
 import { JobRuns } from './repo/jobRuns';
@@ -255,7 +256,7 @@ export class App {
     try {
       return await this.reminders().queueDue(now);
     } catch (error) {
-      this.log(`[reminders] queueing failed: ${error instanceof Error ? error.message : String(error)}`);
+      this.log(`[reminders] queueing failed: ${redactAddresses(error instanceof Error ? error.message : String(error))}`);
       return 0;
     }
   }

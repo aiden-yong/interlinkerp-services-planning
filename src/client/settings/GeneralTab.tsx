@@ -100,12 +100,13 @@ export function GeneralTab() {
       )}
       <label className="wide">Recurrence horizon (months)<input {...invalid(fe.recurrence_horizon_months, 'general-recurrence_horizon_months-error')} type="number" min={1} max={24} step={1} value={horizonText} onChange={(e) => setHorizonText(e.target.value)} />
         <FieldError id="general-recurrence_horizon_months-error" message={fe.recurrence_horizon_months} /></label>
+      <p className="wide muted">How far ahead repeated shifts are generated before the schedule needs to extend them again.</p>
       <label className="wide">Remind employees before their shifts
         <select {...invalid(fe.reminder_lead_minutes, 'general-reminder_lead_minutes-error')} value={form.reminder_lead_minutes} onChange={(e) => setForm({ ...form, reminder_lead_minutes: Number(e.target.value) })}>
           {LEAD_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
         <FieldError id="general-reminder_lead_minutes-error" message={fe.reminder_lead_minutes} /></label>
-      <p className="wide muted">How far ahead repeated shifts are generated before the schedule needs to extend them again.</p>
+      <p className="wide muted">Employees get an email and an in-app notice this long before a published shift starts. Off sends none.</p>
       <p className="wide muted">The country and region decide which public holidays are loaded. Employees without their own time zone use this one.</p>
       <FormError message={problem} className="wide" />
       <div className="wide actions"><button className="primary" disabled={busy}>Save</button></div>
