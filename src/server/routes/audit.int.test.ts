@@ -50,6 +50,15 @@ describe('audit trail (DR-04)', () => {
     expect(entries[3]!.changes).toBeNull();
   });
 
+  it('records a conflict acknowledgement on its own as a change by the manager', async () => {
+    const id = await create({ acknowledge_conflicts: false });
+    expect((await h.call('POST', '/api/unavailabilities', { employee_ref: 'E1', start_at: '2026-10-20T00:00:00+08:00', end_at: '2026-10-21T00:00:00+08:00', reason: 'Annual leave' })).status).toBe(201);
+    expect((await h.call('PATCH', `/api/shifts/${id}`, { version: 1 })).status).toBe(409);
+    const ok = await h.call('PATCH', `/api/shifts/${id}`, { version: 1, acknowledge_conflicts: true });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect((await history(id))[0]).toMatchObject({ action: 'changed', actor: M, actor_kind: 'manager', changes: { conflict_acknowledged: [false, true] } });
+  });
+
   it('records employee actions under the employee', async () => {
     const id = await create({ employee_ref: null });
     await publish(id);

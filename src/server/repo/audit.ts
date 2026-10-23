@@ -31,13 +31,15 @@ const AUDITED: [keyof ShiftRecord, string][] = [
 
 const plain = (v: unknown): unknown => (v instanceof Date ? iso(v) : v);
 
-/** Fields that differ, as [old, new]; instants as ISO strings. Fields: employee_ref, role_id, start_at, end_at, break_minutes, allocated_percent, note. */
+/** Fields that differ, as [old, new]; instants as ISO strings. Fields: employee_ref, role_id, start_at, end_at, break_minutes, allocated_percent, note, conflict_acknowledged (whether a warning is accepted, not who or when). */
 export function diffShift(before: ShiftRecord, after: ShiftRecord): Record<string, [unknown, unknown]> {
   const out: Record<string, [unknown, unknown]> = {};
   for (const [field, name] of AUDITED) {
     const [a, b] = [plain(before[field]), plain(after[field])];
     if (a !== b) out[name] = [a, b];
   }
+  const [wasAcked, isAcked] = [before.ackAt !== null, after.ackAt !== null];
+  if (wasAcked !== isAcked) out.conflict_acknowledged = [wasAcked, isAcked];
   return out;
 }
 

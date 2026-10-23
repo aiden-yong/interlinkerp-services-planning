@@ -30,4 +30,11 @@ describe('diffShift (DR-04)', () => {
       role_id: [null, 'r1'], end_at: ['2026-10-20T09:00:00Z', '2026-10-20T10:00:00Z'], allocated_percent: [100, 50],
     });
   });
+
+  it('tracks whether a conflict warning was accepted, not when', () => {
+    const accepted: ShiftRecord = { ...base, ackBy: 'm@x.com', ackAt: new Date('2026-10-13T02:00:00Z') };
+    expect(diffShift(base, accepted)).toEqual({ conflict_acknowledged: [false, true] });
+    expect(diffShift(accepted, base)).toEqual({ conflict_acknowledged: [true, false] });
+    expect(diffShift(accepted, { ...accepted, ackBy: 'n@x.com', ackAt: new Date('2026-10-14T02:00:00Z') })).toEqual({});
+  });
 });
