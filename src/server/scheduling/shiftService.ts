@@ -90,6 +90,7 @@ export class ShiftService {
       // must not touch ConflictContext/the pool again once scope's transaction is open (see its own doc comment).
       const conflictingDates = new Set(flagged.map((p) => p.date));
       const { shift, seriesId, created } = await this.unit.run(async (scope) => {
+        await scope.lockEmployees([draft.employeeRef]); // a new series has no lock to take first (backlog item 52)
         const result = await this.recurrences.createSeries(scope, draft, repeat, zone, horizonMonths, ack, conflictingDates, now, managerActor(actorId(by)));
         const inserted = (await scope.shifts.find(draft.id)) ?? (() => { throw new Error('The first shift of a new series was not found right after being saved.'); })();
         return { shift: inserted, ...result };
@@ -168,6 +169,10 @@ export class ShiftService {
       // Every series path takes the series lock before any shift row (deleteFrom, applyToSeries, splitSeries, extendOne),
       // so two requests on the same series queue here instead of deadlocking on each other's row lock (backlog item 37).
       if (current.recurrenceId !== null) await scope.lockSeries(current.recurrenceId);
+      // Then the employee locks, sorted: the shift's old and new employee, and the series' employee when the change
+      // spreads to the series, so Auto Plan never sees a half-written assignment (backlog item 52).
+      const seriesEmployee = current.recurrenceId !== null && scopeRaw !== 'this' ? (await scope.recurrences.find(current.recurrenceId))?.employeeRef : null;
+      await scope.lockEmployees([current.employeeRef, shift.employeeRef, seriesEmployee]);
       if (repeat !== null && scopeRaw === 'all' && current.recurrenceId !== null) {
         // Backlog item 39: the check above ran on the pool, before this lock; an undone deletion may have landed since.
         const firstNotStarted = await scope.shifts.firstNotStartedIndex(current.recurrenceId, now);
@@ -252,6 +257,7 @@ export class ShiftService {
     };
 
     const [first, second] = await this.unit.run(async (scope) => {
+      await scope.lockEmployees([current.employeeRef]);
       const savedFirst = await scope.shifts.update(firstRecord, version!, now);
       if (!savedFirst) throw stale();
       await scope.shifts.insert(secondRecord, now);
@@ -302,7 +308,8 @@ export class ShiftService {
     const now = this.clock.now();
     if (now.getTime() - shift.deletedAt.getTime() >= UNDO_MS) throw HttpError.conflict('UNDO_EXPIRED', 'This deletion can no longer be undone.');
     const deletedAt = shift.deletedAt;
-    return this.unit.run(async ({ shifts, outbox, audit }) => {
+    return this.unit.run(async ({ shifts, outbox, audit, lockEmployees }) => {
+      await lockEmployees([shift.employeeRef]); // the restored shift gives its employee time back on the schedule (backlog item 52)
       const restored = (await shifts.restore(id, deletedAt, now)) ?? (() => { throw HttpError.notFound('No deleted shift with that id.'); })();
       await audit.record([{ shiftId: restored.id, action: 'restored', ...managerActor(actorId(by)) }], now);
       // Backlog item 31: a sweep may deliver the deletion notice at the same moment. cancelPending then waits for that
@@ -380,7 +387,8 @@ export class ShiftService {
 }
 
 /** Saves a new one-off shift and its `created` entry (DR-04). */
-async function insertCreated({ shifts, audit }: WriteScope, shift: ShiftRecord, by: Principal, now: Date): Promise<void> {
+async function insertCreated({ shifts, audit, lockEmployees }: WriteScope, shift: ShiftRecord, by: Principal, now: Date): Promise<void> {
+  await lockEmployees([shift.employeeRef]); // serialised with Auto Plan (backlog item 52)
   await shifts.insert(shift, now);
   await audit.record([{ shiftId: shift.id, action: 'created', ...managerActor(actorId(by)) }], now);
 }

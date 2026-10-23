@@ -278,6 +278,7 @@ export class RecurrenceService {
       await scope.lockSeries(id);
       const series = await scope.recurrences.find(id);
       if (!series) return 0;
+      await scope.lockEmployees([series.employeeRef]); // series lock first, then the employee (backlog item 52)
 
       const horizonMonths = (await scope.settings.get()).recurrence_horizon_months;
       const until = DateTime.fromJSDate(now, { zone: series.timezone }).plus({ months: horizonMonths }).toJSDate();

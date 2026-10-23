@@ -308,10 +308,10 @@ Things a milestone design left out or a decision put off. None is a defect. Pick
 - **Why:** Planning stores time off itself until an HR leave service exists. Then the time-off reads are replaced with an adapter for that service (DR-03 keeps this contained).
 - **Effort:** M
 
-### 52. Auto Plan is not locked against a manager's concurrent edits
+### 52. Auto Plan is not locked against a manager's concurrent edits (done 2026-10-23)
 - **Area:** Correctness (narrow edge case)
 - **Why:** Auto Plan holds its own lock and the candidates' employee locks, so claims and take-overs are serialised. A manager edit or a time-off change made between Auto Plan's data load and its write is not. The schedule still flags any resulting conflict before publishing.
-- **Fix:** Take the employee lock in manager shift writes too, or re-read time off inside the transaction.
+- **Done:** Manager shift writes (create, update, split, restore, week copy, series create/extend) and time-off create/update now take the employee lock(s) in sorted order, and Auto Plan re-reads time off inside its transaction after locking; the lock order is documented in `unitOfWork.ts`.
 - **Effort:** S–M
 
 ### 53. Audit conflict acknowledgements

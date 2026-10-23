@@ -4,7 +4,7 @@ import { notificationOutbox, shifts } from '../db/schema';
 import { ShiftRepository } from '../repo/shifts';
 import { ORG } from '../test/db';
 import { useApiHarness } from '../test/harness';
-import { whileLocked } from '../test/races';
+import { blockedOnLocks, whileLocked } from '../test/races';
 
 const h = useApiHarness();
 const WEEK = { from: '2026-10-19', to: '2026-10-25' }; // Monday to Sunday, the week after the harness clock
@@ -141,6 +141,89 @@ describe('Auto Plan (FR-AUT-01, FR-AUT-02)', () => {
     expect(body.filled).toEqual([]);
     expect(body.unfilled).toEqual([{ shift_id: draft, reason_code: 'busy_or_away', reason: 'Everyone with this role is busy or away then' }]);
     expect((await row(draft)).employeeRef).toBeNull();
+  });
+
+  /**
+   * Holds E1's employee lock on another connection, runs `first` (which must queue on that lock), then `second`
+   * (which queues behind it), and only then releases the lock. So `first` commits before `second` takes the lock.
+   */
+  async function queued<A, B>(first: () => Promise<A>, second: () => Promise<B>): Promise<[A, B]> {
+    const client = await h.database.pool.connect();
+    try {
+      await client.query('begin');
+      await client.query('select pg_advisory_xact_lock(hashtext($1))', [`${ORG}:E1`]);
+      const a = first();
+      a.catch(() => {});
+      await blockedOnLocks(h.database, 1);
+      const b = second();
+      b.catch(() => {});
+      await blockedOnLocks(h.database, 2);
+      await client.query('commit');
+      return [await a, await b];
+    } catch (error) {
+      await client.query('rollback').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  it('plans around a manager edit that commits while it waits for the lock (BR-02, backlog 52)', async () => {
+    await employee('E1', 'Ana Lim');
+    const draft = await open('2026-10-20T09:00:00+08:00', '2026-10-20T13:00:00+08:00');
+    const other = await open('2026-10-20T10:00:00+08:00', '2026-10-20T12:00:00+08:00');
+
+    const [patch, plan] = await queued(
+      () => h.call('PATCH', `/api/shifts/${other}`, { version: 1, employee_ref: 'E1', acknowledge_conflicts: true }),
+      () => autoPlan(),
+    );
+
+    expect(patch.status, JSON.stringify(patch.body)).toBe(200);
+    expect(plan.status, JSON.stringify(plan.body)).toBe(201);
+    expect(plan.body.filled).toEqual([]);
+    expect(plan.body.unfilled).toEqual([{ shift_id: draft, reason_code: 'busy_or_away', reason: 'Everyone with this role is busy or away then' }]);
+    expect((await row(draft)).employeeRef).toBeNull();
+    expect((await row(other)).employeeRef).toBe('E1');
+  });
+
+  it('plans around time off recorded while it waits for the lock (BR-02, backlog 52)', async () => {
+    await employee('E1', 'Ana Lim');
+    const draft = await open('2026-10-20T09:00:00+08:00', '2026-10-20T13:00:00+08:00');
+
+    const [leave, plan] = await queued(
+      () => h.call('POST', '/api/unavailabilities', { employee_ref: 'E1', start_at: '2026-10-20T08:00:00+08:00', end_at: '2026-10-20T14:00:00+08:00', reason: 'Sick' }),
+      () => autoPlan(),
+    );
+
+    expect(leave.status, JSON.stringify(leave.body)).toBe(201);
+    expect(plan.status, JSON.stringify(plan.body)).toBe(201);
+    expect(plan.body.filled).toEqual([]);
+    expect(plan.body.unfilled).toEqual([{ shift_id: draft, reason_code: 'busy_or_away', reason: 'Everyone with this role is busy or away then' }]);
+    expect((await row(draft)).employeeRef).toBeNull();
+  });
+
+  it('makes a manager edit wait for the employee lock Auto Plan holds, then lets it succeed (backlog 52)', async () => {
+    await employee('E1', 'Ana Lim');
+    const draft = await open('2026-10-20T09:00:00+08:00', '2026-10-20T13:00:00+08:00');
+    const { body: made } = await h.call('POST', '/api/shifts', { employee_ref: 'E1', role_id: tech, start_at: '2026-10-21T09:00:00+08:00', end_at: '2026-10-21T10:00:00+08:00' });
+    const mine: string = made.shift.id;
+
+    // Auto Plan holds E1's lock when it assigns; a manager edit of E1's shift started at that moment must queue, not fail.
+    let patch: Promise<{ status: number; body: any }> | undefined;
+    const assign = ShiftRepository.prototype.assign;
+    vi.spyOn(ShiftRepository.prototype, 'assign').mockImplementation(async function (this: ShiftRepository, ...args) {
+      patch ??= h.call('PATCH', `/api/shifts/${mine}`, { version: 1, note: 'Bring keys' });
+      patch.catch(() => {});
+      await blockedOnLocks(h.database, 1);
+      return assign.call(this, ...args);
+    });
+
+    const plan = await autoPlan();
+    expect(plan.status, JSON.stringify(plan.body)).toBe(201);
+    expect(plan.body.filled).toEqual([{ shift_id: draft, employee_ref: 'E1' }]);
+    const result = await patch!;
+    expect(result.status, JSON.stringify(result.body)).toBe(200);
+    expect((await row(mine)).note).toBe('Bring keys');
   });
 
   it('lets only one run at a time', async () => {
