@@ -2,6 +2,8 @@
 
 Status as of 2026-10-23 (service version 0.4.1: M4 plus fixes for items 6, 34–39, 52 and 53). Items are ordered from most to least urgent. Effort: **S** is under half a day, **M** is one to three days, **L** is more than three days.
 
+The owner's to-do list (steps only you or others can do) is in [owner-todo.md](owner-todo.md).
+
 Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequirements.md` v0.5, and a check of the current code.
 
 ---
@@ -18,7 +20,8 @@ Sources: the M1 and M2 code reviews, the gateway contract (SS-*), `ListOfRequire
 - **Done:** `.github/workflows/ci.yml` runs typecheck, tests (with a Postgres 18 service), build and the browser tests on every PR and push to `main`.
 - **Still to do (repository owner, in GitHub settings):**
   - Turn on "Automatically delete head branches".
-  - Protect `main`: block force-pushes and require CI to pass. Requiring pull requests is a workflow choice: today work is merged locally and `main` is pushed directly, which that rule would block.
+  - Protect `main`: block force-pushes and deletions (safe now). Requiring CI to pass also makes GitHub reject a direct push of a commit that has not passed yet, so in practice it means switching to pull requests; today work is merged locally and `main` is pushed directly.
+  - Step-by-step instructions: [owner-todo.md](owner-todo.md), item 7.
 - **Effort:** S
 
 ### 3. Check the M2 screens in a browser
@@ -315,3 +318,29 @@ Things a milestone design left out or a decision put off. None is a defect. Pick
 - **Why:** A PATCH that only acknowledges a conflict records no history entry, though overriding a planning rule is what a manager may look for in history.
 - **Done:** `diffShift` now tracks `conflict_acknowledged` (accepted or not) as an 8th audited field, so an acknowledgement-only PATCH records a `changed` entry; the history reads "Conflict warning accepted" or "Conflict acceptance cleared".
 - **Effort:** S
+
+### 54. Minor findings deferred from the M4 and post-M4 reviews
+- **Area:** Polish, tests, small refactors
+- **Why:** The task reviews found these; none affects correctness today. Grouped here so they are not lost. Pick them up together in a tidy-up pass.
+- **Reports and Auto Plan:**
+  - `reportService.load` duplicates the read-and-assemble block in `ScheduleService.build`; the zone parse/validate block is copied in `routes/schedule.ts`, `reports.ts` and `autoPlans.ts` (extract a `viewZone(input)` helper); `reports.ts` has a `let departmentId` narrowing smell and duplicated bucket/department parsing.
+  - `scheduleService` builds unused `ReportEmployee` fields; `ReportPeriod.viewZone` is unused by the helpers.
+  - `domain/autoPlan.ts` imports `allocatedInPeriod` from `reports/hours` (consider moving it down into `domain/`); the planner relies on unique people refs and draft ids that are not in anyone's `existing` (document the precondition).
+  - `csv.ts` holds a literal U+FEFF character (use the `'\uFEFF'` escape); `toCsv` writes `NaN`/`Infinity` as text (guard it).
+  - Reasons are not checked by the Auto Plan property test (it does not prove an unfilled shift had no candidate).
+  - `AutoPlanResult`: no tests for cancel and failure paths; the focus test does not reproduce the original race; the department label falls back to the id when the name is null.
+- **Settings and notifications:**
+  - The `reminder_lead_valid` CHECK hard-codes the list instead of building it from `REMINDER_LEAD_MINUTES`; `routes/settings.ts` imports that constant from `db/schema` (import order and layering).
+  - Reminder tests lack boundary cases (`start == now + lead`, `start == now`); the cron route ignores the result of `claim('sweep')`.
+  - History route makes one directory query per distinct actor; the system-generated audit test calls `extendAll` directly instead of the cron route.
+  - The kernel's `TRY_AGAIN` log drops the error name and stack; 503 is not documented per route in OpenAPI; `ShiftService.split()` of a series shift can have its `recurrence_detached` flag overwritten by a series update that was already waiting on the row.
+  - `lockEmployees` sorts by employee ref, not by the lock's hash key (a 2^-32 collision could in theory deadlock).
+- **Calendar feed:** unknown-token lookups are unthrottled (a 256-bit token cannot be guessed, but each miss costs one indexed query); no tests that a 404/429 carries no `Set-Cookie` or that the rate-limit bucket name holds no token material; the 404 message echoes the requested path.
+- **Client:**
+  - Year view: the previous year's data stays on screen while a new year loads (no loading state); a failed reload keeps old data; the open row's count ignores the state filter; the first column header says "Employee" when grouped by department; the `/api/employees` fetch has no stale-response guard; role filter options are empty if the page never loaded outside Year.
+  - Reports page: `group` is typed as a plain string; no test for the filter-load toast; the 1024 px layout is unverified in a browser.
+  - Shift history: no retry after a load error, no component test, and change lines show "someone" for former employees.
+  - Calendar link: no tests for Copy and its clipboard-failure fallback.
+  - Sign-in: a stateless callback logs two lines; the error page clears an in-flight sign-in cookie (the retry recovers).
+- **Tests and docs:** the e2e month heading is derived by slicing; Playwright's global-setup warm-up flaked twice right after test edits (dev-server recompile); `ListOfRequirements.md` Appendix B has only reconstructed v0.4/v0.5 rows (earlier history is missing).
+- **Effort:** M in total
