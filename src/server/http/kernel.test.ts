@@ -56,6 +56,32 @@ describe('Kernel', () => {
     expect(logged[0]).not.toContain('@example.com');
   });
 
+  it('turns a database deadlock or serialization failure into a retryable 503 TRY_AGAIN (backlog item 37)', async () => {
+    const pgError = (code: string) => Object.assign(new Error('deadlock detected'), { code });
+    const r = new Router();
+    r.add('GET', '/deadlock', 'public', 'Deadlock', () => {
+      throw pgError('40P01');
+    });
+    // Drizzle wraps the driver's error, keeping it as `cause`.
+    r.add('GET', '/wrapped', 'public', 'Wrapped', () => {
+      throw new Error('Failed query: update shifts', { cause: pgError('40001') });
+    });
+    r.add('GET', '/other', 'public', 'Other', () => {
+      throw pgError('23505');
+    });
+    for (const path of ['/deadlock', '/wrapped']) {
+      const logged: string[] = [];
+      // eslint-disable-next-line no-await-in-loop -- one request per case
+      const response = await kernel(r, open, logged).handle(req(path));
+      expect(response.status).toBe(503);
+      expect(response.headers.get('Retry-After')).toBe('1');
+      // eslint-disable-next-line no-await-in-loop
+      expect((await response.json()).error).toMatchObject({ code: 'TRY_AGAIN', details: null });
+      expect(logged).toHaveLength(1);
+    }
+    expect((await kernel(r).handle(req('/other'))).status).toBe(500);
+  });
+
   it('passes the principal to the handler and appends guard cookies', async () => {
     const r = new Router();
     r.add('GET', '/me', 'person', 'Me', ({ principal }) => json(200, { who: principal?.email }));

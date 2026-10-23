@@ -24,6 +24,18 @@ export interface WriteLimiter {
   take(bucket: string): Promise<number | null>;
 }
 
+/** Postgres deadlock_detected and serialization_failure: the losing transaction rolled back, so the caller may simply retry. */
+const RETRYABLE_PG_CODES = new Set(['40P01', '40001']);
+
+function isRetryableDatabaseError(error: unknown): boolean {
+  // Drizzle wraps the driver's error and keeps it as `cause`.
+  for (let e: unknown = error, depth = 0; e instanceof Error && depth < 5; e = e.cause, depth += 1) {
+    const code = (e as { code?: unknown }).code;
+    if (typeof code === 'string' && RETRYABLE_PG_CODES.has(code)) return true;
+  }
+  return false;
+}
+
 const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /** Contract SS-4: reuse the caller's id when it is safe to echo, otherwise mint one. */
@@ -127,6 +139,9 @@ export class Kernel {
           response = json(error.status, envelope(error.code, error.message, cid, error.details), error.headers);
           // An error that sets its own cookie (signing out) wins over the refresh.
           if (response.headers.has('Set-Cookie')) refreshed = [];
+        } else if (isRetryableDatabaseError(error)) {
+          this.log(`[planning-api] ${cid} ${redactAddresses(error instanceof Error ? error.message : String(error))}`);
+          response = json(503, envelope('TRY_AGAIN', 'Another change to the same data was in progress. Try again.', cid, null), { 'Retry-After': '1' });
         } else {
           const detail = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error);
           this.log(`[planning-api] ${cid} ${redactAddresses(detail)}`);
