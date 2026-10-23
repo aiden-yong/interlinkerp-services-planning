@@ -500,4 +500,4 @@ Server-to-server calls (IF-02, IF-03, IF-05) use the app's own client credential
 | Version | Date | Changes |
 |---|---|---|
 | 0.5 | 2026-10-21 | M4: OI-04 resolved (spread evenly); NFR-03 gains the calendar-feed exception; FR-AUT-01 notes that published open shifts are not auto-planned; BR-09 states the tie-break. IDs unchanged. |
-| 0.4 | 2026-10-16 | M2: FR-NTF-03 recipients, IF-04 wording. |
+| 0.4 | 2026-10-16 | M2: FR-NTF-03 recipients, IF-04 wording; OI-07 added. |

@@ -313,3 +313,9 @@ Things a milestone design left out or a decision put off. None is a defect. Pick
 - **Why:** Auto Plan holds its own lock and the candidates' employee locks, so claims and take-overs are serialised. A manager edit or a time-off change made between Auto Plan's data load and its write is not. The schedule still flags any resulting conflict before publishing.
 - **Fix:** Take the employee lock in manager shift writes too, or re-read time off inside the transaction.
 - **Effort:** S–M
+
+### 53. Audit conflict acknowledgements
+- **Area:** Feature
+- **Why:** A PATCH that only acknowledges a conflict records no history entry, though overriding a planning rule is what a manager may look for in history.
+- **Fix:** Record `conflict_acknowledged` as an audited field.
+- **Effort:** S

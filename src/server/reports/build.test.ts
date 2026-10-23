@@ -117,6 +117,7 @@ describe('utilisation', () => {
 
 describe('openShifts', () => {
   const d = data({
+    roles: [{ id: 'A', name: 'Zed' }], // sorts after "No role", so only the rule "No role last" puts it first
     employees: [employee('E1')],
     shifts: [
       shift(null, '2026-10-13T09:00', 4, { roleId: 'A', state: 'published' }),
@@ -132,7 +133,7 @@ describe('openShifts', () => {
     expect(all.rows.find((r) => r.role_id === 'A')!.cells['2026-10-13']).toEqual({ open: 2, total: 3 });
     expect(all.rows.find((r) => r.role_id === null)).toMatchObject({ label: 'No role', cells: { '2026-10-14': { open: 1, total: 1 } } });
     expect(all.totals['2026-10-13']).toEqual({ open: 2, total: 3 });
-    expect(all.rows.map((r) => r.label)).toEqual(['Barista', 'No role']);
+    expect(all.rows.map((r) => r.label)).toEqual(['Zed', 'No role']);
     const published = openShifts(d, true);
     expect(published.rows.map((r) => r.role_id)).toEqual(['A']);
     expect(published.rows[0].cells['2026-10-13']).toEqual({ open: 1, total: 2 });

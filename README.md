@@ -27,7 +27,7 @@ Browser tests (Playwright) cover ten flows: publish a week, claim an open shift,
 1. Neon project in `aws-ap-southeast-1`; apply migrations with its pooled URL (`DATABASE_URL=... npm run db:migrate`).
 2. In Vercel, import the repo and set every variable from `.env.example` except `DEV_*`, `TEST_DATABASE_URL` and `APP_ENV`. `DATABASE_URL` is Neon's pooled URL; `PUBLIC_URL` is the exact production URL; `CRON_SECRET` is a long random value. `OPENAPI_EXTENSION_KEY` is the extension key the gateway reads catalogue metadata from; get the exact value from the gateway admins.
 3. In the gateway console, issue an API client for Planning with `intern:read` and `department:read`, and set `INTERLINK_CLIENT_ID` / `INTERLINK_CLIENT_SECRET`.
-4. Turn off Vercel Deployment Protection for Production (or exempt `/health` and `/openapi.json`); the gateway must reach both.
+4. Turn off Vercel Deployment Protection for Production (or exempt `/health` and `/openapi.json`; the gateway must reach both). Also exempt `/feeds/*` (calendar apps subscribe there without a session) and `/internal/cron/sweep` (the external scheduler calls it), otherwise calendar subscriptions and shift reminders silently fail.
 5. Deploy, then register the base URL with the gateway and run its `/conformance` check.
 
 ## Changes after 0.2.0 (not yet released)
@@ -40,7 +40,7 @@ Apply the new migrations to the production database BEFORE deploying: `DATABASE_
 
 ## Changes after 0.3.0 (M4, service version 0.4.0)
 Apply the new migration to the production database BEFORE deploying: `DATABASE_URL='<pooled url>' npm run db:migrate`. Locally, run `npm run db:migrate`.
-- `0005_reporting_audit_feeds` adds the audit trail for shifts, the private calendar feed tokens and `organisation_settings.reminder_lead_minutes` (0, 30, 60, 120, 240, 720 or 1440 minutes; default 60; 0 turns reminders off). Change it in Settings → General, "Remind employees before their shifts".
+- `0005_reporting_audit_feeds` adds the audit trail for shifts, the private calendar feed tokens and `organisation_settings.reminder_lead_minutes` (0, 30, 60, 120, 240, 720 or 1440 minutes; default 60; 0 turns reminders off). Change it in Settings → General, "Remind employees before their shifts". It also adds `shifts.reminded_at` (set once a reminder is queued) and back-fills audit history for existing shifts, one INSERT per shift, so the migration takes longer on a large database.
 - M4 adds: a Reports page (planned hours, utilisation and open shifts, each with CSV download); Auto Plan on the schedule, which fills draft open shifts and spreads load evenly; a Year scale and grouping by department on the schedule; a change history per shift; a private iCalendar link for each employee ("Get calendar link" on My Planning); and shift reminders.
 - Auto Plan leaves every result as a draft. Published open shifts are left for employees to claim.
 

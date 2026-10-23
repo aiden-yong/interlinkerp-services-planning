@@ -18,7 +18,7 @@ const config: NextConfig = {
       { source: '/:path*', headers: SECURITY_HEADERS },
       // Pages get a per-request nonce policy from src/proxy.ts instead.
       ...['/api/:path*', '/internal/:path*', '/feeds/:path*', '/health', '/openapi.json'].map((source) => ({ source, headers: API_SECURITY_HEADERS })),
-      ...['/', '/schedule', '/my', '/settings', '/settings/:path*', '/not-on-roster'].map((source) => ({ source, headers: noStore })),
+      ...['/', '/schedule', '/reports', '/my', '/settings', '/settings/:path*', '/not-on-roster'].map((source) => ({ source, headers: noStore })),
     ];
   },
 };
