@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { type AuditAction, auditEntries } from '../db/schema';
 import { isUuid } from '../support/ids';
@@ -57,6 +57,12 @@ export class AuditRepository {
     await this.db.insert(auditEntries).values(entries.map((e) => ({
       organisationId: this.org, shiftId: e.shiftId, action: e.action, actor: e.actor, actorKind: e.actorKind, changes: e.changes ?? null, at,
     })));
+  }
+
+  /** For shifts that are hard-deleted (never-published drafts), so no history is left pointing at a row that is gone. */
+  async deleteForShifts(shiftIds: string[]): Promise<void> {
+    if (shiftIds.length === 0) return;
+    await this.db.delete(auditEntries).where(and(eq(auditEntries.organisationId, this.org), inArray(auditEntries.shiftId, shiftIds)));
   }
 
   /** Newest first; entries saved at the same instant come back in reverse order of saving. */

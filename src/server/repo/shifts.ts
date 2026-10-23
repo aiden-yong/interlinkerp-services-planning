@@ -192,13 +192,13 @@ export class ShiftRepository {
     return rows.map(toRecord);
   }
 
-  /** D6: hard-deletes the untouched future drafts of a series from fromIndex on (except `exceptId`, which moves to the new series instead). */
-  async hardDeleteSeriesShiftsFrom(seriesId: string, fromIndex: number, now: Date, exceptId: string): Promise<number> {
+  /** D6: hard-deletes the untouched future drafts of a series from fromIndex on (except `exceptId`, which moves to the new series instead). Returns the deleted ids so their audit rows can go in the same transaction. */
+  async hardDeleteSeriesShiftsFrom(seriesId: string, fromIndex: number, now: Date, exceptId: string): Promise<string[]> {
     const deleted = await this.db.delete(shifts).where(and(
       this.live(), eq(shifts.recurrenceId, seriesId), gte(shifts.recurrenceIndex, fromIndex),
       eq(shifts.state, 'draft'), eq(shifts.recurrenceDetached, false), gt(shifts.startAt, now), ne(shifts.id, exceptId),
     )).returning({ id: shifts.id });
-    return deleted.length;
+    return deleted.map((r) => r.id);
   }
 
   /**

@@ -213,7 +213,9 @@ export class RecurrenceService {
     if (!old) throw new Error('Series not found.');
 
     await scope.recurrences.update({ ...old, lastIndex: atIndex - 1 }, now);
-    const removed = await scope.shifts.hardDeleteSeriesShiftsFrom(seriesId, atIndex, now, from.id);
+    const removedIds = await scope.shifts.hardDeleteSeriesShiftsFrom(seriesId, atIndex, now, from.id);
+    await scope.audit.deleteForShifts(removedIds);
+    const removed = removedIds.length;
     // Dates the old series still holds from atIndex on (published or detached shifts left in place, and deleted
     // occurrences, D4): the new series must not put a second shift on them, nor bring a deleted one back.
     const occupied = await scope.shifts.occupiedLocalDates(seriesId, atIndex, from.id, old.timezone);

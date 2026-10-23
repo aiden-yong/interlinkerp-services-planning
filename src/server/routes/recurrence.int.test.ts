@@ -1,7 +1,7 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { DateTime } from 'luxon';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { recurrences, shifts } from '../db/schema';
+import { auditEntries, recurrences, shifts } from '../db/schema';
 import { Outbox } from '../repo/outbox';
 import { ORG } from '../test/db';
 import { useApiHarness } from '../test/harness';
@@ -238,6 +238,19 @@ describe('recurring shifts', () => {
     const rows = await seriesRows(body.recurrence.id);
     for (const idx of [0, 1, 2]) expect(rows.find((r) => r.recurrenceIndex === idx)!.note).toBeNull();
     for (const idx of [3, 4, 5]) expect(rows.find((r) => r.recurrenceIndex === idx)!.note).toBe('Updated');
+  });
+
+  it('removes the audit history of the untouched drafts a pattern change hard-deletes', async () => {
+    const { body } = await createRepeating();
+    const shift4 = await atIndex(body.recurrence.id, 4);
+    const doomed = (await seriesRows(body.recurrence.id)).filter((r) => r.recurrenceIndex! > 4 && r.state === 'draft' && r.deletedAt === null).map((r) => r.id);
+    expect(doomed.length).toBeGreaterThan(0);
+    const audited = async () => (await h.database.db.select().from(auditEntries).where(inArray(auditEntries.shiftId, doomed))).length;
+    expect(await audited()).toBeGreaterThan(0);
+    const res = await h.call('PATCH', `/api/shifts/${shift4.id}`, { version: shift4.version, scope: 'following', repeat: { interval: 2, unit: 'week', ends: 'never' } });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await h.database.db.select().from(shifts).where(inArray(shifts.id, doomed))).toHaveLength(0);
+    expect(await audited()).toBe(0);
   });
 
   it('changes the pattern from this shift on (D6)', async () => {
