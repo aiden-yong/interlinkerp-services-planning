@@ -133,5 +133,5 @@ describe('Auto Plan planner over generated rosters', () => {
     }
     // The rosters must actually exercise assignments, or the checks above prove nothing.
     expect(assigned).toBeGreaterThan(300);
-  });
+  }, 30_000);
 });

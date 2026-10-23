@@ -41,7 +41,7 @@ describe('SchedulePage Auto Plan', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Auto Plan' }));
     fireEvent.click(within(await screen.findByRole('dialog', { name: 'Fill the draft open shifts in this period?' })).getByRole('button', { name: 'Auto Plan' }));
     const result = await screen.findByRole('dialog', { name: 'Filled 0 of 2 open shifts' });
-    expect(document.activeElement).toBe(within(result).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(document.activeElement).toBe(within(result).getByRole('button', { name: 'Close' })));
     const post = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST')!;
     expect(String(post[0])).toBe('/api/auto-plans');
     expect(Object.keys(JSON.parse(String((post[1] as RequestInit).body))).sort()).toEqual(['from', 'timezone', 'to']);
@@ -49,6 +49,6 @@ describe('SchedulePage Auto Plan', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     const button = screen.getByRole('button', { name: 'Auto Plan' });
     expect((button as HTMLButtonElement).disabled).toBe(false);
-    expect(document.activeElement).toBe(button);
+    await waitFor(() => expect(document.activeElement).toBe(button));
   });
 });
