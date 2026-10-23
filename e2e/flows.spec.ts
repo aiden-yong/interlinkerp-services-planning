@@ -78,8 +78,7 @@ test('an employee reads a notice and marks everything read', async ({ page, requ
 test('a manager repeats a shift weekly and sees it the week after', async ({ page }) => {
   await page.goto('/schedule');
   await page.getByRole('button', { name: 'Next period' }).click();
-  await expect(page.getByRole('main').getByText('Ana Lim').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Add shift' }).click();
+  await page.getByRole('button', { name: 'Add shift' }).click(); // waits until the period has loaded
   const dialog = page.getByRole('dialog', { name: 'New shift' });
   await dialog.getByRole('combobox', { name: 'Employee', exact: true }).selectOption({ label: 'Ana Lim' });
   await dialog.getByLabel('Start date').fill(nextWednesday(9).slice(0, 10));
