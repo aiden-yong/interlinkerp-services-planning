@@ -29,6 +29,7 @@ export function SchedulePage({ me }: { me: Me }) {
   const [groupBy, setGroupBy] = useState<GroupBy>('employee');
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [data, setData] = useState<SchedulePayload | null>(null);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null); // the period `data` was fetched for
   const [yearData, setYearData] = useState<{ planned: PlannedHoursReport; util: UtilisationReport } | null>(null);
   const [yearDepartments, setYearDepartments] = useState<Departments>({});
   const year = scale === 'year';
@@ -39,6 +40,8 @@ export function SchedulePage({ me }: { me: Me }) {
   const [planResult, setPlanResult] = useState<AutoPlanReport | null>(null);
   const autoPlanButton = useRef<HTMLButtonElement>(null);
   const period = useMemo(() => periodFor(scale, anchor), [scale, anchor]);
+  // The board keeps showing the previous period while a new one loads; actions that need the payload wait for the right one.
+  const ready = data !== null && loadedKey === `${period.from}|${period.to}`;
 
   const yearRole = year ? filters.roleId : ''; // the schedule filters roles itself; only Year asks the server
   const latest = useRef(0);
@@ -61,6 +64,7 @@ export function SchedulePage({ me }: { me: Me }) {
       const payload = await api<SchedulePayload>('GET', `/api/schedule${query({ from: period.from, to: period.to, timezone: zone })}`);
       if (request !== latest.current) return;
       setData(payload);
+      setLoadedKey(`${period.from}|${period.to}`);
       setError(null);
     } catch (e) {
       if (request === latest.current) setError((e as Error).message);
@@ -205,11 +209,11 @@ export function SchedulePage({ me }: { me: Me }) {
         <h1 className="period">{periodLabel(period)}</h1>
         <span className="spacer" />
         <Segmented label="Scale" value={scale} segments={SCALES} onChange={changeScale} />
-        {!year && <button type="button" onClick={() => openNew(null, null)}>Add shift</button>}
-        {!year && <button type="button" ref={autoPlanButton} disabled={busy} onClick={() => void autoPlan()}>Auto Plan</button>}
-        {scale === 'week' && <button type="button" disabled={busy} onClick={() => void copyPreviousWeek()}>Copy previous week</button>}
+        {!year && <button type="button" disabled={!ready} onClick={() => openNew(null, null)}>Add shift</button>}
+        {!year && <button type="button" ref={autoPlanButton} disabled={busy || !ready} onClick={() => void autoPlan()}>Auto Plan</button>}
+        {scale === 'week' && <button type="button" disabled={busy || !ready} onClick={() => void copyPreviousWeek()}>Copy previous week</button>}
         {!year && <label className="check"><input type="checkbox" checked={notifyOpen} onChange={(e) => setNotifyOpen(e.target.checked)} /> Tell eligible employees about open shifts</label>}
-        {!year && <button type="button" className="primary" disabled={busy} onClick={publish}>Publish</button>}
+        {!year && <button type="button" className="primary" disabled={busy || !ready} onClick={publish}>Publish</button>}
       </div>
       <div className="filters">
         <select aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}>
