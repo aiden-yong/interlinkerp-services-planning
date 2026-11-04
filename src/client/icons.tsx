@@ -32,6 +32,7 @@ export const DisplayIcon = () => (
 
 export const ChevronLeftIcon = () => <Icon><path d="M10 3.5 5.5 8l4.5 4.5" /></Icon>;
 export const ChevronRightIcon = () => <Icon><path d="M6 3.5 10.5 8 6 12.5" /></Icon>;
+export const ChevronDownIcon = () => <Icon size={12}><path d="M3.5 6 8 10.5 12.5 6" /></Icon>;
 
 export const WarningIcon = () => (
   <Icon size={12}>
@@ -44,12 +45,5 @@ export const BellIcon = () => (
   <Icon>
     <path d="M3.5 11.25h9l-1-1.5V6.5a3.5 3.5 0 0 0-7 0v3.25l-1 1.5Z" />
     <path d="M6.75 13.5a1.4 1.4 0 0 0 2.5 0" />
-  </Icon>
-);
-
-export const PlanningMark = () => (
-  <Icon size={18}>
-    <rect x="2" y="3" width="12" height="11" rx="2" />
-    <path d="M2 6.5h12M5.5 1.75v2.5M10.5 1.75v2.5M5 9.25h3M5 11.5h5" />
   </Icon>
 );

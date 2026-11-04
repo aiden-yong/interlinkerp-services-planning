@@ -17,7 +17,14 @@ export const PAGE_PATHS = ['/', '/schedule', '/reports', '/my', '/settings', '/n
 export type GateResult =
   | { kind: 'pass'; cookies: string[] }
   | { kind: 'redirect'; location: string; cookies: string[] }
-  | { kind: 'error'; status: number; html: string; cookies: string[] };
+  | { kind: 'error'; status: number; html: string; cookies: string[] }
+  /** Demo mode only: a page that is not an error, and the redirect after a form post. */
+  | { kind: 'page'; status: number; html: string; cookies: string[] }
+  | { kind: 'see-other'; path: string; cookies: string[] };
+
+export interface Gate {
+  handle(request: Request): Promise<GateResult>;
+}
 
 /** Paths served by route handlers. /feeds/ is the public calendar feed (D23). Bare /api and /internal have none, so the proxy answers them with the JSON 404. */
 export function isApiPath(path: string): boolean {
@@ -56,7 +63,7 @@ function sameNonce(a: string, b: string): boolean {
  * error page rather than redirecting again, so a broken gateway cannot cause a loop.
  * proxy.ts adds Cache-Control: no-store to every result (§7).
  */
-export class PageGate {
+export class PageGate implements Gate {
   constructor(
     private readonly gateway: Gateway,
     private readonly tokens: TokenVerifier,

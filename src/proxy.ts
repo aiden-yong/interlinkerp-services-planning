@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { REQUIRED_ENV } from '@/server/app';
-import { requireAll } from '@/server/config/env';
+import { assertConfigured } from '@/server/app';
 import { getApp } from '@/server/entry';
 import { correlationIdFor } from '@/server/http/kernel';
 import { envelope } from '@/server/http/responses';
@@ -22,7 +21,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    requireAll(REQUIRED_ENV);
+    assertConfigured();
   } catch (error) {
     console.error(`[planning-web] ${(error as Error).message}`);
     return new NextResponse('<!doctype html><p>Planning is misconfigured. See the server log.</p>', { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8', ...NO_STORE } });
@@ -44,9 +43,11 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   forwarded.set('Content-Security-Policy', policy);
   const response = result.kind === 'redirect'
     ? NextResponse.redirect(result.location, 302)
-    : result.kind === 'error'
-      ? new NextResponse(result.html, { status: result.status, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
-      : NextResponse.next({ request: { headers: forwarded } });
+    : result.kind === 'see-other'
+      ? NextResponse.redirect(new URL(result.path, request.url), 303)
+      : result.kind === 'error' || result.kind === 'page'
+        ? new NextResponse(result.html, { status: result.status, headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+        : NextResponse.next({ request: { headers: forwarded } });
   response.headers.set('Content-Security-Policy', policy);
   for (const [name, value] of Object.entries(NO_STORE)) response.headers.set(name, value);
   for (const cookie of result.cookies) response.headers.append('Set-Cookie', cookie);

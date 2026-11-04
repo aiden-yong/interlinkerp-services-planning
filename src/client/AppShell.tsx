@@ -5,11 +5,11 @@ import { useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 import { api, setUnauthorizedHandler } from './api';
 import { FeedbackProvider } from './feedback';
-import { PlanningMark } from './icons';
 import { access, notOnRosterMessage, type Screen } from './router';
 import { NotificationBell } from './notifications/NotificationBell';
 import { ThemeSwitch } from './ThemeSwitch';
 import { DevIdentityPicker } from './DevIdentityPicker';
+import { ProfileMenu } from './ProfileMenu';
 import type { Me } from './types';
 
 function NavLink({ href, active, children }: { href: string; active: boolean; children: ReactNode }) {
@@ -41,8 +41,19 @@ export function AppShell({ screen, children }: { screen: Screen; children?: (me:
 
   return (
     <FeedbackProvider>
+      <a className="skip-link" href="#main">Skip to content</a>
       <header className="top">
-        <span className="brand"><span className="brand-mark"><PlanningMark /></span>Planning</span>
+        <span className="brand">
+          <span className="brand-logo-full">
+            <img src="/brand/interlinkerp-logo-light.svg" alt="InterlinkERP" className="brand-logo-light" />
+            <img src="/brand/interlinkerp-logo-dark.svg" alt="InterlinkERP" className="brand-logo-dark" />
+          </span>
+          <span className="brand-logo-icon">
+            <img src="/brand/interlinkerp-icon-light.svg" alt="InterlinkERP" className="brand-logo-light" />
+            <img src="/brand/interlinkerp-icon-dark.svg" alt="InterlinkERP" className="brand-logo-dark" />
+          </span>
+          <span className="brand-app">Planning</span>
+        </span>
         <nav aria-label="Planning">
           {me?.is_manager && <NavLink href="/schedule" active={screen === 'schedule'}>Schedule</NavLink>}
           {me?.is_manager && <NavLink href="/reports" active={screen === 'reports'}>Reports</NavLink>}
@@ -53,10 +64,12 @@ export function AppShell({ screen, children }: { screen: Screen; children?: (me:
         {me && screen !== 'not-on-roster' && <NotificationBell />}
         {me?.dev_identity && <DevIdentityPicker />}
         <ThemeSwitch />
-        {/* No sign-out button: the InterlinkERP gateway is the only place to sign out. */}
-        <span className="who" title={me?.email ?? undefined}>{me?.name ?? me?.email ?? ''}</span>
+        {/* No sign-out button outside the demo: the InterlinkERP gateway is the only place to sign out. */}
+        {me?.demo
+          ? <ProfileMenu me={me} />
+          : <span className="who" title={me?.email ?? undefined}>{me?.name ?? me?.email ?? ''}</span>}
       </header>
-      <main>{content}</main>
+      <main id="main" tabIndex={-1}>{content}</main>
     </FeedbackProvider>
   );
 }

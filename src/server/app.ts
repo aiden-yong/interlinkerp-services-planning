@@ -4,9 +4,13 @@ import { Gateway } from './auth/gateway';
 import { GatewayAccessGuard } from './auth/guard';
 import { SessionCodec } from './auth/session';
 import { TokenVerifier } from './auth/tokens';
-import { env, requireEnv } from './config/env';
+import { ConfigError, env, requireAll, requireEnv } from './config/env';
 import { type ServiceInfo, serviceInfoFromEnv } from './config/serviceInfo';
 import { createDatabase, type Database } from './db/client';
+import { demoConfigurationError, demoEnabled, demoRequested } from './demo/demo';
+import { DemoGate } from './demo/demoGate';
+import { DemoAccessGuard } from './demo/demoGuard';
+import { DemoSeeder } from './demo/seeder';
 import { catalog } from './http/catalog';
 import { type AccessGuard, Kernel, type Logger } from './http/kernel';
 import { buildOpenApi } from './http/openapi';
@@ -57,10 +61,17 @@ import { Retention } from './notifications/retention';
 import { EmailPreferences } from './repo/emailPreferences';
 import { CalendarFeedRepository, FEED_LIMIT } from './repo/calendarFeeds';
 import { RateLimiter, type RateLimitPolicy, WRITE_LIMIT } from './repo/rateLimits';
-import { PageGate } from './web/pageGate';
+import { type Gate, PageGate } from './web/pageGate';
 
 /** Checked before any request is served (contract SS-20). Later tasks extend this list. */
 export const REQUIRED_ENV = ['SERVICE_ID', 'OPENAPI_EXTENSION_KEY', 'DATABASE_URL', 'GATEWAY_URL', 'PUBLIC_URL', 'SESSION_SECRET'];
+
+/** Throws ConfigError when the app must not serve. A demo never uses the gateway, so it needn't name one. */
+export function assertConfigured(): void {
+  requireAll(demoRequested() ? REQUIRED_ENV.filter((key) => key !== 'GATEWAY_URL') : REQUIRED_ENV);
+  const demoProblem = demoConfigurationError();
+  if (demoProblem) throw new ConfigError(demoProblem);
+}
 
 /** Everything tests may replace. Production uses `new App()`. */
 export interface AppDeps {
@@ -82,6 +93,8 @@ export interface AppDeps {
   badges?: BadgePublisher;
   /** Write rate limit (backlog item 10); null turns it off. */
   rateLimit?: RateLimitPolicy | null;
+  /** Demo mode (demo/demo.ts); by default it comes from the environment. */
+  demo?: boolean;
 }
 
 /**
@@ -104,6 +117,14 @@ export class App {
     return this.deps.clock ?? systemClock;
   }
 
+  isDemo(): boolean {
+    return this.deps.demo ?? demoEnabled();
+  }
+
+  demoSeeder(): DemoSeeder {
+    return this.once('demoSeeder', () => new DemoSeeder(this.database().db, this.organisationId(), this.defaultTimezone(), this.clock(), this.publicUrl(), env('DATABASE_URL')));
+  }
+
   organisationId(): string {
     return this.deps.organisationId ?? env('ORGANISATION_ID', 'default')!;
   }
@@ -117,9 +138,11 @@ export class App {
   }
 
   guard(): AccessGuard {
-    return this.deps.guard ?? this.once('guard', () => new GatewayAccessGuard(
-      this.sessions(), this.gateway(), this.tokenVerifier(), this.managers(), this.devIdentity(), this.secureCookies(), this.roster(), this.clock(),
-    ));
+    return this.deps.guard ?? this.once('guard', () => (this.isDemo()
+      ? new DemoAccessGuard(this.sessions(), this.secureCookies())
+      : new GatewayAccessGuard(
+        this.sessions(), this.gateway(), this.tokenVerifier(), this.managers(), this.devIdentity(), this.secureCookies(), this.roster(), this.clock(),
+      )));
   }
 
   http(): HttpClient {
@@ -155,6 +178,7 @@ export class App {
   }
 
   devIdentity(): DevIdentity | null {
+    if (this.isDemo()) return null;
     return this.deps.devIdentity !== undefined ? this.deps.devIdentity : this.once('devIdentity', () => DevIdentity.fromEnv());
   }
 
@@ -212,7 +236,7 @@ export class App {
     return this.deps.mailer ?? this.once('mailer', () => {
       const url = env('SMTP_URL');
       const from = env('MAIL_FROM');
-      return url && from ? new SmtpMailer(url, from) : new LogMailer(this.log);
+      return url && from && !this.isDemo() ? new SmtpMailer(url, from) : new LogMailer(this.log);
     });
   }
 
@@ -220,7 +244,7 @@ export class App {
     return this.deps.badges ?? this.once('badges', () => {
       const id = env('INTERLINK_CLIENT_ID');
       const secret = env('INTERLINK_CLIENT_SECRET');
-      return env('GATEWAY_BADGES') === 'on' && id && secret
+      return env('GATEWAY_BADGES') === 'on' && id && secret && !this.isDemo()
         ? new GatewayBadgePublisher(this.http(), this.gatewayUrl(), this.serviceInfo().serviceId, id, secret, this.log)
         : noBadges;
     });
@@ -360,7 +384,7 @@ export class App {
     return this.once('credentials', () => {
       const id = env('INTERLINK_CLIENT_ID');
       const secret = env('INTERLINK_CLIENT_SECRET');
-      return id && secret ? new ClientCredentials(this.http(), this.gatewayUrl(), id, secret, this.clock()) : null;
+      return id && secret && !this.isDemo() ? new ClientCredentials(this.http(), this.gatewayUrl(), id, secret, this.clock()) : null;
     });
   }
 
@@ -388,10 +412,12 @@ export class App {
     return this.once('directoryRefresher', () => new DirectoryRefresher(this.roster(), this.departments(), this.directory(), this.clock(), this.log));
   }
 
-  pageGate(): PageGate {
-    return this.once('pageGate', () => new PageGate(
-      this.gateway(), this.tokenVerifier(), this.sessions(), this.roster(), this.devIdentity(), this.publicUrl(), this.log, this.clock(), env('SIGNIN_STATE_OPTIONAL') === '1',
-    ));
+  pageGate(): Gate {
+    return this.once('pageGate', () => (this.isDemo()
+      ? new DemoGate(this.sessions(), this.demoSeeder(), this.publicUrl(), this.log)
+      : new PageGate(
+        this.gateway(), this.tokenVerifier(), this.sessions(), this.roster(), this.devIdentity(), this.publicUrl(), this.log, this.clock(), env('SIGNIN_STATE_OPTIONAL') === '1',
+      )));
   }
 
   router(): Router {
