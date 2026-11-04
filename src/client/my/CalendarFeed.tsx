@@ -83,7 +83,7 @@ export function CalendarFeed() {
               <p className="muted">Paste this link into Google Calendar, Outlook or Apple Calendar as a subscription. Anyone with the link can see your published shifts.</p>
             </>
           ) : <p>Your calendar link is on.</p>}
-          <div className="actions" style={{ flexWrap: 'wrap' }}>
+          <div className="actions">
             {state.url && <button type="button" onClick={() => void copy(state.url!)}>Copy</button>}
             <button type="button" disabled={busy} onClick={reset}>Reset link</button>
             <button type="button" className="danger" disabled={busy} onClick={turnOff}>Turn off</button>
