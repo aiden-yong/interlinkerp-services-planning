@@ -47,13 +47,16 @@ export function ProfileMenu({ me }: { me: Me }) {
 
   return (
     <div className="profile" ref={box}>
-      <button type="button" className="profile-button" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)}>
-        <span className="avatar-initials" aria-hidden="true">{initials(name)}</span>
-        <span className="profile-who">
-          <span className="who">{name}</span>
-          <span className="profile-role">{role}</span>
+      <button type="button" className="user-profile-badge" title={me.email ? `${name} (${me.email}) - ${role}` : `${name} - ${role}`} aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)}>
+        <span className="user-profile-avatar" aria-hidden="true">
+          {initials(name)}
+          <span className="user-status-indicator" />
         </span>
-        <ChevronDownIcon />
+        <span className="user-profile-info">
+          <span className="user-profile-name">{name}</span>
+          <span className="user-profile-role">{role}</span>
+        </span>
+        <span className="user-profile-chevron"><ChevronDownIcon /></span>
       </button>
       {me.demo && <form ref={resetForm} method="post" hidden><input type="hidden" name="demo_action" value="reset" /></form>}
       <div id={panelId} className="profile-panel" hidden={!open}>
