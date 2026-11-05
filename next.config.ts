@@ -13,6 +13,8 @@ const config: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   poweredByHeader: false,
   serverExternalPackages: ['pg'],
+  // Pages hold no server data (each fetches its own through the API), so the router may reuse them and move instantly.
+  experimental: { staleTimes: { dynamic: 300, static: 300 } },
   async headers() {
     return [
       { source: '/:path*', headers: SECURITY_HEADERS },
