@@ -28,7 +28,7 @@
 
 **Spec:** [ListOfRequirements.md](../../../ListOfRequirements.md) (v0.2). Roadmap: [2026-10-13-planning-roadmap.md](2026-10-13-planning-roadmap.md).
 
-**Reference material:** the sibling repo `../hr-recruitment-demo` already talks to the same gateway.
+**Reference material:** the sibling HR recruitment repo already talks to the same gateway.
 - Its `API_Template/*.md` files are the service contract. This plan cites them as "contract SS-n", "auth guide §n" and "performance guide §n". The auth guide's examples are already JavaScript; read the sections a task points at.
 - Its `backend/services/RosterService.php` shows the roster lookup Task 7 reimplements.
 - Copy nothing else from that repo.
