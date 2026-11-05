@@ -111,7 +111,10 @@ function checkRoster(seed: number): number {
     for (const f of added) {
       expect(conflicts.get(f.id), `conflict on ${f.id} for ${p.ref}`).toEqual([]);
       const working = workingIntervals(p.workingHours!, f.interval.start - DAY, f.interval.end + DAY, p.zone);
-      expect(subtract(f.interval, working), `${f.id} outside working hours of ${p.ref}`).toEqual([]);
+      // Only a gap inside the shift, covered by its own break, may fall outside working hours.
+      const gaps = subtract(f.interval, working);
+      expect(gaps.filter((g) => g.start <= f.interval.start || g.end >= f.interval.end), `${f.id} runs past the working hours of ${p.ref}`).toEqual([]);
+      expect(gaps.reduce((sum, g) => sum + (g.end - g.start) / 60_000, 0), `${f.id}'s break doesn't cover its gaps for ${p.ref}`).toBeLessThanOrEqual(f.breakMinutes);
     }
     const before = new Set(overDays(p, p.existing));
     expect(overDays(p, all).filter((d) => !before.has(d)), `new over-allocated days for ${p.ref}`).toEqual([]);

@@ -366,7 +366,7 @@ Source: ODOO-DOC (allocated time and percentage), VENDOR (over-allocation), OWN 
 - Assign only eligible employees (BR-05).
 - Prefer employees whose *default* role matches the shift.
 - Skip flexible-hours employees and employees with no roles.
-- Respect working hours: never assign beyond them.
+- Respect working hours: never assign beyond them. A gap inside someone's working hours, such as lunch, doesn't count against a shift whose own break is at least that long. Time before or after their hours always does.
 
 Source: ODOO-DOC. Ties are broken by spreading load evenly: the employee with the fewest allocated hours in the period goes first (OI-04).
 

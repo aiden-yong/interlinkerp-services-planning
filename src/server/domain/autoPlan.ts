@@ -57,11 +57,22 @@ function staysWithinAvailable(p: Candidate, withShift: ShiftFacts[], shift: Shif
   return overAllocatedDays(onShiftDays, available).length === 0;
 }
 
+/**
+ * Working hours cover the shift. A gap in the middle of them, such as lunch, doesn't count against it when the shift's
+ * own break is long enough to cover the gap: a 09:00-18:00 shift with an hour's break fits 09:00-13:00 and 14:00-18:00.
+ * Time before or after someone's hours always counts, since a break can't be taken outside the shift.
+ */
+function fitsWorkingHours(p: Candidate, s: ShiftFacts): boolean {
+  const outside = subtract(s.interval, workingIntervals(p.workingHours!, s.interval.start, s.interval.end, p.zone));
+  const minutes = outside.reduce((sum, gap) => sum + (gap.end - gap.start) / 60_000, 0);
+  return outside.every((gap) => gap.start > s.interval.start && gap.end < s.interval.end) && minutes <= s.breakMinutes;
+}
+
 /** D9 as successive filters; the first filter that empties the pool names the reason (D12). */
 const STEPS: [UnfilledReason, (p: Candidate, shift: ShiftFacts, state: RunningState) => boolean][] = [
   ['no_role_holder', (p, s) => p.onRoster && p.roleIds.length > 0 && (s.roleId === null || p.roleIds.includes(s.roleId))],
   ['all_flexible', (p) => p.workingHours !== null],
-  ['outside_working_hours', (p, s) => subtract(s.interval, workingIntervals(p.workingHours!, s.interval.start, s.interval.end, p.zone)).length === 0],
+  ['outside_working_hours', fitsWorkingHours],
   ['busy_or_away', (p, s, state) => conflictsForEmployee([...state.get(p.ref)!, s], p.away, p.roleIds).get(s.id)!.length === 0],
   ['over_available', (p, s, state) => staysWithinAvailable(p, [...state.get(p.ref)!, s], s)],
 ];

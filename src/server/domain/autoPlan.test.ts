@@ -106,6 +106,33 @@ describe('Auto Plan planner (BR-09, D9-D12)', () => {
       'all_flexible', 'Everyone with this role is on flexible hours');
   });
 
+  describe('a lunch gap in someone\'s working hours', () => {
+    const withLunch = parseWorkingHours({ mon: [['09:00', '13:00'], ['14:00', '18:00']], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] })!;
+    const planOne = (over: Partial<OpenDraft>, from = '09:00', to = '18:00') =>
+      planAutoAssignments([draft('s1', '12', from, to, 'tech', over)], [person('E1', 'Ann', { workingHours: withLunch })], period);
+    const outside = { assignments: [], unfilled: [{ shiftId: 's1', reason: 'outside_working_hours' }] };
+
+    it('fits a full-day shift whose break covers the gap', () => {
+      expect(planOne({ breakMinutes: 60 }).assignments).toEqual([{ shiftId: 's1', employeeRef: 'E1' }]);
+      expect(planOne({ breakMinutes: 90 }).assignments).toHaveLength(1);
+    });
+
+    it('still refuses one with no break, or too short a break, across the gap', () => {
+      expect(planOne({})).toEqual(outside);
+      expect(planOne({ breakMinutes: 30 })).toEqual(outside);
+    });
+
+    it('never lets a break excuse time before or after working hours', () => {
+      expect(planOne({ breakMinutes: 60 }, '08:00', '12:00')).toEqual(outside);
+      expect(planOne({ breakMinutes: 60 }, '15:00', '19:00')).toEqual(outside);
+      expect(planOne({ breakMinutes: 120 }, '09:00', '19:00')).toEqual(outside);
+    });
+
+    it('still fits a shift inside one block, with no break needed', () => {
+      expect(planOne({}, '09:00', '13:00').assignments).toHaveLength(1);
+    });
+  });
+
   it('reports outside_working_hours', () => {
     expectUnfilled([draft('s1', '17', '09:00', '13:00')], [person('E1', 'Ann')], 'outside_working_hours', "Outside everyone's working hours");
     expectUnfilled([draft('s1', '12', '15:00', '18:00')], [person('E1', 'Ann')], 'outside_working_hours', "Outside everyone's working hours");
