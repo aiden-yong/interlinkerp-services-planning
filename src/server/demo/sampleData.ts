@@ -141,9 +141,8 @@ export function buildSampleData(now: Date, zone: string) {
   add(null, 'field', 0, 6, '09:00', '14:00', { published: true, note: 'Saturday service round' });
   add(null, 'field', 0, 7, '18:00', '22:00', { published: true, note: 'Sunday evening stand-by' });
   add('SVC-003', 'field', 0, 6, '15:00', '18:00', { published: true, switchRequested: true, note: 'Swap wanted: family event' });
-  // Auto Plan only assigns a shift that fits inside one block of someone's working hours, so these are half days.
   add(null, 'desk', 0, 7, '09:00', '13:00', { published: false, note: 'Weekend desk cover' }); // the desk has nobody on Sundays, so this stays open, with the reason
-  add(null, 'field', 0, 5, '09:00', '13:00', { published: false, note: 'Generator servicing, Klang' }); // Nadia is free on Fridays
+  add(null, 'field', 0, 5, '09:00', '18:00', { published: false, breakMinutes: 60, note: 'Generator servicing, Klang' }); // Nadia is free on Fridays
   add(null, 'field', 0, 6, '10:00', '13:00', { published: false, note: 'Weekend meter readings' }); // Lim Wei Jie works weekends
   add(null, 'field', 0, 7, '14:00', '18:00', { published: false, note: 'Sunday call-outs' });
 

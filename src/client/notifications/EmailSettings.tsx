@@ -17,13 +17,21 @@ export function EmailSettings({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    // A late answer must not reset what someone has already ticked, so only the current load may fill the form.
+    let current = true;
     api<{ preferences: Preference[] }>('GET', '/api/my/notification-preferences').then(
       ({ preferences }) => {
+        if (!current) return;
         setSaved(preferences);
         setChoice(Object.fromEntries(preferences.map((p) => [p.kind, p.email])));
       },
-      (error: unknown) => setProblem(errorText(error)),
+      (error: unknown) => {
+        if (current) setProblem(errorText(error));
+      },
     );
+    return () => {
+      current = false;
+    };
   }, []);
 
   async function save(event: React.FormEvent) {

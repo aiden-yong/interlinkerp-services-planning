@@ -40,9 +40,6 @@ export function demoLandingPage({ publicUrl, error, credit }: LandingOptions): s
   <style>
     @font-face { font-family: Inter; font-style: normal; font-weight: 100 900; font-display: swap; src: url(/fonts/inter-latin-wght-normal.woff2) format("woff2"); }
     :root { --bg: #f2f4f7; --card: #ffffff; --text: #00003f; --muted: #5f6b78; --border: #d6dbe1; --accent: #00005f; --accent-text: #ffffff; --chip: #e8ebef; --error: #b42318; }
-    @media (prefers-color-scheme: dark) {
-      :root { --bg: #16191d; --card: #22272e; --text: #e6e9ed; --muted: #a3acb6; --border: #3a424c; --accent: #e6e9ed; --accent-text: #16191d; --chip: #2d333b; --error: #f97066; }
-    }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; }
     main { width: 100%; max-width: 560px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px; }
@@ -69,10 +66,7 @@ export function demoLandingPage({ publicUrl, error, credit }: LandingOptions): s
 </head>
 <body>
   <main>
-    <picture>
-      <source srcset="/brand/interlinkerp-logo-dark.svg" media="(prefers-color-scheme: dark)" />
-      <img src="/brand/interlinkerp-logo-light.svg" alt="InterlinkERP" />
-    </picture>
+    <img src="/brand/interlinkerp-logo-light.svg" alt="InterlinkERP" />
     <span class="tag">Live demo</span>
     <h1>Services Planning &amp; Shift Scheduling</h1>
     <p>The planning module of the InterlinkERP suite: managers build and publish the Services team's schedule, and employees see their shifts, pick up open ones and swap the ones they can't work.</p>
