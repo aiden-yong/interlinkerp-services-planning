@@ -38,7 +38,7 @@ function RoleRow({ role, onDone }: { role: Role; onDone: () => Promise<void> }) 
         <FieldError id={`role-${role.id}-problem-error`} message={problem} as="div" />
       </td>
       <td><input {...invalid(fe.color, `role-${role.id}-color-error`)} type="color" aria-label="Role colour" value={color} onChange={(e) => setColor(e.target.value)} /><FieldError id={`role-${role.id}-color-error`} message={fe.color} as="div" /></td>
-      <td>{role.archived ? <span className="muted">Archived</span> : 'Active'}</td>
+      <td><span className={`badge ${role.archived ? 'badge-neutral' : 'badge-ok'}`}>{role.archived ? 'Archived' : 'Active'}</span></td>
       <td className="row-actions">
         <button type="button" disabled={busy} onClick={() => patch({ name, color })}>Save</button>
         <button type="button" disabled={busy} onClick={() => patch({ archived: !role.archived })}>{role.archived ? 'Restore' : 'Archive'}</button>

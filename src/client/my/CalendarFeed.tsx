@@ -72,7 +72,12 @@ export function CalendarFeed() {
   return (
     <section className="calendar-feed" aria-labelledby="calendar-feed-title">
       <h2 id="calendar-feed-title">Add to your calendar</h2>
-      {state.kind === 'off' && <div className="actions"><button type="button" className="primary" disabled={busy} onClick={create}>Get calendar link</button></div>}
+      {state.kind === 'off' && (
+        <>
+          <p className="muted">See your shifts in Google Calendar, Outlook or Apple Calendar.</p>
+          <div className="actions"><button type="button" className="sm" disabled={busy} onClick={create}>Get calendar link</button></div>
+        </>
+      )}
       {state.kind === 'on' && (
         <>
           {state.url ? (
@@ -84,9 +89,9 @@ export function CalendarFeed() {
             </>
           ) : <p>Your calendar link is on.</p>}
           <div className="actions">
-            {state.url && <button type="button" onClick={() => void copy(state.url!)}>Copy</button>}
-            <button type="button" disabled={busy} onClick={reset}>Reset link</button>
-            <button type="button" className="danger" disabled={busy} onClick={turnOff}>Turn off</button>
+            {state.url && <button type="button" className="sm" onClick={() => void copy(state.url!)}>Copy</button>}
+            <button type="button" className="sm" disabled={busy} onClick={reset}>Reset link</button>
+            <button type="button" className="danger sm" disabled={busy} onClick={turnOff}>Turn off</button>
           </div>
         </>
       )}
