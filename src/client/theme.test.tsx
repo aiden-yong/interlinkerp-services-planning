@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readTheme, saveTheme, showTheme, THEME_BOOT_SCRIPT, THEME_KEY } from './theme';
 import { ThemeSwitch } from './ThemeSwitch';
 
@@ -9,6 +9,7 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   root.removeAttribute('data-theme');
+  delete root.dataset.defaultTheme;
 });
 
 describe('theme choice', () => {
@@ -41,6 +42,31 @@ describe('theme choice', () => {
 
   it('leaves <html> alone in the pre-paint script when nothing valid is saved', () => {
     localStorage.setItem(THEME_KEY, '"><script>');
+    new Function(THEME_BOOT_SCRIPT)();
+    expect(root.hasAttribute('data-theme')).toBe(false);
+  });
+});
+
+describe('a page that opens in light by default (the public demo)', () => {
+  beforeEach(() => {
+    root.dataset.defaultTheme = 'light';
+  });
+
+  it('opens in light before anything is chosen, whatever the device prefers', () => {
+    expect(readTheme()).toBe('light');
+    new Function(THEME_BOOT_SCRIPT)();
+    expect(root.getAttribute('data-theme')).toBe('light');
+  });
+
+  it('keeps a saved choice', () => {
+    saveTheme('dark');
+    new Function(THEME_BOOT_SCRIPT)();
+    expect(root.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('remembers "system", or the next visit would go back to light', () => {
+    saveTheme('system');
+    expect(readTheme()).toBe('system');
     new Function(THEME_BOOT_SCRIPT)();
     expect(root.hasAttribute('data-theme')).toBe(false);
   });

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import { THEME_BOOT_SCRIPT } from '@/client/theme';
+import { demoEnabled } from '@/server/demo/demo';
 import './globals.css';
 
 export const metadata: Metadata = { title: 'Planning · InterlinkERP' };
@@ -19,7 +20,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
     // The boot script may set data-theme before React hydrates, so <html> is allowed to differ.
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-default-theme={demoEnabled() ? 'light' : undefined} suppressHydrationWarning>
       <head>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
