@@ -39,9 +39,11 @@ test('an employee asks for cover and a colleague takes the shift over', async ({
   await actAs(context, ANA);
   await page.goto('/my');
   await page.getByRole('button', { name: 'Next week' }).click();
+  await page.getByRole('button', { name: /^My shift / }).click();
   await page.getByRole('button', { name: /^Ask for cover for shift / }).click();
   await page.getByRole('dialog', { name: 'Put this shift up for switch?' }).getByRole('button', { name: 'Ask for cover' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Shift is up for switch.' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'My shift' })).toHaveCount(0);
   await expect(page.getByText('Up for switch', { exact: true })).toBeVisible();
 
   await actAs(context, BO);

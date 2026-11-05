@@ -1,0 +1,131 @@
+/* My Planning: a calendar with Day, Week, Month and Year views. Theme tokens come from globals.css. */
+
+.my-calendar { display: grid; grid-template-columns: 276px minmax(0, 1fr); gap: 20px; align-items: start; max-width: 1560px; margin-inline: auto; }
+.my-side { display: grid; gap: 12px; min-width: 0; }
+.my-main { min-width: 0; }
+.my-side .available, .my-side .calendar-feed { margin-top: 0; padding: 14px; }
+.my-side .available h2, .my-side .calendar-feed h2 { font-size: 0.875rem; }
+.my-side .available li { align-items: flex-start; gap: 10px; padding: 8px 0; }
+.my-side .available .when { font-size: 0.8125rem; }
+.my-side .available .muted { display: block; font-size: 0.75rem; }
+.my-side .available .sep { display: none; }
+.my-side .calendar-feed .actions { margin-top: 10px; }
+.my-side .calendar-feed input { min-width: 0; }
+.cal-keys kbd { padding: 0 4px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--line-strong); font: inherit; font-size: 0.6875rem; }
+.cal-empty { margin: 0 0 10px; padding: 8px 12px; border-radius: var(--radius); background: var(--fill); color: var(--muted); font-size: 0.8125rem; }
+
+/* Sidebar: small month, toggles */
+.mini-month, .cal-year-month { padding: 12px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm), var(--edge); }
+.mini-month header, .cal-year-month header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.mini-month header strong { color: var(--heading); font-size: 0.8125rem; font-weight: 600; }
+.mini-month header span { display: inline-flex; }
+.mini-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); justify-items: center; row-gap: 1px; font-variant-numeric: tabular-nums; }
+.mini-head { color: var(--muted); font-size: 0.6875rem; font-weight: 600; line-height: 24px; }
+button.mini-day { width: 28px; height: 28px; min-height: 0; padding: 0; border-radius: 50%; background: transparent; box-shadow: none; color: var(--text); font-size: 0.75rem; font-weight: 450; }
+button.mini-day:hover:not(:disabled) { background: var(--fill); }
+button.mini-day.outside { color: color-mix(in srgb, var(--muted) 55%, transparent); }
+button.mini-day.worked { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+button.mini-day.selected { box-shadow: inset 0 0 0 1.5px var(--accent); }
+button.mini-day.today, button.mini-day.today:hover:not(:disabled) { background: var(--accent-fill); color: var(--on-accent); font-weight: 650; }
+.cal-toggles { margin: 0; padding: 10px 14px 12px; background: var(--surface); border-color: var(--line); }
+.cal-toggles .check { font-size: 0.8125rem; }
+.swatch { flex: none; display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--accent-fill); }
+.swatch.mine { background: color-mix(in srgb, var(--accent) 15%, var(--surface)); box-shadow: inset 3px 0 0 var(--accent); }
+.swatch.open { background: var(--surface); outline: 1px dashed var(--muted); outline-offset: -1px; }
+.cal-roles { display: grid; gap: 4px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.75rem; }
+.cal-roles:empty { display: none; }
+.cal-roles span { display: flex; align-items: center; gap: 6px; }
+
+/* Day and Week */
+.cal-grid { --hour: 52px; --gutter: 56px; overflow: auto; max-height: calc(100dvh - 172px); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm), var(--edge); scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.cal-grid-head, .cal-grid-body { display: grid; grid-template-columns: var(--gutter) repeat(var(--days, 7), minmax(0, 1fr)); min-width: 640px; }
+.cal-grid.cols-1 .cal-grid-head, .cal-grid.cols-1 .cal-grid-body { --days: 1; min-width: 0; }
+.cal-grid-head { position: sticky; top: 0; z-index: 3; background: var(--surface); box-shadow: 0 1px 0 var(--line-strong); }
+.cal-col-head { display: flex; justify-content: center; padding: 6px 2px; border-left: 1px solid var(--grid-line); }
+.cal-col-head button { display: grid; justify-items: center; gap: 1px; min-height: 0; padding: 2px 8px; background: transparent; box-shadow: none; }
+.cal-col-head .weekday { color: var(--muted); font-size: 0.75rem; font-weight: 550; }
+.cal-col-head .num { min-width: 30px; height: 30px; border-radius: 50%; color: var(--text); font-size: 1.0625rem; font-weight: 600; line-height: 30px; font-variant-numeric: tabular-nums; }
+.cal-col-head button:hover:not(:disabled) { background: transparent; }
+.cal-col-head button:hover .num { background: var(--fill); }
+.cal-col-head.today .weekday { color: var(--accent); }
+.cal-col-head.today .num, .cal-col-head.today button:hover .num { background: var(--accent-fill); color: var(--on-accent); }
+.cal-hour { position: relative; height: var(--hour); }
+.cal-hour span { position: absolute; top: -8px; right: 8px; color: var(--muted); font-size: 0.6875rem; font-variant-numeric: tabular-nums; }
+.cal-col { position: relative; border-left: 1px solid var(--grid-line); }
+.cal-col.today { background: color-mix(in srgb, var(--accent) 3%, transparent); }
+.cal-slot { height: var(--hour); border-top: 1px solid var(--grid-line); }
+.cal-slot:first-child { border-top: 0; }
+.cal-now { position: absolute; left: 0; right: 0; z-index: 2; height: 2px; background: var(--danger); pointer-events: none; }
+.cal-now::before { content: ""; position: absolute; top: -4px; left: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--danger); }
+
+/* A shift. Mine: a soft tint of the role colour with a solid edge, so a full week stays calm and its text stays dark.
+   Available: dashed outline, because it isn't mine yet. Asking for cover: striped. */
+button.cal-event, button.cal-chip { display: block; min-height: 0; border-radius: 6px; white-space: nowrap; text-align: left; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+button.cal-event { position: absolute; z-index: 1; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 0; padding: 4px 7px 4px 9px; background: color-mix(in srgb, var(--role-color, var(--accent)) 15%, var(--surface)); box-shadow: inset 3px 0 0 var(--role-color, var(--accent)), 0 0 0 1px var(--surface); color: var(--text); font-size: 0.75rem; line-height: 1.3; }
+.cal-event > span { display: block; overflow: hidden; text-overflow: ellipsis; }
+.cal-event .time { font-weight: 650; font-variant-numeric: tabular-nums; }
+.cal-event .flag { margin-top: 2px; font-size: 0.6875rem; font-weight: 650; }
+button.cal-event:hover:not(:disabled) { background: color-mix(in srgb, var(--role-color, var(--accent)) 24%, var(--surface)); z-index: 2; }
+button.cal-event.from-before { border-top-left-radius: 0; border-top-right-radius: 0; }
+button.cal-event.to-after { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+button.cal-event.open, button.cal-event.switch, button.cal-chip.open, button.cal-chip.switch {
+  background: color-mix(in srgb, var(--role-color, var(--accent)) 9%, var(--surface));
+  box-shadow: none;
+  border: 1px dashed color-mix(in srgb, var(--role-color, var(--accent)) 75%, var(--text));
+  color: var(--text);
+}
+button.cal-event.open:hover:not(:disabled), button.cal-event.switch:hover:not(:disabled), button.cal-chip.open:hover:not(:disabled), button.cal-chip.switch:hover:not(:disabled) { background: color-mix(in srgb, var(--role-color, var(--accent)) 18%, var(--surface)); }
+button.cal-event.asking, button.cal-event.asking:hover:not(:disabled), button.cal-chip.asking, button.cal-chip.asking:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--role-color, var(--accent)) 20%, var(--surface));
+  background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--role-color, var(--accent)) 18%, transparent) 0 5px, transparent 5px 10px);
+  color: var(--text);
+}
+
+/* Month */
+.cal-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: auto repeat(var(--weeks), minmax(112px, 1fr)); min-height: calc(100dvh - 172px); overflow: hidden; border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm), var(--edge); }
+.cal-month-head { padding: 8px; border-bottom: 1px solid var(--line-strong); color: var(--muted); font-size: 0.75rem; font-weight: 550; text-align: center; }
+.cal-month-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 4px; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.cal-month-cell:nth-child(7n + 1) { border-left: 0; }
+.cal-month-cell.outside { background: color-mix(in srgb, var(--fill) 40%, transparent); }
+.cal-month-cell .num { align-self: center; width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 50%; background: transparent; box-shadow: none; font-size: 0.8125rem; font-weight: 550; font-variant-numeric: tabular-nums; }
+.cal-month-cell .num:hover:not(:disabled) { background: var(--fill); }
+.cal-month-cell.outside .num { color: var(--muted); }
+.cal-month-cell.today .num, .cal-month-cell.today .num:hover:not(:disabled) { background: var(--accent-fill); color: var(--on-accent); }
+button.cal-chip { width: 100%; flex: none; padding: 2px 6px 2px 8px; background: color-mix(in srgb, var(--role-color, var(--accent)) 15%, var(--surface)); box-shadow: inset 3px 0 0 var(--role-color, var(--accent)); color: var(--text); font-size: 0.75rem; line-height: 1.35; }
+button.cal-chip:hover:not(:disabled) { background: color-mix(in srgb, var(--role-color, var(--accent)) 24%, var(--surface)); }
+.cal-chip .time { font-weight: 650; font-variant-numeric: tabular-nums; }
+button.cal-more { min-height: 0; padding: 1px 6px; background: transparent; box-shadow: none; color: var(--muted); font-size: 0.75rem; justify-content: flex-start; }
+button.cal-more:hover:not(:disabled) { background: var(--fill); color: var(--text); }
+
+/* Year */
+.cal-year { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 12px; }
+button.cal-year-title { min-height: 0; padding: 2px 6px; background: transparent; box-shadow: none; color: var(--heading); font-weight: 600; }
+.cal-year-month header .muted { font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+
+/* Shift details */
+.shift-detail-role { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; color: var(--text); font-weight: 600; }
+.shift-detail-role i { flex: none; width: 12px; height: 12px; border-radius: 4px; background: var(--role-color, var(--accent-fill)); }
+.shift-detail dl { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 12px; margin: 0; }
+.shift-detail dt { color: var(--muted); font-size: 0.8125rem; }
+.shift-detail dd { margin: 0; font-variant-numeric: tabular-nums; }
+.shift-detail .muted { margin-top: 12px; }
+
+@media (max-width: 1000px) {
+  .my-calendar { grid-template-columns: minmax(0, 1fr); }
+  .my-main { order: -1; }
+  .mini-month { display: none; }
+  .cal-grid { max-height: 70dvh; }
+  .cal-month { min-height: 0; }
+}
+@media (max-width: 700px) {
+  .cal-grid { --gutter: 44px; }
+  .cal-grid:not(.cols-1) .cal-grid-head, .cal-grid:not(.cols-1) .cal-grid-body { min-width: 560px; }
+  .cal-month { grid-template-rows: auto repeat(var(--weeks), minmax(76px, 1fr)); }
+  .cal-month-cell { padding: 2px; }
+  button.cal-chip { padding: 1px 3px; font-size: 0.6875rem; }
+  .cal-chip .time { display: none; }
+  .cal-keys { display: none; }
+}
+@media (pointer: coarse) {
+  button.mini-day { min-height: 0; }
+}

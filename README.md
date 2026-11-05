@@ -21,6 +21,8 @@ Edit `src/server/db/schema.ts`, run `npm run db:generate`, read the new SQL in `
 ## Tests
 `npm test` runs everything. `npm run test:unit` needs nothing; `npm run test:integration` needs the local `planning_test` database. `npm run typecheck` for types.
 
+My Planning is a calendar with Day, Week, Month and Year views. Clicking a shift opens its details and actions, and the keys D, W, M, Y, T and the arrow keys work as in Google Calendar.
+
 Browser tests (Playwright) cover ten flows: publish a week, claim an open shift, ask for cover and take it over, read notices, repeat a shift weekly, copy the previous week, run Auto Plan, download a planned-hours CSV, open a month from the Year scale, and fetch an employee's calendar file. Run `npx playwright install chromium` once, then `npm run test:e2e`. They start their own `next dev` on port 3200 (building into `.next-e2e`, so your dev server on 3000 is untouched), use `TEST_DATABASE_URL`, and fail if the browser logs a Content-Security-Policy violation.
 
 ## Deploying
