@@ -44,7 +44,7 @@ export function AvailableShifts({ data, onChanged }: { data: OpenShiftsPayload |
 
   return (
     <section className="available" aria-labelledby="available-heading">
-      <h2 id="available-heading">Available shifts</h2>
+      <h2 id="available-heading">Available shifts <span className="count-pill">{data.open.length + data.up_for_switch.length}</span></h2>
       <ul>
         {data.open.map((s) => (
           <li key={s.id}>

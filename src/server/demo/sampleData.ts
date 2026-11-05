@@ -182,11 +182,11 @@ export function buildSampleData(now: Date, zone: string) {
       { kind: 'shift_assigned', audience: 'employee', recipientRef: ref, title: 'You have a new shift', body: span(first), path: '/my', shiftId: first.id, ageHours: 72, read: true },
     ];
   };
-  const notices: SampleNotice[] = [
+  const notices = ([
     { kind: 'shift_claimed', audience: 'managers', recipientRef: null, title: 'Open shift claimed', body: `Siti Aminah claimed the open shift on ${span(claimed)}.`, path: '/schedule', shiftId: claimed.id, ageHours: 3, read: false },
     ...employeeNotices(DEMO_EMPLOYEE_REF),
     ...employeeNotices(DEMO_VIEW_EMPLOYEE_REF),
-  ];
+  ] satisfies SampleNotice[] as SampleNotice[]).sort((a, b) => b.ageHours - a.ageHours); // the inbox lists the latest insert first, so the oldest goes in first
 
   return {
     settings: { countryCode: 'MY', regionCode: null, timezone: zone, giveUpMode: 'switch', unassignWindowDays: 2, recurrenceHorizonMonths: 6, reminderLeadMinutes: 60 },

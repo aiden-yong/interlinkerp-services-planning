@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { assignLanes, geometry } from './layout';
+import { assignLanes, geometry, mergeShortGaps } from './layout';
 
 const FROM = '2026-10-12T00:00:00Z';
 const TO = '2026-10-19T00:00:00Z';
+
+describe('mergeShortGaps', () => {
+  const span = (start: string, end: string) => ({ start_at: `2026-10-12T${start}:00Z`, end_at: `2026-10-12T${end}:00Z` });
+  const twoHours = 2 * 3_600_000;
+
+  it('joins a morning and afternoon across lunch', () => {
+    expect(mergeShortGaps([span('09:00', '13:00'), span('14:00', '18:00')], twoHours)).toEqual([span('09:00', '18:00')]);
+  });
+
+  it('keeps spans further apart separate, in order', () => {
+    expect(mergeShortGaps([span('14:00', '18:00'), span('08:00', '10:00')], twoHours)).toEqual([span('08:00', '10:00'), span('14:00', '18:00')]);
+  });
+});
 
 describe('layout', () => {
   it('places a bar by time', () => {

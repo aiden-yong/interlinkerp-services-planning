@@ -4,7 +4,7 @@ import { type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEv
 import { WarningIcon } from '../icons';
 import type { Role, SchedulePayload, Shift, TimeSpan } from '../types';
 import { applyDrag, deltaFromPixels, type DragMode, snapMinutes } from './drag';
-import { assignLanes, geometry } from './layout';
+import { assignLanes, geometry, mergeShortGaps } from './layout';
 import { inkOn } from './ink';
 import './switchMarker.css';
 import { type Period, weekdayOf } from './period';
@@ -30,6 +30,9 @@ function rowRefAt(bar: HTMLElement, x: number, y: number): string | null | undef
   if (!row) return undefined;
   return row.dataset.rowRef === 'open' ? null : row.dataset.rowRef;
 }
+
+/** Breaks this short are only drawn where there's room to see them: the Day scale. */
+const LUNCH_MS = 2 * 3_600_000;
 
 export function Board({ data, rows, period, onOpen, onCreate, onChange }: BoardProps) {
   const { from_at: from, to_at: to, timezone: zone } = data.period;
@@ -190,7 +193,7 @@ export function Board({ data, rows, period, onOpen, onCreate, onChange }: BoardP
               </div>
             </div>
             <div className="track" data-track style={{ '--cols': columns.length, '--lanes': count } as CSSProperties} onClick={(ev) => clickTrack(ev, rowRef)}>
-              {e && !e.flexible && e.working_intervals.map((i, n) => band(i, 'work', '', `w${n}`))}
+              {e && !e.flexible && (period.scale === 'day' ? e.working_intervals : mergeShortGaps(e.working_intervals, LUNCH_MS)).map((i, n) => band(i, 'work', '', `w${n}`))}
               {e?.unavailable.map((u, n) => band(u, `away ${u.kind}`, u.label, `u${n}`))}
               <div className="lanes">{row.shifts.map((s) => bar(s, lanes.get(s.id) ?? 0))}</div>
             </div>

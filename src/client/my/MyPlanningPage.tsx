@@ -118,24 +118,30 @@ export function MyPlanningPage({ me }: { me: Me }) {
       <aside className="my-side">
         <MiniMonth anchor={anchor} today={today} hours={hours} onPick={(date) => (scale === 'year' ? openDay(date) : setAnchor(date))} />
 
-        <div className="stat-card">
-          <div className="stat-card-label">Planned this {scale}</div>
-          <div className="stat-card-value">{totals.hours.toFixed(1)} h</div>
-          <div className="stat-card-note">{totals.count} published shift{totals.count === 1 ? '' : 's'}</div>
-        </div>
-
-        <fieldset className="cal-toggles">
-          <legend>Show</legend>
-          <label className="check"><input type="checkbox" checked={showMine} onChange={(e) => setShowMine(e.target.checked)} /><i className="swatch mine" aria-hidden="true" /> My shifts</label>
-          <label className="check"><input type="checkbox" checked={showAvailable} onChange={(e) => setShowAvailable(e.target.checked)} /><i className="swatch open" aria-hidden="true" /> Available shifts</label>
-          <div className="cal-roles">
-            {roles.filter((r) => !r.archived && shifts.some((s) => s.role_id === r.id)).map((r) => <span key={r.id}><i className="swatch" style={{ background: r.color }} aria-hidden="true" />{r.name}</span>)}
+        <section className="side-card side-summary" aria-label="This period">
+          <div className="side-stat">
+            <span>
+              <span className="side-stat-label">Planned this {scale}</span>
+              <span className="side-stat-note">{totals.count} published shift{totals.count === 1 ? '' : 's'}</span>
+            </span>
+            <strong>{totals.hours.toFixed(1)} h</strong>
           </div>
-        </fieldset>
+          <div className="side-show" role="group" aria-label="Show on the calendar">
+            <label className="check"><input type="checkbox" checked={showMine} onChange={(e) => setShowMine(e.target.checked)} /> My shifts <i className="swatch mine" aria-hidden="true" /></label>
+            <label className="check"><input type="checkbox" checked={showAvailable} onChange={(e) => setShowAvailable(e.target.checked)} /> Available shifts <i className="swatch open" aria-hidden="true" /></label>
+          </div>
+        </section>
 
         <AvailableShifts data={openShifts.data} onChanged={reloadAll} />
         <CalendarFeed />
-        <p className="footnote cal-keys">Times are in {zone}. Keys: <kbd>D</kbd> <kbd>W</kbd> <kbd>M</kbd> <kbd>Y</kbd> change view, <kbd>T</kbd> today, <kbd>←</kbd> <kbd>→</kbd> move.</p>
+        <details className="cal-keys">
+          <summary>Keyboard shortcuts</summary>
+          <dl>
+            <dt><kbd>D</kbd> <kbd>W</kbd> <kbd>M</kbd> <kbd>Y</kbd></dt><dd>Change view</dd>
+            <dt><kbd>T</kbd></dt><dd>Go to today</dd>
+            <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous or next</dd>
+          </dl>
+        </details>
       </aside>
 
       <div className="my-main">
@@ -150,6 +156,10 @@ export function MyPlanningPage({ me }: { me: Me }) {
         {(scale === 'day' || scale === 'week') && <TimeGrid {...view} days={gridDays(scale, anchor)} onPickDay={openDay} />}
         {scale === 'month' && <MonthGrid {...view} anchor={anchor} onPickDay={openDay} />}
         {scale === 'year' && <YearGrid anchor={anchor} hours={hours} today={today} onPickDay={openDay} onPickMonth={openMonth} />}
+        <div className="cal-foot">
+          <span>Times are in {zone}.</span>
+          {roles.filter((r) => !r.archived && shifts.some((s) => s.role_id === r.id)).map((r) => <span key={r.id} className="cal-role"><i className="swatch" style={{ background: r.color }} aria-hidden="true" />{r.name}</span>)}
+        </div>
       </div>
 
       {detail && (

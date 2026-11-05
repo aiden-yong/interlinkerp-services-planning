@@ -244,6 +244,11 @@ describe('sample data', () => {
     for (const ref of ['SVC-001', 'SVC-002']) expect(data.notices.filter((n) => n.recipientRef === ref && !n.read).length).toBeGreaterThan(0);
   });
 
+  it('loads notices oldest first, so the inbox opens on the newest', () => {
+    const ages = data.notices.map((n) => n.ageHours);
+    expect(ages).toEqual([...ages].sort((a, b) => b - a));
+  });
+
   it('numbers a repeating series without gaps', () => {
     const steps = data.shifts.filter((s) => s.recurrenceIndex !== undefined).map((s) => s.recurrenceIndex);
     expect(steps).toEqual(Array.from({ length: data.recurrence.count }, (_, i) => i));

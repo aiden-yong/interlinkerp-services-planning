@@ -4,10 +4,10 @@ import './notifications.css';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api';
-import { BellIcon } from '../icons';
+import { BellIcon, GearIcon } from '../icons';
 import type { NotificationItem, NotificationsPayload } from '../types';
 import { EmailSettings } from './EmailSettings';
-import { unreadLabel } from './inbox';
+import { timeAgo, unreadLabel, withoutZone } from './inbox';
 
 const POLL_MS = 60_000;
 /** The server's default page size for /api/notifications. */
@@ -103,26 +103,37 @@ export function NotificationBell() {
       {open && (
         <div className="bell-panel" role="dialog" aria-label="Notifications" tabIndex={-1} ref={panelRef}>
           <div className="bell-head">
-            <strong>Notifications</strong>
-            <span>
-              {unread > 0 && <button type="button" onClick={() => void markRead({ all: true })}>Mark all read</button>}
-              <button type="button" onClick={() => { setOpen(false); setSettings(true); }}>Email settings</button>
-            </span>
+            <h2>Notifications</h2>
+            {unread > 0 && <span className="count-pill">{unreadLabel(unread)} new</span>}
+            <span className="spacer" />
+            {unread > 0 && <button type="button" className="bell-link" onClick={() => void markRead({ all: true })}>Mark all read</button>}
           </div>
-          {data && shown.length === 0 && <p className="muted">Nothing yet.</p>}
-          <ul>
-            {shown.map((n) => (
-              <li key={n.id} className={n.read_at ? 'read' : 'unread'}>
-                <button type="button" onClick={() => void openItem(n)}>
-                  <strong>{n.title}</strong>
-                  <span className="bell-body">{n.body}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          {data && data.notifications.length >= PAGE && !olderDone && (
-            <button type="button" className="bell-more" onClick={() => void loadOlder()}>Load older</button>
-          )}
+          <div className="bell-list">
+            {data && shown.length === 0 && <p className="bell-empty">Nothing yet.</p>}
+            <ul>
+              {shown.map((n) => (
+                <li key={n.id} className={n.read_at ? 'read' : 'unread'}>
+                  <button type="button" onClick={() => void openItem(n)}>
+                    <i className="bell-dot" aria-hidden="true" />
+                    <span className="bell-item">
+                      <span className="bell-title">
+                        <strong>{n.title}</strong>
+                        <time dateTime={n.created_at} title={new Date(n.created_at).toLocaleString()}>{timeAgo(n.created_at)}</time>
+                      </span>
+                      <span className="bell-body">{withoutZone(n.body)}</span>
+                    </span>
+                    {!n.read_at && <span className="visually-hidden">Unread</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {data && data.notifications.length >= PAGE && !olderDone && (
+              <button type="button" className="bell-more sm" onClick={() => void loadOlder()}>Load older</button>
+            )}
+          </div>
+          <div className="bell-foot">
+            <button type="button" className="bell-link" onClick={() => { setOpen(false); setSettings(true); }}><GearIcon /> Email settings</button>
+          </div>
         </div>
       )}
       {/* Portalled: the top bar's backdrop-filter would otherwise trap the fixed-position dialog inside the bar. */}
