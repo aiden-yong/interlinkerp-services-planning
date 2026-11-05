@@ -59,6 +59,7 @@ export function demoLandingPage({ publicUrl, error, credit }: LandingOptions): s
     .stack span { font-size: 0.8rem; padding: 4px 10px; border-radius: 6px; background: var(--chip); color: var(--text); }
     .note { margin-top: 24px; font-size: 0.85rem; }
     button { width: 100%; margin-top: 20px; padding: 12px; font: inherit; font-weight: 600; color: var(--accent-text); background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
+    button.secondary { margin-top: 8px; color: var(--text); background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
     button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
     .error { color: var(--error); margin-top: 12px; }
     .credit { margin-top: 16px; text-align: center; font-size: 0.85rem; }
@@ -80,19 +81,20 @@ export function demoLandingPage({ publicUrl, error, credit }: LandingOptions): s
     <ul>
       <li><strong>Move and resize shifts</strong> on the schedule board by dragging them. Clashes with leave or other shifts are flagged as you go.</li>
       <li><strong>Run Auto Plan</strong> to fill the week's open shifts, then publish the result.</li>
-      <li><strong>Open My Planning</strong> to claim an open shift, take over a colleague's, or ask for cover on your own.</li>
+      <li><strong>Switch to the employee view</strong> to claim an open shift, take over a colleague's, or ask for cover on your own.</li>
       <li><strong>Check Reports</strong> for planned hours, utilisation and open shifts, and download them as CSV.</li>
     </ul>
 
     <h2>Built with</h2>
     <div class="stack"><span>Next.js 16</span><span>React 19</span><span>TypeScript</span><span>PostgreSQL</span><span>Drizzle ORM</span><span>Vercel</span></div>
 
-    <p class="note">Every visitor shares the same sample data, so you may see other people's changes. Nothing is emailed. Restore the original data any time with <em>Reset demo data</em> in the profile menu.</p>
+    <p class="note">Every visitor shares the same sample data, so you may see other people's changes. Nothing is emailed. Switch views or restore the original data any time from the profile menu.</p>
 
     <form method="post">
       <input type="hidden" name="demo_action" value="sign_in" />
       ${errorHtml}
       <button type="submit">Explore the demo</button>
+      <button type="submit" class="secondary" name="demo_view" value="employee">Explore as an employee</button>
     </form>
     ${creditHtml}
   </main>

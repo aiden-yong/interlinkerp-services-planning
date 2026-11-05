@@ -5,7 +5,7 @@ import { useFeedback } from './feedback';
 import { ChevronDownIcon } from './icons';
 import type { Me } from './types';
 
-/** Demo deployments only: who you are, Reset demo data and Sign out. Both forms are handled by the demo gate (src/server/demo/demoGate.ts). */
+/** Demo deployments only: who you are, which view you're in, Reset demo data and Sign out. The forms are handled by the demo gate (src/server/demo/demoGate.ts). */
 export function ProfileMenu({ me }: { me: Me }) {
   const { confirm } = useFeedback();
   const [open, setOpen] = useState(false);
@@ -47,6 +47,11 @@ export function ProfileMenu({ me }: { me: Me }) {
       <div id={panelId} className="profile-panel" hidden={!open}>
         <p className="profile-name">{me.name}</p>
         <p className="muted">{me.email}</p>
+        <form method="post" className="view-switch" role="group" aria-label="View the demo as">
+          <input type="hidden" name="demo_action" value="view_as" />
+          <button type="submit" name="demo_view" value="manager" aria-pressed={me.is_manager}>Manager</button>
+          <button type="submit" name="demo_view" value="employee" aria-pressed={!me.is_manager}>Employee</button>
+        </form>
         <p className="profile-note">Public demo with sample data. Other visitors see your changes, and no emails are sent.</p>
         <div className="profile-actions">
           <button type="button" onClick={() => void askToReset()}>Reset demo data</button>

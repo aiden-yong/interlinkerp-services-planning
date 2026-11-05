@@ -6,7 +6,7 @@ import {
   planningManagers, publicHolidays, recurrences, roles, shifts, shiftTemplates, unavailabilities,
 } from '../db/schema';
 import type { Clock } from '../support/clock';
-import { DEMO_EMAIL, DEMO_EMPLOYEE_REF, isDemoDatabase } from './demo';
+import { DEMO_EMAIL, isDemoDatabase } from './demo';
 import { buildSampleData } from './sampleData';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -110,11 +110,11 @@ export class DemoSeeder {
     for (const notice of data.notices) {
       const created = new Date(now.getTime() - notice.ageHours * 3_600_000);
       const [outbox] = await tx.insert(notificationOutbox).values({
-        organisationId: org, kind: notice.kind, employeeRef: notice.audience === 'employee' ? DEMO_EMPLOYEE_REF : null, subjectId: notice.shiftId,
+        organisationId: org, kind: notice.kind, employeeRef: notice.recipientRef, subjectId: notice.shiftId,
         payload: {}, audience: notice.audience, deliverAfter: created, deliveredAt: created, createdAt: created,
       }).returning({ id: notificationOutbox.id });
       await tx.insert(notifications).values({
-        organisationId: org, recipientRef: notice.audience === 'employee' ? DEMO_EMPLOYEE_REF : null, recipientEmail: notice.audience === 'managers' ? DEMO_EMAIL : null,
+        organisationId: org, recipientRef: notice.recipientRef, recipientEmail: notice.audience === 'managers' ? DEMO_EMAIL : null,
         kind: notice.kind, title: notice.title, body: notice.body, link: `${this.publicUrl}${notice.path}`, shiftId: notice.shiftId, outboxId: outbox!.id,
         createdAt: created, readAt: notice.read ? created : null, emailedAt: created, emailNextAt: created,
       });

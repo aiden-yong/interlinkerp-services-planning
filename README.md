@@ -36,10 +36,10 @@ A public copy of the app that anyone can explore without a gateway account, for 
 
 With `DEMO_MODE=true` ([src/server/demo/demo.ts](src/server/demo/demo.ts)):
 
-- **Sign-in:** a landing page that introduces the project replaces the gateway sign-in, and **Explore the demo** goes straight in. The gateway is never contacted, for pages, sessions, tokens or badges, so the demo works while the gateway is down. Every visitor is the same "Demo Manager", who is both a Planning Manager and on the roster, so one visit reaches Schedule, Reports, My Planning and Settings.
+- **Sign-in:** a landing page that introduces the project replaces the gateway sign-in, and **Explore the demo** goes straight in. The gateway is never contacted, for pages, sessions, tokens or badges, so the demo works while the gateway is down. Visitors choose a view on the landing page and can switch in the profile menu: "Demo Manager" is both a Planning Manager and on the roster, so reaches every screen, and "Nadia Rahman" is a sample employee with My Planning only.
 - **Email:** nothing is sent, whatever the mail settings say.
 - **Sample data:** the first visit loads 12 fictional people, 5 roles and ten weeks of shifts around today, with open shifts for Auto Plan and claiming, a switch request, flagged conflicts, a repeating series, time off, holidays, templates and notices ([src/server/demo/sampleData.ts](src/server/demo/sampleData.ts)). Shift dates are relative to the day they're loaded, so a sign-in replaces sample data older than 14 days and the board never opens on an empty week.
-- **Reset:** the profile menu has **Reset demo data**, which restores the sample data for everyone, and **Sign out**.
+- **Profile menu:** switch between the manager and employee views, **Reset demo data** to restore the sample data for everyone, and **Sign out**.
 - **Safety:** there's no password, so demo mode only switches on when the database name in `DATABASE_URL` contains `demo`. Otherwise every page and API call answers with a configuration error instead of the app, and a `DEMO_MODE` copied into production can't open real data.
 
 ### Set it up

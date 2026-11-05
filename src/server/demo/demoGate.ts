@@ -3,7 +3,7 @@ import type { Logger } from '../http/kernel';
 import { redactAddresses } from '../support/scrub';
 import type { Gate, GateResult } from '../web/pageGate';
 import { safeReturnPath } from '../web/pageGate';
-import { demoCredit, demoSession, isDemoSession } from './demo';
+import { demoCredit, demoSession, demoViewOf, isDemoSession, type DemoView } from './demo';
 import { demoLandingPage } from './landing';
 
 export interface DemoData {
@@ -33,15 +33,20 @@ export class DemoGate implements Gate {
   }
 
   async handle(request: Request): Promise<GateResult> {
-    const signedIn = isDemoSession(this.sessions.decode(readCookies(request)[SESSION_COOKIE]));
+    const session = this.sessions.decode(readCookies(request)[SESSION_COOKIE]);
+    const signedIn = session !== null && isDemoSession(session);
     if (request.method === 'POST') return this.act(request, signedIn);
     if (!signedIn) return this.landing(null, 200);
-    return { kind: 'pass', cookies: [this.sessions.issue(demoSession(), this.secure)] };
+    return { kind: 'pass', cookies: [this.sessions.issue(demoSession(demoViewOf(session)), this.secure)] };
   }
 
   private async act(request: Request, signedIn: boolean): Promise<GateResult> {
     const cookies: string[] = [];
-    const action = await request.formData().then((form) => form.get('demo_action'), () => null);
+    const form = await request.formData().catch(() => null);
+    const action = form?.get('demo_action');
+    const view: DemoView = form?.get('demo_view') === 'employee' ? 'employee' : 'manager';
+    // The page the form was on may be one the next person can't open, so a change of person starts from home.
+    let path = safeReturnPath(new URL(request.url).pathname);
     if (action === 'sign_in') {
       try {
         // A fresh demo database gets its sample data on the first visit, and old sample data is replaced.
@@ -50,9 +55,14 @@ export class DemoGate implements Gate {
         this.log(`[planning-web] demo database setup failed: ${redactAddresses((error as Error).message)}`);
         return this.landing('The demo database could not be reached right now. Please try again in a minute.', 503);
       }
-      cookies.push(this.sessions.issue(demoSession(), this.secure));
+      cookies.push(this.sessions.issue(demoSession(view), this.secure));
+      if (view === 'employee') path = '/';
+    } else if (action === 'view_as' && signedIn) {
+      cookies.push(this.sessions.issue(demoSession(view), this.secure));
+      path = '/';
     } else if (action === 'sign_out') {
       cookies.push(this.sessions.clear(this.secure));
+      path = '/';
     } else if (action === 'reset' && signedIn) {
       try {
         await this.data.reset();
@@ -61,6 +71,6 @@ export class DemoGate implements Gate {
       }
     }
     // Post/redirect/get, back to the page the form was on.
-    return { kind: 'see-other', path: safeReturnPath(new URL(request.url).pathname), cookies };
+    return { kind: 'see-other', path, cookies };
   }
 }

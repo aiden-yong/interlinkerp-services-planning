@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { DateTime } from 'luxon';
 import type { WorkingHoursMap } from '../db/schema';
 import { formatSpan } from '../notifications/messages';
-import { DEMO_EMAIL, DEMO_EMPLOYEE_REF } from './demo';
+import { DEMO_EMAIL, DEMO_EMPLOYEE_REF, DEMO_VIEW_EMPLOYEE_REF } from './demo';
 
 /** Weeks of sample shifts, counted from the current week. */
 export const FIRST_WEEK = -6;
@@ -78,6 +78,8 @@ export interface SampleShift {
 export interface SampleNotice {
   kind: string;
   audience: 'employee' | 'managers';
+  /** Employee notices only: who gets it. */
+  recipientRef: string | null;
   title: string;
   body: string;
   path: string;
@@ -167,16 +169,23 @@ export function buildSampleData(now: Date, zone: string) {
   add('SVC-010', 'desk', 0, 3, '18:00', '20:00', { published: false, note: 'Not a Service Desk role' });
   add('SVC-002', 'field', 1, 3, '18:30', '22:30', { published: false, note: 'Long day: over planned hours' });
 
-  const firstDemoShift = shifts.find((s) => s.employeeRef === DEMO_EMPLOYEE_REF && s.start > at(1, 1, '00:00').toJSDate())!;
   const claimed = shifts.find((s) => s.employeeRef === 'SVC-008' && s.start > at(1, 1, '00:00').toJSDate())!;
   const openToTake = shifts.filter((s) => s.employeeRef === null && s.published && s.role !== 'desk');
-  const nextWeekMine = shifts.filter((s) => s.employeeRef === DEMO_EMPLOYEE_REF && s.published && s.start >= at(1, 1, '00:00').toJSDate());
   const span = (shift: SampleShift) => formatSpan(shift.start, shift.end, zone);
+  // Both people a visitor can be have an inbox to open.
+  const employeeNotices = (ref: string): SampleNotice[] => {
+    const nextWeek = shifts.filter((s) => s.employeeRef === ref && s.published && s.start >= at(1, 1, '00:00').toJSDate());
+    const first = nextWeek[0]!;
+    return [
+      { kind: 'schedule_published', audience: 'employee', recipientRef: ref, title: `Your ${nextWeek.length} shifts were published`, body: nextWeek.map(span).join('\n'), path: '/my', shiftId: null, ageHours: 20, read: false },
+      { kind: 'open_shifts_available', audience: 'employee', recipientRef: ref, title: `${openToTake.length} open shifts you can take`, body: openToTake.map(span).join('\n'), path: '/my', shiftId: null, ageHours: 26, read: false },
+      { kind: 'shift_assigned', audience: 'employee', recipientRef: ref, title: 'You have a new shift', body: span(first), path: '/my', shiftId: first.id, ageHours: 72, read: true },
+    ];
+  };
   const notices: SampleNotice[] = [
-    { kind: 'shift_claimed', audience: 'managers', title: 'Open shift claimed', body: `Siti Aminah claimed the open shift on ${span(claimed)}.`, path: '/schedule', shiftId: claimed.id, ageHours: 3, read: false },
-    { kind: 'schedule_published', audience: 'employee', title: `Your ${nextWeekMine.length} shifts were published`, body: nextWeekMine.map(span).join('\n'), path: '/my', shiftId: null, ageHours: 20, read: false },
-    { kind: 'open_shifts_available', audience: 'employee', title: `${openToTake.length} open shifts you can take`, body: openToTake.map(span).join('\n'), path: '/my', shiftId: null, ageHours: 26, read: false },
-    { kind: 'shift_assigned', audience: 'employee', title: 'You have a new shift', body: span(firstDemoShift), path: '/my', shiftId: firstDemoShift.id, ageHours: 72, read: true },
+    { kind: 'shift_claimed', audience: 'managers', recipientRef: null, title: 'Open shift claimed', body: `Siti Aminah claimed the open shift on ${span(claimed)}.`, path: '/schedule', shiftId: claimed.id, ageHours: 3, read: false },
+    ...employeeNotices(DEMO_EMPLOYEE_REF),
+    ...employeeNotices(DEMO_VIEW_EMPLOYEE_REF),
   ];
 
   return {

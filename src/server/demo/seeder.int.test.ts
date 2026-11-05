@@ -73,7 +73,8 @@ describe('DemoSeeder', () => {
       return response.json();
     };
     const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-    const range = `from=${day(now.getTime())}&to=${day(now.getTime() + 21 * DAY_MS)}`;
+    // Starts a week back so the current week is covered in full, whatever day of it the test runs on.
+    const range = `from=${day(now.getTime() - 7 * DAY_MS)}&to=${day(now.getTime() + 21 * DAY_MS)}`;
 
     const me = await get('/api/me');
     expect(me).toMatchObject({ is_manager: true, employee_ref: DEMO_EMPLOYEE_REF, demo: true, dev_identity: false });
@@ -90,6 +91,27 @@ describe('DemoSeeder', () => {
 
     const inbox = await get('/api/notifications');
     expect(inbox.unread_count).toBeGreaterThan(0);
+  });
+
+  it('gives the employee view a real employee experience: own shifts, things to claim, and no manager data', async () => {
+    const now = new Date();
+    await seeder(now).reset();
+    const codec = new SessionCodec('s'.repeat(32), systemClock);
+    const app = new App({ database, organisationId: ORG, defaultTimezone: ZONE, clock: { now: () => now }, demo: true, publicUrl: 'https://demo.test', rateLimit: null, guard: new DemoAccessGuard(codec, true) });
+    const cookie = codec.issue(demoSession('employee'), true).split(';')[0]!;
+    const call = (path: string) => app.kernel().handle(new Request(`https://demo.test${path}`, { headers: { cookie } }));
+    const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+    const range = `from=${day(now.getTime())}&to=${day(now.getTime() + 21 * DAY_MS)}`;
+
+    expect(await (await call('/api/me')).json()).toMatchObject({ is_manager: false, employee_ref: 'SVC-002', demo: true });
+    expect((await call(`/api/schedule?${range}&timezone=${encodeURIComponent(ZONE)}`)).status).toBe(403);
+    expect((await call('/api/employees')).status).toBe(403);
+    const mine = await (await call(`/api/my/shifts?${range}`)).json();
+    expect(mine.shifts.length).toBeGreaterThan(0);
+    const open = await (await call(`/api/my/open-shifts?${range}`)).json();
+    expect(open.open.length).toBeGreaterThan(0);
+    expect(open.up_for_switch.length).toBeGreaterThan(0);
+    expect((await (await call('/api/notifications')).json()).unread_count).toBeGreaterThan(0);
   });
 
   it("gives Auto Plan something to fill and something to explain in the week the board opens on, on any day of it", async () => {

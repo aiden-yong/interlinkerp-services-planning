@@ -146,6 +146,10 @@ button.profile-button { gap: 8px; padding: 0 10px 0 6px; font-size: 0.8125rem; }
 .profile-panel p { margin: 0; }
 .profile-name { color: var(--heading); font-weight: 600; }
 .profile-note { margin-top: 10px !important; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.8125rem; }
+.view-switch { display: flex; gap: 2px; margin-top: 10px; padding: 2px; border-radius: 10px; background: var(--fill); }
+.view-switch button { flex: 1; min-height: 28px; border-radius: 8px; background: transparent; box-shadow: none; color: var(--muted); font-size: 0.8125rem; }
+.view-switch button:hover:not(:disabled) { background: transparent; color: var(--text); }
+.view-switch button[aria-pressed="true"], .view-switch button[aria-pressed="true"]:hover:not(:disabled) { background: var(--segment); color: var(--heading); box-shadow: 0 1px 3px rgb(14 27 44 / 0.14), 0 0 0 0.5px rgb(14 27 44 / 0.08); }
 .profile-actions { display: flex; gap: 8px; margin-top: 12px; }
 .profile-actions > button { flex: 1; }
 .profile-actions form { display: contents; }

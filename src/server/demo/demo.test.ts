@@ -155,9 +155,35 @@ describe('DemoGate', () => {
     expect(data.reset).toHaveBeenCalledOnce();
   });
 
+  it('offers the employee view on the landing page and signs in as that person, starting from home', async () => {
+    const { gate } = setup();
+    const landing = await gate.handle(new Request('https://demo.test/'));
+    expect(landing.kind === 'page' && landing.html).toContain('name="demo_view" value="employee"');
+    const form = new URLSearchParams({ demo_action: 'sign_in', demo_view: 'employee' });
+    const result = await gate.handle(new Request('https://demo.test/schedule', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form }));
+    expect(result).toMatchObject({ kind: 'see-other', path: '/' });
+    const session = sessions().decode(decodeURIComponent(cookieOf(result.cookies[0]!).split('=')[1]!));
+    expect(session).toMatchObject({ gatewayRole: 'user', employeeRef: 'SVC-002' });
+  });
+
+  it('switches view only for a signed-in visitor, and keeps the view on later pages', async () => {
+    const { gate } = setup();
+    const switchTo = (view: string, cookie?: string) => new Request('https://demo.test/schedule', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...(cookie ? { cookie } : {}) }, body: new URLSearchParams({ demo_action: 'view_as', demo_view: view }),
+    });
+    expect((await gate.handle(switchTo('employee'))).cookies).toEqual([]);
+    const switched = await gate.handle(switchTo('employee', signedIn()));
+    expect(switched).toMatchObject({ kind: 'see-other', path: '/' });
+    const next = await gate.handle(new Request('https://demo.test/my', { headers: { cookie: cookieOf(switched.cookies[0]!) } }));
+    expect(sessions().decode(decodeURIComponent(cookieOf(next.cookies[0]!).split('=')[1]!))?.employeeRef).toBe('SVC-002');
+    const back = await gate.handle(switchTo('manager', cookieOf(switched.cookies[0]!)));
+    expect(sessions().decode(decodeURIComponent(cookieOf(back.cookies[0]!).split('=')[1]!))?.gatewayRole).toBe('admin');
+  });
+
   it('signs out by clearing the cookie', async () => {
     const result = await setup().gate.handle(post('sign_out', signedIn()));
     expect(result.cookies[0]).toContain('Max-Age=0');
+    expect(result).toMatchObject({ kind: 'see-other', path: '/' });
   });
 });
 
@@ -169,6 +195,14 @@ describe('DemoAccessGuard', () => {
     const cookie = cookieOf(sessions().issue(demoSession(), true));
     const { principal } = await guard.check(route, new Request('https://demo.test/api/schedule', { headers: { cookie } }));
     expect(principal).toMatchObject({ kind: 'person', isManager: true, employeeRef: 'SVC-001' });
+  });
+
+  it('makes the employee view a real employee: no manager routes, even with a crafted role elsewhere in the session', async () => {
+    const cookie = cookieOf(sessions().issue(demoSession('employee'), true));
+    const request = () => new Request('https://demo.test/api/schedule', { headers: { cookie } });
+    await expect(guard.check(route, request())).rejects.toMatchObject({ status: 403 });
+    const { principal } = await guard.check({ access: 'person' } as never, request());
+    expect(principal).toMatchObject({ isManager: false, employeeRef: 'SVC-002', name: 'Nadia Rahman' });
   });
 
   it('refuses bearer tokens, which there is no gateway to verify, and sessions from anywhere else', async () => {
@@ -204,6 +238,10 @@ describe('sample data', () => {
 
   it('uses only addresses on a reserved domain, so nothing could ever reach a real person', () => {
     for (const p of data.people) expect(p.email.endsWith('.example')).toBe(true);
+  });
+
+  it('gives both people a visitor can be an inbox', () => {
+    for (const ref of ['SVC-001', 'SVC-002']) expect(data.notices.filter((n) => n.recipientRef === ref && !n.read).length).toBeGreaterThan(0);
   });
 
   it('numbers a repeating series without gaps', () => {
