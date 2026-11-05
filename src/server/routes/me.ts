@@ -13,8 +13,10 @@ export function register(r: Router, app: App): void {
       is_manager: me?.isManager ?? false, timezone, organisation_timezone: organisationTimezone,
       // Backlog item 32: true only for local development sign-in, so the identity picker can show itself.
       dev_identity: (me?.subject.startsWith('dev:') ?? false) && app.devIdentity() !== null,
+      // True on the public demo, so the profile menu offers Reset demo data and Sign out.
+      demo: app.isDemo(),
     });
   }, op('Show Current User', 'Find out who is signed in and whether they manage planning', ['Deciding which screens to show after sign-in'], ['Listing employees', 'Reading shifts'],
-    [], ['name', 'email', 'employee_ref', 'roster_status', 'is_manager', 'timezone', 'dev_identity'], ['Signed-in person'], ['GET /api/my/shifts', 'GET /api/schedule'],
+    [], ['name', 'email', 'employee_ref', 'roster_status', 'is_manager', 'timezone', 'dev_identity', 'demo'], ['Signed-in person'], ['GET /api/my/shifts', 'GET /api/schedule'],
     ['me', 'profile', 'current user', 'whoami', 'permissions']));
 }

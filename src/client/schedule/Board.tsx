@@ -145,7 +145,7 @@ export function Board({ data, rows, period, onOpen, onCreate, onChange }: BoardP
         <span className="grip start" data-grip="resize-start" />
         {problems.length > 0 && <WarningIcon />}
         {/* A short bar drops the role, then the end time, rather than cutting a time in half. */}
-        <span className="time">{startTime}<span className="end">–{endTime}</span></span>
+        <span className="time">{startTime}<span className="end"><span className="dash">–</span>{endTime}</span></span>
         {shift.switch_requested && <span className="switch-mark" aria-hidden="true">⇄</span>}
         {shift.recurrence && <span className="repeat-mark" aria-hidden="true">↻</span>}
         {role && <span className="role">{role.name}</span>}
@@ -197,7 +197,7 @@ export function Board({ data, rows, period, onOpen, onCreate, onChange }: BoardP
             <div className="cell hours">
               {e && (
                 <>
-                  {e.allocated_hours.toFixed(1)} / {e.available_hours === null ? 'flexible' : e.available_hours.toFixed(1)} h
+                  <span><b>{e.allocated_hours.toFixed(1)}</b> / {e.available_hours === null ? 'flexible' : e.available_hours.toFixed(1)} h</span>
                   {e.over_allocated_days.length > 0 && (
                     <span className="over" title={`Over-allocated on ${e.over_allocated_days.join(', ')}`}>
                       <WarningIcon /> {e.over_allocated_days.length} day{e.over_allocated_days.length > 1 ? 's' : ''} over

@@ -9,6 +9,8 @@ export interface Me {
   timezone: string;
   /** Local development only: show the identity picker (backlog item 32). */
   dev_identity?: boolean;
+  /** The public demo: the profile menu offers Reset demo data and Sign out. */
+  demo?: boolean;
   organisation_timezone: string;
 }
 

@@ -3,7 +3,7 @@
 Shift planning for the Services department: managers build and publish schedules, employees see their own shifts. Requirements: [ListOfRequirements.md](ListOfRequirements.md). Roadmap: [docs/superpowers/plans/2026-10-13-planning-roadmap.md](docs/superpowers/plans/2026-10-13-planning-roadmap.md).
 
 ## Stack
-Next.js 16 (App Router) + React 19 + TypeScript, Drizzle ORM, PostgreSQL (local 18, Neon in production), Vercel region `sin1`. Sign-in is only through the InterlinkERP gateway.
+Next.js 16 (App Router) + React 19 + TypeScript, Drizzle ORM, PostgreSQL (local 18, Neon in production), Vercel region `sin1`. Sign-in is only through the InterlinkERP gateway (the [hosted demo](#hosted-demo) has its own landing page instead).
 
 ## Local development
 1. PostgreSQL 18 runs locally. Create the role and databases once:
@@ -29,6 +29,44 @@ Browser tests (Playwright) cover ten flows: publish a week, claim an open shift,
 3. In the gateway console, issue an API client for Planning with `intern:read` and `department:read`, and set `INTERLINK_CLIENT_ID` / `INTERLINK_CLIENT_SECRET`.
 4. Turn off Vercel Deployment Protection for Production (or exempt `/health` and `/openapi.json`; the gateway must reach both). Also exempt `/feeds/*` (calendar apps subscribe there without a session) and `/internal/cron/sweep` (the external scheduler calls it), otherwise calendar subscriptions and shift reminders silently fail.
 5. Deploy, then register the base URL with the gateway and run its `/conformance` check.
+
+## Hosted demo
+
+A public copy of the app that anyone can explore without a gateway account, for example from a portfolio. It's a separate Vercel project from the same repo, with its own database.
+
+With `DEMO_MODE=true` ([src/server/demo/demo.ts](src/server/demo/demo.ts)):
+
+- **Sign-in:** a landing page that introduces the project replaces the gateway sign-in, and **Explore the demo** goes straight in. The gateway is never contacted, for pages, sessions, tokens or badges, so the demo works while the gateway is down. Visitors choose a view on the landing page and can switch in the profile menu: "Demo Manager" is both a Planning Manager and on the roster, so reaches every screen, and "Nadia Rahman" is a sample employee with My Planning only.
+- **Email:** nothing is sent, whatever the mail settings say.
+- **Sample data:** the first visit loads 12 fictional people, 5 roles and ten weeks of shifts around today, with open shifts for Auto Plan and claiming, a switch request, flagged conflicts, a repeating series, time off, holidays, templates and notices ([src/server/demo/sampleData.ts](src/server/demo/sampleData.ts)). Shift dates are relative to the day they're loaded, so a sign-in replaces sample data older than 14 days and the board never opens on an empty week.
+- **Profile menu:** switch between the manager and employee views, **Reset demo data** to restore the sample data for everyone, and **Sign out**.
+- **Safety:** there's no password, so demo mode only switches on when the database name in `DATABASE_URL` contains `demo`. Otherwise every page and API call answers with a configuration error instead of the app, and a `DEMO_MODE` copied into production can't open real data.
+
+### Set it up
+
+1. **Create a free PostgreSQL database.** For example, a new [Neon](https://neon.tech) project in `aws-ap-southeast-1`, next to Vercel's `sin1`, with a database named `planning_demo`. Keep it separate from production.
+2. **Create a second Vercel project** from the same GitHub repo, for example `interlinkerp-planning-demo`. Don't use the production project or its previews: the demo needs its own environment variables. Turn off Deployment Protection, so visitors don't meet a Vercel login.
+3. **Set its Build Command to `npm run build:demo`.** It applies the migrations to the demo database, then builds. It refuses any database whose name doesn't contain `demo`.
+4. **Set its environment variables:**
+
+   | Variable | Value |
+   | :--- | :--- |
+   | `DEMO_MODE` | `true` |
+   | `DEMO_CREDIT_NAME` / `DEMO_CREDIT_URL` | optional "Built by" line on the landing page, such as your name and an `https://` portfolio or GitHub link |
+   | `DATABASE_URL` | Neon's pooled URL for the demo database (the name must contain `demo`) |
+   | `SESSION_SECRET` | a new random value: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+   | `PUBLIC_URL` | the demo's address, such as `https://interlinkerp-planning-demo.vercel.app` |
+   | `SERVICE_ID` | `planning-api` |
+   | `OPENAPI_EXTENSION_KEY` | any `x-` value, such as `x-demo` |
+   | `DEFAULT_TIMEZONE` | `Asia/Kuala_Lumpur` |
+
+5. **Deploy and open the demo.** The first **Explore the demo** takes a few seconds while it loads the sample data.
+
+Leave `GATEWAY_URL`, `INTERLINK_CLIENT_*`, `INTERN_DATABASE_URL`, `DEPARTMENT_API_URL`, `SMTP_URL` and `MAIL_FROM` unset. The daily crons in `vercel.json` also answer 401 and do nothing without `CRON_SECRET`, so leave that unset too.
+
+To change the demo's link preview, edit `PAGE_TITLE` and `PAGE_DESCRIPTION` at the top of [src/server/demo/landing.ts](src/server/demo/landing.ts), or replace `public/og-image.png` (1200×630). `PUBLIC_URL` must be set, because the preview image needs an absolute address.
+
+To reload the sample data from your own machine, point `DATABASE_URL` at the demo database and run `npm run demo:reset`. To run the demo locally, set `DEMO_MODE=true` and a local database with `demo` in its name, then `npm run dev`.
 
 ## Changes after 0.2.0 (not yet released)
 Apply the new migrations to the production database BEFORE deploying: `DATABASE_URL='<pooled url>' npm run db:migrate`. Locally, run `npm run db:migrate`.

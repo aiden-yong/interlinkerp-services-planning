@@ -1,4 +1,4 @@
-.year-board { overflow: auto; max-height: calc(100dvh - 200px); border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.year-board { overflow: auto; max-height: calc(100dvh - 200px); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm), var(--edge); }
 .year-board table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 900px; font-variant-numeric: tabular-nums; }
 .year-board th, .year-board td { padding: 0; border-bottom: 1px solid var(--line); }
 .year-board thead th { position: sticky; top: 0; z-index: 2; background: var(--surface); padding: 8px 6px; font-size: 0.75rem; font-weight: 600; color: var(--muted); text-align: right; box-shadow: 0 1px 0 var(--line-strong); }

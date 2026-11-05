@@ -7,8 +7,8 @@ import './globals.css';
 export const metadata: Metadata = { title: 'Planning · InterlinkERP' };
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f5f5f7' },
-    { media: '(prefers-color-scheme: dark)', color: '#101012' },
+    { media: '(prefers-color-scheme: light)', color: '#f6f8fb' },
+    { media: '(prefers-color-scheme: dark)', color: '#121316' },
   ],
 };
 // Every page is per-user and must not be cached (auth guide §7).

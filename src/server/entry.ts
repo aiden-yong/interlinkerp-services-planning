@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { after } from 'next/server';
-import { App, REQUIRED_ENV } from './app';
-import { ConfigError, requireAll } from './config/env';
+import { App, assertConfigured } from './app';
+import { ConfigError } from './config/env';
 import { envelope, json } from './http/responses';
 
 let app: App | undefined;
@@ -22,7 +22,7 @@ export function startsDelivery(request: Request): boolean {
 /** Every API route file hands its requests to this. */
 export async function handleApi(request: Request): Promise<Response> {
   try {
-    requireAll(REQUIRED_ENV);
+    assertConfigured();
   } catch (error) {
     if (!(error instanceof ConfigError)) throw error;
     console.error(`[planning-api] ${error.message}`);

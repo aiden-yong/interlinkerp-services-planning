@@ -1,11 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, query } from '../api';
 import { useFeedback } from '../feedback';
 import { Segmented } from '../Segmented';
 import { Stepper } from '../Stepper';
-import type { AutoPlanReport, EmployeeProfile, Me, PlannedHoursReport, SchedulePayload, Shift, UtilisationReport } from '../types';
+import type { AutoPlanReport, EmployeeProfile, Me, PlannedHoursReport, Role, SchedulePayload, Shift, UtilisationReport } from '../types';
 import { AutoPlanResult } from './AutoPlanResult';
 import { Board, type ShiftChange } from './Board';
 import { newShiftTimes, publishSummary } from './drag';
@@ -16,6 +16,19 @@ import { saveShift, type ShiftForm, shiftToForm, STALE_MESSAGE } from './shiftFo
 import { todayIn } from './tz';
 import { YearBoard } from './YearBoard';
 import { type Departments, yearRows } from './year';
+
+/** Colour alone can't say which role a bar is, least of all in the week view, where bars have no room for a name. */
+function BoardLegend({ roles }: { roles: Role[] }) {
+  return (
+    <div className="legend" aria-label="Key to the schedule">
+      {roles.filter((r) => !r.archived).map((r) => <span key={r.id}><i style={{ '--swatch': r.color } as CSSProperties} />{r.name}</span>)}
+      <span className="sep" />
+      <span><i className="draft" />Draft</span>
+      <span><i className="conflict" />Conflict</span>
+      <span><i className="away" />Time off</span>
+    </div>
+  );
+}
 
 const SCALES = [{ value: 'day', label: 'Day' }, { value: 'week', label: 'Week' }, { value: 'month', label: 'Month' }, { value: 'year', label: 'Year' }] as const satisfies readonly { value: Scale; label: string }[];
 
@@ -93,6 +106,7 @@ export function SchedulePage({ me }: { me: Me }) {
     setScale(next);
   }
   const set = (patch: Partial<Filters>) => setFilters((f) => ({ ...f, ...patch }));
+  const drafts = useMemo(() => publishSummary(rows.flatMap((r) => r.shifts)).ids.length, [rows]);
 
   const report = (e: unknown) => toast(e instanceof ApiError && e.code === 'STALE_SHIFT'
     ? STALE_MESSAGE
@@ -209,11 +223,15 @@ export function SchedulePage({ me }: { me: Me }) {
         <h1 className="period">{periodLabel(period)}</h1>
         <span className="spacer" />
         <Segmented label="Scale" value={scale} segments={SCALES} onChange={changeScale} />
-        {!year && <button type="button" disabled={!ready} onClick={() => openNew(null, null)}>Add shift</button>}
-        {!year && <button type="button" ref={autoPlanButton} disabled={busy || !ready} onClick={() => void autoPlan()}>Auto Plan</button>}
-        {scale === 'week' && <button type="button" disabled={busy || !ready} onClick={() => void copyPreviousWeek()}>Copy previous week</button>}
-        {!year && <label className="check"><input type="checkbox" checked={notifyOpen} onChange={(e) => setNotifyOpen(e.target.checked)} /> Tell eligible employees about open shifts</label>}
-        {!year && <button type="button" className="primary" disabled={busy || !ready} onClick={publish}>Publish</button>}
+        {!year && (
+          <div className="group">
+            <button type="button" disabled={!ready} onClick={() => openNew(null, null)}>Add shift</button>
+            <button type="button" ref={autoPlanButton} disabled={busy || !ready} onClick={() => void autoPlan()}>Auto Plan</button>
+            {scale === 'week' && <button type="button" disabled={busy || !ready} onClick={() => void copyPreviousWeek()}>Copy previous week</button>}
+            {/* The count is a glance; the confirm that follows reads the numbers out. */}
+            <button type="button" className="primary" disabled={busy || !ready} onClick={publish}>Publish{drafts > 0 && <span className="count" aria-hidden="true">{drafts}</span>}</button>
+          </div>
+        )}
       </div>
       <div className="filters">
         <select aria-label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}>
@@ -231,6 +249,8 @@ export function SchedulePage({ me }: { me: Me }) {
           <option value="">All shifts</option><option value="draft">Drafts</option><option value="published">Published</option><option value="open">Open shifts</option>
         </select>
         <input type="search" aria-label="Find employee" placeholder="Find employee" value={filters.name} onChange={(e) => set({ name: e.target.value })} />
+        <span className="spacer" />
+        {!year && <label className="check"><input type="checkbox" checked={notifyOpen} onChange={(e) => setNotifyOpen(e.target.checked)} /> Tell eligible employees about open shifts</label>}
       </div>
       {data?.directory_stale && <p className="notice">Employee names may be out of date because the roster could not be refreshed. Planning still works.</p>}
       {error && <p role="alert" className="form-error">{error}</p>}
@@ -246,6 +266,7 @@ export function SchedulePage({ me }: { me: Me }) {
           onChange={applyChange}
         />
       ) : !error && <p className="empty">Loading…</p>}
+      {!year && data && <BoardLegend roles={data.roles} />}
       {!year && editing && data && <ShiftDialog data={data} shift={editing.shift} initial={editing.initial} onClose={() => setEditing(null)} onSaved={reload} />}
       {!year && planResult && data && <AutoPlanResult report={planResult} data={data} zone={zone} onClose={() => { setPlanResult(null); autoPlanButton.current?.focus(); }} />}
     </section>
