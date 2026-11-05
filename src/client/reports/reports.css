@@ -1,10 +1,10 @@
 .reports .filters { align-items: center; }
 .reports .filters .spacer { flex: 1; }
 .reports .button {
-  display: inline-flex; align-items: center; min-height: 30px; padding: 0 12px; border-radius: var(--radius);
-  background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--text); font-size: 0.8125rem; font-weight: 550; text-decoration: none;
+  display: inline-flex; align-items: center; min-height: 37px; padding: 0 16px; border-radius: var(--radius);
+  background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--text); font-size: 0.875rem; font-weight: 500; text-decoration: none;
 }
-.reports a.button:hover { background: var(--fill); }
+.reports a.button:hover { background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-strong); }
 .reports .button[aria-disabled="true"] { opacity: 0.5; }
 .reports { max-width: 1200px; margin-inline: auto; }
 .reports tbody tr:last-child th { border-bottom: 0; }

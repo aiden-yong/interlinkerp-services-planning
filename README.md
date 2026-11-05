@@ -32,12 +32,17 @@ Browser tests (Playwright) cover ten flows: publish a week, claim an open shift,
 4. Turn off Vercel Deployment Protection for Production (or exempt `/health` and `/openapi.json`; the gateway must reach both). Also exempt `/feeds/*` (calendar apps subscribe there without a session) and `/internal/cron/sweep` (the external scheduler calls it), otherwise calendar subscriptions and shift reminders silently fail.
 5. Deploy, then register the base URL with the gateway and run its `/conformance` check.
 
+## Style guide
+
+[Styles.md](Styles.md) is the guide every InterlinkERP app shares. `src/styleGuide.test.ts` fails when this app's tokens drift from it. Change it together with the copy in the HR recruitment repo.
+
 ## Hosted demo
 
 A public copy of the app that anyone can explore without a gateway account, for example from a portfolio. It's a separate Vercel project from the same repo, with its own database.
 
 With `DEMO_MODE=true` ([src/server/demo/demo.ts](src/server/demo/demo.ts)):
 
+- **Look:** it opens in light mode unless the visitor has chosen otherwise.
 - **Sign-in:** a landing page that introduces the project replaces the gateway sign-in, and **Explore the demo** goes straight in. The gateway is never contacted, for pages, sessions, tokens or badges, so the demo works while the gateway is down. Visitors choose a view on the landing page and can switch in the profile menu: "Demo Manager" is both a Planning Manager and on the roster, so reaches every screen, and "Nadia Rahman" is a sample employee with My Planning only.
 - **Email:** nothing is sent, whatever the mail settings say.
 - **Sample data:** the first visit loads 12 fictional people, 5 roles and ten weeks of shifts around today, with open shifts for Auto Plan and claiming, a switch request, flagged conflicts, a repeating series, time off, holidays, templates and notices ([src/server/demo/sampleData.ts](src/server/demo/sampleData.ts)). Shift dates are relative to the day they're loaded, so a sign-in replaces sample data older than 14 days and the board never opens on an empty week.
