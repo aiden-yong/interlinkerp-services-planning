@@ -149,11 +149,13 @@ export function ReportsPage({ me }: { me: Me }) {
   const shown = valid && state.report && !state.loading && state.kind === tab ? state.report : null;
   return (
     <section className="reports">
-      <div className="toolbar">
-        <h1 className="period">Reports</h1>
-        <span className="spacer" />
+      <header className="page-head with-action">
+        <div>
+          <h1>Reports</h1>
+          <p>Planned hours, utilisation and open shifts for any period.</p>
+        </div>
         <Segmented label="Report" value={tab} segments={TABS} onChange={setTab} />
-      </div>
+      </header>
       <div className="filters">
         <select aria-label="Period" value={preset} onChange={(e) => setPreset(e.target.value as Preset)}>
           <option value="this-week">This week</option><option value="this-month">This month</option>
