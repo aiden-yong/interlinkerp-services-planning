@@ -223,7 +223,7 @@ describe('sample data', () => {
     expect(open.some((s) => s.published)).toBe(true);
     expect(open.some((s) => !s.published)).toBe(true);
     expect(data.shifts.some((s) => s.switchRequested && s.start > now && s.start < weekEnd)).toBe(true);
-    expect(LAST_WEEK).toBeGreaterThan(2); // still weeks ahead when MAX_SAMPLE_AGE_DAYS later it gets replaced
+    expect(LAST_WEEK).toBeGreaterThan(2); // weeks ahead to browse into, as well as the current one
     expect(FIRST_WEEK).toBeLessThan(0);
   });
 

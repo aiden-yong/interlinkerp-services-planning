@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, lt, sql } from 'drizzle-orm';
+import { DateTime } from 'luxon';
 import type { Db } from '../db/client';
 import {
   auditEntries, employeeDirectory, employeeProfiles, employeeRoles, jobRuns, notificationOutbox, notifications, organisationSettings,
@@ -14,8 +15,6 @@ type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 /** Sign-ins wait for one another here, so two first visitors can't both load the sample data. */
 const SEED_LOCK = 7_205_001;
 const SEED_MARKER = 'demo_seed';
-/** The board should always open on a lived-in week: sign-in replaces sample data older than this. */
-export const MAX_SAMPLE_AGE_DAYS = 14;
 const DAY_MS = 86_400_000;
 
 /** Loads the fictional sample data. Refuses, before connecting, any database whose name doesn't contain "demo". */
@@ -33,14 +32,16 @@ export class DemoSeeder {
     if (!isDemoDatabase(this.databaseUrl)) throw new Error('Refusing to load demo data: the database name must contain "demo".');
   }
 
-  /** Called on every sign-in: loads the sample data if it is missing or old, otherwise keeps the directory looking current. */
+  /** Called on every sign-in: loads the sample data if it is missing or from an earlier week, otherwise keeps the directory looking current. */
   async ensureReady(): Promise<void> {
     this.refuseUnlessDemo();
     const now = this.clock.now();
+    // The sample data is richest in the week it's dated from, so the board should always open on that week.
+    const thisWeek = DateTime.fromJSDate(now, { zone: this.zone }).startOf('week').toMillis();
     await this.db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(${SEED_LOCK})`);
       const [marker] = await tx.select({ at: jobRuns.startedAt }).from(jobRuns).where(and(eq(jobRuns.organisationId, this.org), eq(jobRuns.job, SEED_MARKER)));
-      if (!marker || now.getTime() - marker.at.getTime() > MAX_SAMPLE_AGE_DAYS * DAY_MS) {
+      if (!marker || marker.at.getTime() < thisWeek) {
         await this.load(tx, now);
         return;
       }

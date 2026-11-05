@@ -1,11 +1,11 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { App } from '../app';
 import { employeeDirectory, jobRuns, roles, shifts } from '../db/schema';
 import { ORG, useTestDatabase } from '../test/db';
 import { DEMO_EMPLOYEE_REF, demoSession } from './demo';
 import { DemoAccessGuard } from './demoGuard';
-import { DemoSeeder, MAX_SAMPLE_AGE_DAYS } from './seeder';
+import { DemoSeeder } from './seeder';
 import { SessionCodec } from '../auth/session';
 import { systemClock } from '../support/clock';
 
@@ -34,13 +34,27 @@ describe('DemoSeeder', () => {
     expect(await count(shifts)).toBe(before);
   });
 
-  it('replaces sample data that has gone old, so the board never opens on an empty week', async () => {
+  it('replaces sample data six months old, so a late visitor still opens on a full week', async () => {
     const start = new Date('2026-01-05T04:00:00Z');
     await seeder(start).ensureReady();
-    const later = new Date(start.getTime() + (MAX_SAMPLE_AGE_DAYS + 1) * DAY_MS);
+    const later = new Date(start.getTime() + 182 * DAY_MS);
     await seeder(later).ensureReady();
     const [marker] = await database.db.select().from(jobRuns).where(and(eq(jobRuns.organisationId, ORG), eq(jobRuns.job, 'demo_seed')));
     expect(marker!.startedAt.getTime()).toBe(later.getTime());
+    const ahead = await database.db.select().from(shifts).where(and(isNull(shifts.employeeRef), gt(shifts.startAt, later), lt(shifts.startAt, new Date(later.getTime() + 7 * DAY_MS))));
+    expect(ahead.length).toBeGreaterThan(0);
+  });
+
+  it('keeps visitors changes until the week ends, then starts the new week on fresh data', async () => {
+    await seeder(new Date('2026-01-05T04:00:00Z')).ensureReady(); // Monday, midday in the demo's zone
+    const original = await count(shifts);
+    await database.db.delete(shifts).where(eq(shifts.note, 'Weekend desk cover'));
+    const changed = await count(shifts);
+    expect(changed).toBeLessThan(original);
+    await seeder(new Date('2026-01-11T15:30:00Z')).ensureReady(); // Sunday, 23:30 there
+    expect(await count(shifts)).toBe(changed);
+    await seeder(new Date('2026-01-11T16:30:00Z')).ensureReady(); // Monday, 00:30 there
+    expect(await count(shifts)).toBe(original);
   });
 
   it('keeps the directory from looking stale between reloads', async () => {
